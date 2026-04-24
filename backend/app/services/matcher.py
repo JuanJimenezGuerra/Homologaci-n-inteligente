@@ -18,48 +18,48 @@ def get_master_descriptions(db: Session):
     return [{"nombre": m.nombre_cargo, "descripcion": m.descripcion, "area": m.area} for m in masters]
 
 def normalize_text(text):
-    """Normalize text for better matching: lowercase, remove accents, extra spaces."""
     if not text: return ""
     t = str(text).lower().strip()
     t = t.replace('á', 'a').replace('é', 'e').replace('í', 'i').replace('ó', 'o').replace('ú', 'u')
     return re.sub(r'\s+', ' ', t)
 
 def find_exact_match(cargo_nombre: str, masters: list):
-    """Búsqueda exacta (ignorando mayúsculas/acentos) para no gastar IA."""
     norm_cargo = normalize_text(cargo_nombre)
     for m in masters:
         if normalize_text(m["nombre"]) == norm_cargo:
             return m
-    # Intento de coincidencia parcial muy segura (ej: "Coordinador TIC" vs "COORDINADOR DE TIC")
     for m in masters:
         norm_m = normalize_text(m["nombre"])
         if norm_cargo in norm_m or norm_m in norm_cargo:
-            # Solo si la diferencia de longitud es muy pequeña (evitar falsos positivos como "Asistente" vs "Asistente de Gerencia")
             if abs(len(norm_cargo) - len(norm_m)) < 5:
                 return m
     return None
 
-def homologar_con_openrouter(cargo_nombre: str, cargo_area: str, cargo_descripcion: str, masters: list, retries=3) -> dict:
+def homologar_lote_con_openrouter(cargos_batch: list, masters: list, retries=3) -> list:
     if not OPENROUTER_API_KEY:
-        return {"cargo_homologado": "SIN COINCIDENCIA", "justificacion": "API key de OpenRouter no configurada.", "status": "sin_coincidencia"}
+        return [{"id": c["id"], "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "No API key", "status": "sin_coincidencia"} for c in cargos_batch]
 
     masters_text = "\n".join([f"- {m['nombre']}: {m['descripcion'][:150]}" for m in masters[:50]])
-    if not masters_text: masters_text = "No hay descripciones maestras disponibles."
+    if not masters_text: masters_text = "No hay maestros."
 
-    prompt = f"""Eres un experto en homologación de cargos de Recursos Humanos.
-CARGO A HOMOLOGAR:
-- Nombre: {cargo_nombre}
-- Área: {cargo_area}
-- Descripción Funcional: {cargo_descripcion or 'No disponible'}
+    cargos_text = ""
+    for c in cargos_batch:
+        cargos_text += f"ID: {c['id']} | Nombre: {c['nombre']} | Area: {c['area']} | Funciones: {str(c['descripcion'])[:200]}\n"
 
+    prompt = f"""Eres experto en RRHH. 
 CARGOS MAESTROS DISPONIBLES:
 {masters_text}
 
+CARGOS A HOMOLOGAR:
+{cargos_text}
+
 INSTRUCCIONES:
-1. Elige el cargo maestro MÁS similar.
-2. Responde ÚNICAMENTE con un JSON:
-{{"cargo_homologado": "NOMBRE EXACTO DEL CARGO MAESTRO", "justificacion": "Por qué se eligió (max 100 words)", "status": "homologado"}}
-Si no hay coincidencia: {{"cargo_homologado": "SIN COINCIDENCIA", "justificacion": "", "status": "sin_coincidencia"}}"""
+Para cada cargo a homologar, encuentra el maestro más similar considerando el nombre y las funciones leídas.
+Devuelve ÚNICAMENTE un arreglo JSON estricto con esta estructura exacta para cada ID proporcionado:
+[
+  {{"id": ID_AQUI, "cargo_homologado": "NOMBRE MAESTRO EXACTO", "justificacion": "Breve razón (max 20 words)", "status": "homologado"}}
+]
+Si ninguno sirve, pon "SIN COINCIDENCIA"."""
 
     for attempt in range(retries):
         try:
@@ -75,14 +75,12 @@ Si no hay coincidencia: {{"cargo_homologado": "SIN COINCIDENCIA", "justificacion
                     "model": "openrouter/free",
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.1,
-                    "max_tokens": 500
+                    "max_tokens": 800
                 },
-                timeout=30
+                timeout=45
             )
             
-            # Si hay Rate Limit (429), esperar y reintentar
             if response.status_code == 429:
-                logger.warning(f"Rate limit 429 (intento {attempt+1}/{retries}). Esperando 5 segundos...")
                 time.sleep(5)
                 continue
                 
@@ -92,12 +90,21 @@ Si no hay coincidencia: {{"cargo_homologado": "SIN COINCIDENCIA", "justificacion
             if "```json" in content: content = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content: content = content.split("```")[1].split("```")[0].strip()
             
-            return json.loads(content)
+            # Limpiar posible basura al inicio/final
+            start = content.find('[')
+            end = content.rfind(']') + 1
+            if start != -1 and end != 0:
+                content = content[start:end]
+                
+            resultados = json.loads(content)
+            if isinstance(resultados, list):
+                return resultados
             
         except Exception as e:
             if attempt == retries - 1:
-                return {"cargo_homologado": "SIN COINCIDENCIA", "justificacion": f"Error IA: {str(e)[:50]}", "status": "error"}
-            time.sleep(2) # Fallo temporal, esperar 2 seg
+                logger.error(f"Error IA Lote: {e}")
+                return [{"id": c["id"], "cargo_homologado": "SIN COINCIDENCIA", "justificacion": f"Error IA: {str(e)[:40]}", "status": "error"} for c in cargos_batch]
+            time.sleep(2)
 
 def start_batch_processing(upload_id: int, db: Session):
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
@@ -109,51 +116,62 @@ def start_batch_processing(upload_id: int, db: Session):
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id, Cargo.estado == "PENDIENTE").all()
     masters = get_master_descriptions(db)
 
-    _process_direct(upload_id, cargos, masters, db)
+    _process_direct_batch(upload_id, cargos, masters, db)
     
     upload.status = "completado"
     db.commit()
 
-def _process_direct(upload_id: int, cargos: list, masters: list, db: Session):
-    for i, cargo in enumerate(cargos):
-        try:
+def _process_direct_batch(upload_id: int, cargos: list, masters: list, db: Session):
+    # FASE 1: Resolución Inmediata (Exact Match)
+    cargos_para_ia = []
+    
+    for cargo in cargos:
+        match = find_exact_match(cargo.nombre_cargo, masters)
+        if match:
+            # Encontró coincidencia local, se actualiza al instante
+            homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
+            if not homo:
+                homo = Homologacion(cargo_id=cargo.id)
+                db.add(homo)
+            homo.cargo_homologado = match["nombre"]
+            homo.justificacion = ""
+            cargo.estado = "HOMOLOGADO"
+        else:
+            # Va para la IA
+            cargos_para_ia.append(cargo)
             cargo.estado = "PROCESANDO"
-            db.commit()
             
-            # 1. BÚSQUEDA RÁPIDA (Reglas Exactas / Similares) -> Sin gastar IA
-            match = find_exact_match(cargo.nombre_cargo, masters)
+    db.commit()
+
+    # FASE 2: Procesamiento por Lotes en IA (5 a la vez para velocidad)
+    batch_size = 5
+    for i in range(0, len(cargos_para_ia), batch_size):
+        batch = cargos_para_ia[i:i+batch_size]
+        batch_dicts = [
+            {"id": c.id, "nombre": c.nombre_cargo, "area": c.area, "descripcion": c.descripcion_empresa or ""} 
+            for c in batch
+        ]
+        
+        resultados_ia = homologar_lote_con_openrouter(batch_dicts, masters)
+        
+        # Mapear resultados a la DB
+        for res in resultados_ia:
+            cargo_id = res.get("id")
+            if not cargo_id: continue
             
-            if match:
-                result = {
-                    "cargo_homologado": match["nombre"],
-                    "justificacion": "", # Sin justificación de IA si lo encontró directo
-                    "status": "homologado"
-                }
-            else:
-                # 2. BÚSQUEDA INTELIGENTE (IA con funciones extraídas)
-                # Respetamos el delay entre llamadas IA gratuitas
-                time.sleep(1) 
-                result = homologar_con_openrouter(
-                    cargo_nombre=cargo.nombre_cargo,
-                    cargo_area=cargo.area or "",
-                    cargo_descripcion=cargo.descripcion_empresa or "",
-                    masters=masters
-                )
+            cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+            if not cargo: continue
             
             homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
             if not homo:
                 homo = Homologacion(cargo_id=cargo.id)
                 db.add(homo)
+                
+            homo.cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
+            homo.justificacion = res.get("justificacion", "")
             
-            homo.cargo_homologado = result.get("cargo_homologado", "SIN COINCIDENCIA")
-            homo.justificacion = result.get("justificacion", "")
-            
-            status = result.get("status", "sin_coincidencia")
+            status = res.get("status", "sin_coincidencia")
             cargo.estado = "HOMOLOGADO" if status == "homologado" else "SIN_COINCIDENCIA" if status == "sin_coincidencia" else "ERROR"
             
-            db.commit()
-            
-        except Exception as e:
-            logger.error(f"Error procesando cargo {cargo.id}: {e}")
-            cargo.estado = "ERROR"
-            db.commit()
+        db.commit()
+        time.sleep(1) # Pequeña pausa entre lotes
