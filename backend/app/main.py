@@ -1,0 +1,191 @@
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from .database import get_db, engine, Base
+from .models import User, Upload, Cargo, Homologacion, JobStatus, ProcessingLog
+from .auth import get_password_hash, create_access_token, verify_password, get_current_user
+from .services.excel_processor import process_requirements_excel
+from .services.master_data import process_master_excel
+from .services.matcher import start_batch_processing
+import os
+import shutil
+from typing import List
+from pydantic import BaseModel
+
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="SHR Homologación API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Schemas ---
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class HomologacionUpdate(BaseModel):
+    cargo_homologado: str
+    justificacion: str
+
+# --- Seed Users ---
+@app.on_event("startup")
+def seed_users():
+    db = next(get_db())
+    if db.query(User).count() == 0:
+        users = [
+            User(email="analista1@shr.com", password_hash=get_password_hash("admin123")),
+            User(email="analista2@shr.com", password_hash=get_password_hash("admin123")),
+            User(email="analista3@shr.com", password_hash=get_password_hash("admin123")),
+        ]
+        db.add_all(users)
+        db.commit()
+
+# --- Endpoints ---
+
+@app.post("/auth/login")
+def login(req: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == req.email).first()
+    if not user or not verify_password(req.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    
+    access_token = create_access_token(data={"sub": user.email})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/uploads/master")
+def upload_master_file(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    temp_path = f"temp_master_{file.filename}"
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    try:
+        count = process_master_excel(temp_path, db)
+        return {"message": f"Se cargaron {count} descripciones maestras", "count": count}
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+@app.post("/uploads/requirements")
+def upload_requirements_file(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Create upload record
+    upload = Upload(user_id=current_user.id, filename=file.filename)
+    db.add(upload)
+    db.commit()
+    db.refresh(upload)
+
+    temp_path = f"temp_req_{upload.id}_{file.filename}"
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    try:
+        count = process_requirements_excel(temp_path, upload.id, db)
+        return {"upload_id": upload.id, "count": count}
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+from .services.file_extractor import process_extra_descriptions
+
+@app.post("/uploads/{upload_id}/manuales")
+async def upload_manuales(upload_id: int, files: List[UploadFile] = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    count = process_extra_descriptions(upload_id, files, db)
+    return {"message": f"Se procesaron {len(files)} archivos y se mapearon {count} descripciones de cargo", "count": count}
+def list_uploads(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Upload).all()
+
+@app.get("/uploads/{upload_id}/cargos")
+def list_cargos(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+
+@app.post("/procesar/{upload_id}")
+def start_processing(upload_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    background_tasks.add_task(start_batch_processing, upload_id, db)
+    return {"message": "Procesamiento iniciado en segundo plano"}
+
+@app.post("/webhook/n8n")
+def n8n_webhook(data: dict, db: Session = Depends(get_db)):
+    """
+    Receives results from n8n.
+    Expected data: {
+        "results": [
+            {"cargo_id": 1, "cargo_homologado": "...", "justificacion": "...", "status": "homologado"},
+            ...
+        ]
+    }
+    """
+    results = data.get("results", [])
+    for res in results:
+        cargo_id = res.get("cargo_id")
+        cargo = db.query(Cargo).get(cargo_id)
+        if not cargo:
+            continue
+        
+        # Validation
+        homologado = res.get("cargo_homologado")
+        justificacion = res.get("justificacion")
+        status_ia = res.get("status", "homologado")
+        
+        if not homologado or not justificacion:
+            cargo.estado = JobStatus.ERROR
+            log = ProcessingLog(
+                upload_id=cargo.upload_id,
+                cargo_id=cargo.id,
+                level="ERROR",
+                message="Respuesta de IA inválida o incompleta",
+                raw_response=str(res)
+            )
+            db.add(log)
+        else:
+            cargo.estado = JobStatus.HOMOLOGADO if status_ia != "SIN COINCIDENCIA" else JobStatus.SIN_COINCIDENCIA
+            
+            # Upsert homologacion
+            homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
+            if not homo:
+                homo = Homologacion(cargo_id=cargo.id)
+                db.add(homo)
+            
+            homo.cargo_homologado = homologado
+            homo.justificacion = justificacion
+            
+            log = ProcessingLog(
+                upload_id=cargo.upload_id,
+                cargo_id=cargo.id,
+                level="INFO",
+                message=f"IA procesó exitosamente: {homologado}",
+                raw_response=str(res)
+            )
+            db.add(log)
+            
+    db.commit()
+    return {"status": "ok"}
+
+@app.patch("/cargos/{cargo_id}")
+def update_cargo_manual(cargo_id: int, req: HomologacionUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    cargo = db.query(Cargo).get(cargo_id)
+    if not cargo:
+        raise HTTPException(status_code=404, detail="Cargo no encontrado")
+    
+    homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
+    if not homo:
+        homo = Homologacion(cargo_id=cargo.id)
+        db.add(homo)
+    
+    homo.cargo_homologado = req.cargo_homologado
+    homo.justificacion = req.justificacion
+    homo.editado_manual = True
+    
+    cargo.estado = JobStatus.HOMOLOGADO
+    db.commit()
+    return {"message": "Actualizado manualmente"}
+
+from .services.excel_exporter import export_to_excel
+
+@app.get("/descargar/{upload_id}")
+def download_excel(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return export_to_excel(upload_id, db)
