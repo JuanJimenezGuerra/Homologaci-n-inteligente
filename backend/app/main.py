@@ -132,7 +132,24 @@ def list_uploads(db: Session = Depends(get_db), current_user: User = Depends(get
 
 @app.get("/uploads/{upload_id}/cargos")
 def list_cargos(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    result = []
+    for c in cargos:
+        homo = c.homologacion
+        result.append({
+            "id": c.id,
+            "nombre_cargo": c.nombre_cargo,
+            "area": c.area,
+            "estado": c.estado,
+            "descripcion_empresa": c.descripcion_empresa,
+            "homologacion": {
+                "cargo_homologado": homo.cargo_homologado if homo else None,
+                "justificacion": homo.justificacion if homo else None,
+                "editado_manual": homo.editado_manual if homo else False,
+                "datos_excel": homo.datos_excel if homo else {},
+            } if homo else None
+        })
+    return result
 
 @app.put("/homologacion/{cargo_id}")
 async def update_homologation(cargo_id: int, data: dict, db: Session = Depends(get_db)):
