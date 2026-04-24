@@ -20,5 +20,5 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Start application using shell to expand PORT
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $PORT"]
+# Start application using shell form for direct PORT expansion
+CMD uvicorn app.main:app --host 0.0.0.0 --port $PORT

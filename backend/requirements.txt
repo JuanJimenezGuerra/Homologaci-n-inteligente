@@ -14,3 +14,4 @@ python-dotenv
 PyPDF2
 python-docx
 psycopg2-binary
+python-multipart
