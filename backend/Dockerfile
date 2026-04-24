@@ -20,5 +20,8 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Start application using python module mode (safer for imports)
-CMD python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+# Set Python path to find the 'app' module
+ENV PYTHONPATH=/app
+
+# Start application
+CMD uvicorn app.main:app --host 0.0.0.0 --port $PORT
