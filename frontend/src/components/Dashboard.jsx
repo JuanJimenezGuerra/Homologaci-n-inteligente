@@ -265,76 +265,78 @@ const Dashboard = () => {
               </thead>
               <tbody className="divide-y divide-emerald-50">
                 {filteredCargos.map((c) => (
-                  <tr key={c.id} className="hover:bg-white/40 transition-colors group">
-                    <td className="px-8 py-6">
-                      <p className="text-sm font-bold text-forest">{c.nombre_cargo}</p>
-                      <p className="text-[10px] text-emerald-600/50 font-bold uppercase tracking-tighter mt-0.5">ID: {c.id}</p>
-                    </td>
-                    <td className="px-8 py-6">
-                      <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
-                        {c.area || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-8 py-6 text-center">{getStatusBadge(c.estado)}</td>
-                    <td className="px-8 py-6">
-                      <div className="flex flex-col gap-1">
-                        {editingId === c.id ? (
-                          <div className="flex gap-2">
-                            <input 
-                              value={editValue} 
-                              onChange={(e) => setEditValue(e.target.value)}
-                              className="bg-white border border-primary rounded-lg px-3 py-1 text-sm w-full focus:outline-none ring-2 ring-primary/10"
-                              autoFocus
-                            />
-                            <button onClick={() => handleSaveEdit(c.id)} className="text-primary hover:scale-110 transition-transform"><CheckCircle2 size={18} /></button>
-                            <button onClick={() => setEditingId(null)} className="text-red-400 hover:scale-110 transition-transform"><RotateCcw size={18} /></button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-between group/edit">
-                            <span className={`text-sm font-bold ${c.homologacion?.cargo_homologado && c.homologacion.cargo_homologado !== 'PENDIENTE' ? 'text-primary' : 'text-slate-300 italic'}`}>
-                              {c.homologacion?.cargo_homologado || 'Sin procesar'}
-                            </span>
-                            <button 
-                              onClick={() => { setEditingId(c.id); setEditValue(c.homologacion?.cargo_homologado || ''); }}
-                              className="opacity-0 group-hover/edit:opacity-100 p-1 text-slate-400 hover:text-primary transition-all"
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                          </div>
-                        )}
-                        {c.homologacion?.justificacion && (
-                          <div className="mt-2 p-2 bg-emerald-50/50 rounded-lg border border-emerald-100/50">
-                             <p className="text-[10px] text-emerald-800 font-medium leading-relaxed italic">
-                               💡 {c.homologacion.justificacion}
-                             </p>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-8 py-6 text-right">
-                      <button 
-                        onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
-                        className={`p-2 rounded-xl transition-all inline-flex items-center gap-2 ${expandedId === c.id ? 'bg-primary text-white' : 'text-emerald-400 hover:text-primary hover:bg-emerald-50'}`}
-                      >
-                        <ExternalLink size={16} />
-                        {expandedId === c.id ? 'Cerrar' : 'Ver Todo'}
-                      </button>
-                    </td>
-                  </tr>
-                  {expandedId === c.id && c.homologacion?.datos_excel && (
-                    <tr className="bg-emerald-50/30">
-                      <td colSpan="5" className="px-8 py-6">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-2">
-                          {Object.entries(c.homologacion.datos_excel).map(([key, val]) => (
-                            <div key={key} className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
-                              <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-tighter mb-1 truncate" title={key}>{key}</p>
-                              <p className="text-xs text-forest font-medium truncate" title={val || 'N/A'}>{val || 'N/A'}</p>
+                  <React.Fragment key={c.id}>
+                    <tr className="hover:bg-white/40 transition-colors group">
+                      <td className="px-8 py-6">
+                        <p className="text-sm font-bold text-forest">{c.nombre_cargo}</p>
+                        <p className="text-[10px] text-emerald-600/50 font-bold uppercase tracking-tighter mt-0.5">ID: {c.id}</p>
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
+                          {c.area || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-8 py-6 text-center">{getStatusBadge(c.estado)}</td>
+                      <td className="px-8 py-6">
+                        <div className="flex flex-col gap-1">
+                          {editingId === c.id ? (
+                            <div className="flex gap-2">
+                              <input 
+                                value={editValue} 
+                                onChange={(e) => setEditValue(e.target.value)}
+                                className="bg-white border border-primary rounded-lg px-3 py-1 text-sm w-full focus:outline-none ring-2 ring-primary/10"
+                                autoFocus
+                              />
+                              <button onClick={() => handleSaveEdit(c.id)} className="text-primary hover:scale-110 transition-transform"><CheckCircle2 size={18} /></button>
+                              <button onClick={() => setEditingId(null)} className="text-red-400 hover:scale-110 transition-transform"><RotateCcw size={18} /></button>
                             </div>
-                          ))}
+                          ) : (
+                            <div className="flex items-center justify-between group/edit">
+                              <span className={`text-sm font-bold ${c.homologacion?.cargo_homologado && c.homologacion.cargo_homologado !== 'PENDIENTE' ? 'text-primary' : 'text-slate-300 italic'}`}>
+                                {c.homologacion?.cargo_homologado || 'Sin procesar'}
+                              </span>
+                              <button 
+                                onClick={() => { setEditingId(c.id); setEditValue(c.homologacion?.cargo_homologado || ''); }}
+                                className="opacity-0 group-hover/edit:opacity-100 p-1 text-slate-400 hover:text-primary transition-all"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+                            </div>
+                          )}
+                          {c.homologacion?.justificacion && (
+                            <div className="mt-2 p-2 bg-emerald-50/50 rounded-lg border border-emerald-100/50">
+                               <p className="text-[10px] text-emerald-800 font-medium leading-relaxed italic">
+                                 💡 {c.homologacion.justificacion}
+                               </p>
+                            </div>
+                          )}
                         </div>
                       </td>
+                      <td className="px-8 py-6 text-right">
+                        <button 
+                          onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                          className={`p-2 rounded-xl transition-all inline-flex items-center gap-2 ${expandedId === c.id ? 'bg-primary text-white' : 'text-emerald-400 hover:text-primary hover:bg-emerald-50'}`}
+                        >
+                          <ExternalLink size={16} />
+                          {expandedId === c.id ? 'Cerrar' : 'Ver Todo'}
+                        </button>
+                      </td>
                     </tr>
-                  )}
+                    {expandedId === c.id && c.homologacion?.datos_excel && (
+                      <tr className="bg-emerald-50/30">
+                        <td colSpan="5" className="px-8 py-6">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {Object.entries(c.homologacion.datos_excel).map(([key, val]) => (
+                              <div key={key} className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
+                                <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-tighter mb-1 truncate" title={key}>{key}</p>
+                                <p className="text-xs text-forest font-medium truncate" title={String(val || 'N/A')}>{String(val || 'N/A')}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
                 {filteredCargos.length === 0 && (
                   <tr>
