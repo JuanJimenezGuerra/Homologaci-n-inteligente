@@ -8,11 +8,16 @@ function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [userEmail, setUserEmail] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [newUploadId, setNewUploadId] = useState(null);
 
   useEffect(() => {
     if (token) {
-      // Potentially verify token here
-      setUserEmail('analista@shr.com'); // Mocking for now
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setUserEmail(payload.sub || 'analista@shr.com');
+      } catch {
+        setUserEmail('analista@shr.com');
+      }
     }
   }, [token]);
 
@@ -27,19 +32,32 @@ function App() {
     setUserEmail(null);
   };
 
+  // Called after a successful upload — passes the new upload_id to Dashboard
+  const handleUploadSuccess = (uploadId) => {
+    setNewUploadId(uploadId);
+    setActiveTab('dashboard');
+  };
+
   if (!token) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
-    <Layout 
-      activeTab={activeTab} 
-      setActiveTab={setActiveTab} 
+    <Layout
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
       user={{ email: userEmail }}
       onLogout={handleLogout}
     >
-      {activeTab === 'dashboard' && <Dashboard />}
-      {activeTab === 'uploads' && <UploadView onSuccess={() => setActiveTab('dashboard')} />}
+      {activeTab === 'dashboard' && (
+        <Dashboard
+          initialUploadId={newUploadId}
+          onUploadIdConsumed={() => setNewUploadId(null)}
+        />
+      )}
+      {activeTab === 'uploads' && (
+        <UploadView onSuccess={handleUploadSuccess} />
+      )}
     </Layout>
   );
 }

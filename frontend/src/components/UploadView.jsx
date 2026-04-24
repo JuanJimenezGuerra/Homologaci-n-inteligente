@@ -51,7 +51,7 @@ const UploadView = ({ onSuccess }) => {
 
   const handleManualesUpload = async () => {
     if (!manualFiles.length) {
-      onSuccess();
+      onSuccess(uploadId); // Pass upload_id so Dashboard can auto-select it
       return;
     }
     
@@ -68,7 +68,7 @@ const UploadView = ({ onSuccess }) => {
           'Authorization': `Bearer ${token}`
         }
       });
-      onSuccess();
+      onSuccess(uploadId); // Pass upload_id so Dashboard can auto-select it
     } catch (err) {
       setError('Error al cargar manuales de funciones');
     } finally {
@@ -204,7 +204,7 @@ const UploadView = ({ onSuccess }) => {
 
             <div className="flex gap-4">
               <button
-                onClick={() => onSuccess()}
+                onClick={() => onSuccess(uploadId)}
                 disabled={loading}
                 className="btn-secondary flex-1"
               >
