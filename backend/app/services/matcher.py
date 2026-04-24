@@ -44,7 +44,7 @@ def start_batch_processing(upload_id: int, db: Session):
     upload.status = "procesando"
     db.commit()
 
-    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id, Cargo.estado == JobStatus.PENDIENTE).all()
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id, Cargo.estado == "PENDIENTE").all()
     
     # Process in batches of 5
     batch_size = 5
@@ -53,7 +53,7 @@ def start_batch_processing(upload_id: int, db: Session):
         payload_cargos = []
         
         for cargo in batch:
-            cargo.estado = JobStatus.PROCESANDO
+            cargo.estado = "PROCESANDO"
             db.commit()
             
             candidates = prefilter_candidates(cargo.nombre_cargo, db)
@@ -87,7 +87,7 @@ def start_batch_processing(upload_id: int, db: Session):
             except Exception as e:
                 logging.error(f"Error calling n8n: {e}")
                 for cargo in batch:
-                    cargo.estado = JobStatus.ERROR
+                    cargo.estado = "ERROR"
                     log = ProcessingLog(
                         upload_id=upload_id,
                         cargo_id=cargo.id,

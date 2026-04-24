@@ -40,7 +40,7 @@ def process_requirements_excel(file_path: str, upload_id: int, db: Session):
                 upload_id=upload_id,
                 nombre_cargo=str(nombre).strip().upper(),
                 area=str(area).strip().upper() if not pd.isna(area) else "N/A",
-                estado=JobStatus.PENDIENTE
+                estado="PENDIENTE"
             )
             db.add(cargo)
             cargos_created += 1

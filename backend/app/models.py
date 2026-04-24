@@ -36,7 +36,7 @@ class Cargo(Base):
     nombre_cargo = Column(String)
     area = Column(String)
     descripcion_empresa = Column(Text, nullable=True) # Contenido de archivos PDF/Word
-    estado = Column(Enum(JobStatus), default=JobStatus.PENDIENTE)
+    estado = Column(String, default="PENDIENTE")
     
     upload = relationship("Upload", back_populates="cargos")
     homologacion = relationship("Homologacion", back_populates="cargo", uselist=False)
