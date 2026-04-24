@@ -15,8 +15,11 @@ const Login = ({ onLoginSuccess }) => {
     setLoading(true);
     setError('');
     
-    // URL de la API: Usa la variable de entorno o local si no existe
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    // URL de la API: Sanitizar para evitar doble barra si el usuario pone una barra al final en Render
+    let apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    if (apiUrl.endsWith('/')) {
+      apiUrl = apiUrl.slice(0, -1);
+    }
     
     try {
       // Intentar login con formato de formulario (común en FastAPI/OAuth2)
