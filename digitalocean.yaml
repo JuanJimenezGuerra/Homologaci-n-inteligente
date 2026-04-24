@@ -1,0 +1,26 @@
+name: shr-homologacion-hr
+services:
+  - name: shr-backend
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    source_dir: backend
+    dockerfile_path: Dockerfile
+    envs:
+      - key: SECRET_KEY
+        scope: RUN_TIME
+        value: generate_one_later
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        value: sqlite:///app/shr_homologacion.db
+    ports:
+      - 8000
+  - name: shr-frontend
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    source_dir: frontend
+    build_command: npm run build
+    run_command: npx serve dist
+    envs:
+      - key: VITE_API_URL
+        scope: RUN_TIME
+        value: ${shr-backend.PUBLIC_URL}
