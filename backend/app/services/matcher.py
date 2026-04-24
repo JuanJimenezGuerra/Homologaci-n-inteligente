@@ -62,7 +62,7 @@ Si no hay coincidencia adecuada:
                 "X-Title": "SHR Homologacion"
             },
             json={
-                "model": "google/gemini-2.0-flash-exp:free",
+                "model": "openrouter/free",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1,
                 "max_tokens": 500

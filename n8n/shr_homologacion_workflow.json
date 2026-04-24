@@ -49,7 +49,7 @@
           "parameters": [
             {
               "name": "model",
-              "value": "google/gemini-2.0-flash-exp:free"
+              "value": "openrouter/free"
             },
             {
               "name": "temperature",
