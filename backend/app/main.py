@@ -13,7 +13,13 @@ from typing import List
 from pydantic import BaseModel
 
 # Create tables
-Base.metadata.create_all(bind=engine)
+try:
+    print("Iniciando creación de tablas...")
+    Base.metadata.create_all(bind=engine)
+    print("Tablas creadas/verificadas exitosamente.")
+except Exception as e:
+    print(f"ERROR CRÍTICO al conectar a la base de datos: {e}")
+    # En desarrollo esto ayuda, en producción nos dice por qué falló el despliegue
 
 app = FastAPI(title="SHR Homologación API")
 
