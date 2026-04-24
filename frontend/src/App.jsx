@@ -3,7 +3,6 @@ import Login from './components/Login';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import UploadView from './components/UploadView';
-import MasterUploadView from './components/MasterUploadView';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
@@ -41,7 +40,6 @@ function App() {
     >
       {activeTab === 'dashboard' && <Dashboard />}
       {activeTab === 'uploads' && <UploadView onSuccess={() => setActiveTab('dashboard')} />}
-      {activeTab === 'master' && <MasterUploadView onSuccess={() => setActiveTab('dashboard')} />}
     </Layout>
   );
 }
