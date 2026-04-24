@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Play, Download, Search, AlertCircle, CheckCircle2, Clock, RotateCcw, Edit2, FileUp, MoreVertical, ExternalLink, Building2 } from 'lucide-react';
+import { Play, Download, Search, AlertCircle, CheckCircle2, Clock, RotateCcw, Edit2, FileUp, MoreVertical, ExternalLink, Building } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Dashboard = () => {
@@ -157,7 +157,7 @@ const Dashboard = () => {
           <p className="text-emerald-700/60 font-medium">Gestiona y monitorea tus procesos de homologación con IA</p>
         </div>
         <div className="flex gap-3">
-           <button onClick={fetchUploads} className="btn-secondary px-4 py-2">
+           <button onClick={() => fetchUploads(false)} className="btn-secondary px-4 py-2">
              <RotateCcw size={16} />
            </button>
         </div>
@@ -179,7 +179,7 @@ const Dashboard = () => {
             >
               <div className="flex justify-between items-start mb-6">
                 <div className={`p-3 rounded-2xl ${selectedUpload === u.id ? 'bg-primary text-white' : 'bg-emerald-50 text-emerald-600'}`}>
-                  <Building2 size={20} />
+                  <Building size={20} />
                 </div>
                 <div className="flex gap-1">
                   <button 
