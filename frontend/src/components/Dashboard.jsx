@@ -12,11 +12,12 @@ const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   useEffect(() => {
-    fetchUploads();
+    fetchUploads(true);
   }, []);
 
   const handleManualesUpload = async (uploadId, files) => {
@@ -42,13 +43,16 @@ const Dashboard = () => {
     }
   };
 
-  const fetchUploads = async () => {
+  const fetchUploads = async (autoSelect = false) => {
     try {
       const token = localStorage.getItem('token');
       const res = await axios.get(`${apiUrl}/uploads`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUploads(res.data);
+      if (autoSelect && res.data.length > 0) {
+        fetchCargos(res.data[0].id);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -248,11 +252,11 @@ const Dashboard = () => {
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-emerald-50/50 text-emerald-800 text-[10px] font-bold uppercase tracking-widest">
-                  <th className="px-8 py-5">Cargo Original</th>
-                  <th className="px-8 py-5">Área / Proceso</th>
-                  <th className="px-8 py-5 text-center">Estado</th>
-                  <th className="px-8 py-5">Cargo Homologado</th>
-                  <th className="px-8 py-5 text-right">Detalle</th>
+                  <th className="px-8 py-5">Nombre de Cargo (Excel)</th>
+                  <th className="px-8 py-5">Área de la Empresa</th>
+                  <th className="px-8 py-5 text-center">Estado de Homologación</th>
+                  <th className="px-8 py-5">Cargo Homologado (Sugerencia IA)</th>
+                  <th className="px-8 py-5 text-right">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-emerald-50">
@@ -304,11 +308,29 @@ const Dashboard = () => {
                       </div>
                     </td>
                     <td className="px-8 py-6 text-right">
-                      <button className="p-2 text-emerald-400 hover:text-primary hover:bg-emerald-50 rounded-xl transition-all inline-flex items-center gap-2">
+                      <button 
+                        onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                        className={`p-2 rounded-xl transition-all inline-flex items-center gap-2 ${expandedId === c.id ? 'bg-primary text-white' : 'text-emerald-400 hover:text-primary hover:bg-emerald-50'}`}
+                      >
                         <ExternalLink size={16} />
+                        {expandedId === c.id ? 'Cerrar' : 'Ver Todo'}
                       </button>
                     </td>
                   </tr>
+                  {expandedId === c.id && c.homologacion?.metadata && (
+                    <tr className="bg-emerald-50/30">
+                      <td colSpan="5" className="px-8 py-6">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-2">
+                          {Object.entries(c.homologacion.metadata).map(([key, val]) => (
+                            <div key={key} className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
+                              <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-tighter mb-1 truncate" title={key}>{key}</p>
+                              <p className="text-xs text-forest font-medium truncate" title={val || 'N/A'}>{val || 'N/A'}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                 ))}
                 {filteredCargos.length === 0 && (
                   <tr>
