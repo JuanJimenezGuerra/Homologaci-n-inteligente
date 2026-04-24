@@ -134,6 +134,22 @@ def list_uploads(db: Session = Depends(get_db), current_user: User = Depends(get
 def list_cargos(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
 
+@app.put("/homologacion/{cargo_id}")
+async def update_homologation(cargo_id: int, data: dict, db: Session = Depends(get_db)):
+    homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo_id).first()
+    if not homo:
+        raise HTTPException(status_code=404, detail="Homologacion no encontrada")
+    
+    homo.cargo_homologado = data.get("cargo_homologado")
+    homo.editado_manual = True
+    
+    cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+    if cargo:
+        cargo.estado = "HOMOLOGADO"
+        
+    db.commit()
+    return {"message": "Actualizado correctamente"}
+
 @app.post("/procesar/{upload_id}")
 def start_processing(upload_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     background_tasks.add_task(start_batch_processing, upload_id, db)

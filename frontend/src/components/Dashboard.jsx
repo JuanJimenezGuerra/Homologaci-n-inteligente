@@ -10,6 +10,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState('');
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -87,6 +89,22 @@ const Dashboard = () => {
       await fetchCargos(uploadId);
     }, 5000);
     return () => clearInterval(interval);
+  };
+
+  const handleSaveEdit = async (cargoId) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(`${apiUrl}/homologacion/${cargoId}`, {
+        cargo_homologado: editValue
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setEditingId(null);
+      fetchCargos(selectedUpload);
+    } catch (err) {
+      console.error(err);
+      alert('Error al guardar');
+    }
   };
 
   const handleDownload = async (uploadId) => {
@@ -252,13 +270,36 @@ const Dashboard = () => {
                     <td className="px-8 py-6 text-center">{getStatusBadge(c.estado)}</td>
                     <td className="px-8 py-6">
                       <div className="flex flex-col gap-1">
-                        <span className={`text-sm font-bold ${c.homologacion ? 'text-primary' : 'text-slate-300 italic'}`}>
-                          {c.homologacion?.cargo_homologado || 'Pendiente de procesamiento'}
-                        </span>
+                        {editingId === c.id ? (
+                          <div className="flex gap-2">
+                            <input 
+                              value={editValue} 
+                              onChange={(e) => setEditValue(e.target.value)}
+                              className="bg-white border border-primary rounded-lg px-3 py-1 text-sm w-full focus:outline-none ring-2 ring-primary/10"
+                              autoFocus
+                            />
+                            <button onClick={() => handleSaveEdit(c.id)} className="text-primary hover:scale-110 transition-transform"><CheckCircle2 size={18} /></button>
+                            <button onClick={() => setEditingId(null)} className="text-red-400 hover:scale-110 transition-transform"><RotateCcw size={18} /></button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between group/edit">
+                            <span className={`text-sm font-bold ${c.homologacion?.cargo_homologado && c.homologacion.cargo_homologado !== 'PENDIENTE' ? 'text-primary' : 'text-slate-300 italic'}`}>
+                              {c.homologacion?.cargo_homologado || 'Sin procesar'}
+                            </span>
+                            <button 
+                              onClick={() => { setEditingId(c.id); setEditValue(c.homologacion?.cargo_homologado || ''); }}
+                              className="opacity-0 group-hover/edit:opacity-100 p-1 text-slate-400 hover:text-primary transition-all"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                          </div>
+                        )}
                         {c.homologacion?.justificacion && (
-                          <span className="text-[10px] text-slate-500 line-clamp-1 max-w-xs leading-relaxed">
-                            {c.homologacion.justificacion}
-                          </span>
+                          <div className="mt-2 p-2 bg-emerald-50/50 rounded-lg border border-emerald-100/50">
+                             <p className="text-[10px] text-emerald-800 font-medium leading-relaxed italic">
+                               💡 {c.homologacion.justificacion}
+                             </p>
+                          </div>
                         )}
                       </div>
                     </td>

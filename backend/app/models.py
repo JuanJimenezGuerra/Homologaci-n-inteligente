@@ -46,7 +46,8 @@ class Homologacion(Base):
     id = Column(Integer, primary_key=True, index=True)
     cargo_id = Column(Integer, ForeignKey("cargos.id"))
     cargo_homologado = Column(String)
-    justificacion = Column(Text)
+    justificacion = Column(Text, nullable=True) # Explicación de la IA
+    metadata = Column(JSON, nullable=True) # Columnas A-AS
     editado_manual = Column(Boolean, default=False)
     
     cargo = relationship("Cargo", back_populates="homologacion")

@@ -35,7 +35,14 @@ def process_requirements_excel(file_path: str, upload_id: int, db: Session):
             
             if pd.isna(nombre) or str(nombre).strip() == "":
                 continue
-                
+            
+            # Capture full row data (A to AS = cols 0 to 44)
+            row_metadata = {}
+            for col_idx in range(min(len(row), 45)):
+                col_name = df.columns[col_idx]
+                val = row[col_idx]
+                row_metadata[str(col_name)] = str(val) if not pd.isna(val) else None
+
             cargo = Cargo(
                 upload_id=upload_id,
                 nombre_cargo=str(nombre).strip().upper(),
@@ -43,6 +50,16 @@ def process_requirements_excel(file_path: str, upload_id: int, db: Session):
                 estado="PENDIENTE"
             )
             db.add(cargo)
+            db.flush() # Get cargo ID
+
+            # Pre-create empty homologacion to store metadata
+            homo = Homologacion(
+                cargo_id=cargo.id,
+                cargo_homologado="PENDIENTE",
+                metadata=row_metadata
+            )
+            db.add(homo)
+            
             cargos_created += 1
             
         db.commit()
