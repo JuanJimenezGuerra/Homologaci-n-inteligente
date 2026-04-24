@@ -90,8 +90,10 @@ def upload_master_file(file: UploadFile = File(...), db: Session = Depends(get_d
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
+from fastapi import Form
+
 @app.post("/uploads/requirements")
-def upload_requirements_file(empresa: str, file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def upload_requirements_file(empresa: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Create upload record
     upload = Upload(user_id=current_user.id, filename=file.filename, empresa=empresa.upper())
     db.add(upload)

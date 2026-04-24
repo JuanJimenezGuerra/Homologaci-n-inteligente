@@ -25,11 +25,12 @@ const UploadView = ({ onSuccess }) => {
 
     const formData = new FormData();
     formData.append('file', excelFile);
+    formData.append('empresa', empresa);
 
     try {
       const token = localStorage.getItem('token');
-      // Enviamos 'empresa' como parámetro de consulta
-      const response = await axios.post(`${apiUrl}/uploads/requirements?empresa=${encodeURIComponent(empresa)}`, formData, {
+      // Enviamos todo en el formData para mayor estabilidad
+      const response = await axios.post(`${apiUrl}/uploads/requirements`, formData, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'multipart/form-data'
