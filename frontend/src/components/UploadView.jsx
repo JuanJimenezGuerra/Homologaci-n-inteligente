@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload as UploadIcon, FileCheck, Loader2, AlertCircle, Files, ArrowRight, Building2, CheckCircle } from 'lucide-react';
+import { Upload as UploadIcon, FileCheck, Loader2, AlertCircle, Files, ArrowRight, Building, CheckCircle } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -112,7 +112,7 @@ const UploadView = ({ onSuccess }) => {
             <div className="space-y-4">
               <label className="text-sm font-bold text-emerald-900 ml-1">Nombre de la Empresa Cliente</label>
               <div className="relative">
-                <Building2 className="absolute left-5 top-1/2 -translate-y-1/2 text-emerald-600" size={24} />
+                <Building className="absolute left-5 top-1/2 -translate-y-1/2 text-emerald-600" size={24} />
                 <input 
                   type="text"
                   placeholder="Ej: COLANTA S.A.S"
