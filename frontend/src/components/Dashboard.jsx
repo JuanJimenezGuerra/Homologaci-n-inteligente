@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Play, Download, Search, AlertCircle, CheckCircle2, Clock, RotateCcw, Edit2, FileUp } from 'lucide-react';
+import { Play, Download, Search, AlertCircle, CheckCircle2, Clock, RotateCcw, Edit2, FileUp, MoreVertical, ExternalLink } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Dashboard = () => {
   const [uploads, setUploads] = useState([]);
@@ -8,6 +9,9 @@ const Dashboard = () => {
   const [cargos, setCargos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   useEffect(() => {
     fetchUploads();
@@ -22,7 +26,7 @@ const Dashboard = () => {
     
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`http://localhost:8000/uploads/${uploadId}/manuales`, formData, {
+      await axios.post(`${apiUrl}/uploads/${uploadId}/manuales`, formData, {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data'
@@ -39,7 +43,7 @@ const Dashboard = () => {
   const fetchUploads = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get('http://localhost:8000/uploads', {
+      const res = await axios.get(`${apiUrl}/uploads`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUploads(res.data);
@@ -52,7 +56,7 @@ const Dashboard = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get(`http://localhost:8000/uploads/${uploadId}/cargos`, {
+      const res = await axios.get(`${apiUrl}/uploads/${uploadId}/cargos`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setCargos(res.data);
@@ -68,10 +72,9 @@ const Dashboard = () => {
     setProcessing(true);
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`http://localhost:8000/procesar/${uploadId}`, {}, {
+      await axios.post(`${apiUrl}/procesar/${uploadId}`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      // Start polling status
       pollStatus(uploadId);
     } catch (err) {
       console.error(err);
@@ -82,8 +85,6 @@ const Dashboard = () => {
   const pollStatus = (uploadId) => {
     const interval = setInterval(async () => {
       await fetchCargos(uploadId);
-      // Logic to stop polling if all processed? 
-      // For now simple refresh
     }, 5000);
     return () => clearInterval(interval);
   };
@@ -91,7 +92,7 @@ const Dashboard = () => {
   const handleDownload = async (uploadId) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get(`http://localhost:8000/descargar/${uploadId}`, {
+      const res = await axios.get(`${apiUrl}/descargar/${uploadId}`, {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob'
       });
@@ -106,93 +107,120 @@ const Dashboard = () => {
     }
   };
 
+  const filteredCargos = cargos.filter(c => 
+    c.nombre_cargo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.area?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   const getStatusBadge = (status) => {
     const styles = {
-      pendiente: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
-      procesando: 'bg-blue-500/10 text-blue-400 border-blue-500/20 animate-pulse',
-      homologado: 'bg-green-500/10 text-green-400 border-green-500/20',
-      sin_coincidencia: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-      error: 'bg-red-500/10 text-red-400 border-red-500/20'
+      pendiente: 'bg-slate-100 text-slate-500 border-slate-200',
+      procesando: 'bg-emerald-50 text-emerald-600 border-emerald-100 animate-pulse',
+      homologado: 'bg-green-100 text-green-700 border-green-200',
+      sin_coincidencia: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+      error: 'bg-red-50 text-red-700 border-red-200'
     };
     return (
-      <span className={`px-3 py-1 rounded-full text-xs font-medium border ${styles[status] || styles.pendiente}`}>
-        {status.toUpperCase()}
+      <span className={`px-3 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${styles[status] || styles.pendiente}`}>
+        {status}
       </span>
     );
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8 pb-20">
+      <header className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold text-white">Dashboard</h2>
-          <p className="text-slate-400">Gestiona y monitorea tus procesos de homologación</p>
+          <h1 className="text-3xl font-bold text-forest">Dashboard Operativo</h1>
+          <p className="text-emerald-700/60 font-medium">Gestiona y monitorea tus procesos de homologación con IA</p>
         </div>
-      </div>
+        <div className="flex gap-3">
+           <button onClick={fetchUploads} className="btn-secondary px-4 py-2">
+             <RotateCcw size={16} />
+           </button>
+        </div>
+      </header>
 
-      {/* Uploads Grid */}
+      {/* Uploads Horizontal Scroll or Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {uploads.map((u) => (
-          <div 
-            key={u.id}
-            onClick={() => fetchCargos(u.id)}
-            className={`glass-card p-6 rounded-3xl cursor-pointer transition-all ${selectedUpload === u.id ? 'ring-2 ring-primary-500 bg-primary-500/5' : ''}`}
-          >
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-3 bg-slate-800 rounded-xl">
-                <Clock className="text-slate-400" size={20} />
+        <AnimatePresence>
+          {uploads.map((u) => (
+            <motion.div 
+              key={u.id}
+              layout
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              onClick={() => fetchCargos(u.id)}
+              className={`glass-card p-6 cursor-pointer border-2 transition-all group ${
+                selectedUpload === u.id ? 'border-primary bg-primary/5 shadow-primary/20' : 'border-white/50 hover:border-emerald-200'
+              }`}
+            >
+              <div className="flex justify-between items-start mb-6">
+                <div className={`p-3 rounded-2xl ${selectedUpload === u.id ? 'bg-primary text-white' : 'bg-emerald-50 text-emerald-600'}`}>
+                  <Clock size={20} />
+                </div>
+                <div className="flex gap-1">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDownload(u.id); }}
+                    className="p-2 hover:bg-white rounded-xl text-emerald-600 transition-colors shadow-sm"
+                    title="Descargar Excel"
+                  >
+                    <Download size={18} />
+                  </button>
+                </div>
               </div>
-              <button 
-                onClick={(e) => { e.stopPropagation(); handleDownload(u.id); }}
-                className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
-              >
-                <Download size={18} />
-              </button>
-            </div>
-            <h3 className="font-bold text-white truncate">{u.filename}</h3>
-            <p className="text-sm text-slate-500 mt-1">{new Date(u.created_at).toLocaleDateString()}</p>
-            
-            <div className="mt-6 flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cargos: {u.cargo_count || '...'}</span>
-              <div className="flex gap-4">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); document.getElementById(`manuales-${u.id}`).click(); }}
-                  className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 font-bold text-xs transition-colors"
-                >
-                  <FileUp size={14} />
-                  MANUALES
-                </button>
-                <input 
-                  id={`manuales-${u.id}`}
-                  type="file" 
-                  multiple 
-                  className="hidden" 
-                  onChange={(e) => handleManualesUpload(u.id, e.target.files)}
-                />
-                <button 
-                  onClick={(e) => { e.stopPropagation(); startProcessing(u.id); }}
-                  className="flex items-center gap-2 text-primary-400 hover:text-primary-300 font-bold text-xs transition-colors"
-                >
-                  <Play size={14} />
-                  PROCESAR
-                </button>
+              <h3 className="font-bold text-forest truncate text-lg mb-1">{u.filename}</h3>
+              <p className="text-xs text-emerald-600/60 font-bold uppercase tracking-widest">
+                {new Date(u.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}
+              </p>
+              
+              <div className="mt-8 pt-6 border-t border-emerald-100 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-1 rounded-md">
+                  {u.cargo_count || 0} CARGOS
+                </span>
+                <div className="flex gap-2">
+                  <input 
+                    id={`manuales-${u.id}`}
+                    type="file" 
+                    multiple 
+                    className="hidden" 
+                    onChange={(e) => handleManualesUpload(u.id, e.target.files)}
+                  />
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); startProcessing(u.id); }}
+                    disabled={processing}
+                    className="flex items-center gap-2 bg-forest text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-primary transition-all shadow-lg shadow-forest/20 disabled:opacity-50"
+                  >
+                    <Play size={12} fill="currentColor" />
+                    PROCESAR
+                  </button>
+                </div>
               </div>
-            </div>
-          </div>
-        ))}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
 
-      {/* Cargos Table */}
+      {/* Cargos Detail Table */}
       {selectedUpload && (
-        <div className="glass-card rounded-3xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-            <h3 className="text-xl font-bold text-white">Detalle de Cargos</h3>
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card rounded-3xl overflow-hidden shadow-2xl border border-white/60 bg-white/60"
+        >
+          <div className="p-8 border-b border-emerald-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-xl font-bold text-forest">Detalle de Cargos</h3>
+              <p className="text-sm text-emerald-600/60 font-medium">Revisión y validación de homologaciones sugeridas</p>
+            </div>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-400" size={18} />
               <input 
                 type="text" 
-                placeholder="Buscar cargo..." 
-                className="bg-slate-900/50 border border-slate-700 rounded-xl py-2 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-primary-500 w-64"
+                placeholder="Buscar por cargo o área..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="bg-white border border-emerald-100 rounded-2xl py-3 pl-12 pr-6 text-sm text-forest focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary w-full md:w-80 transition-all shadow-sm"
               />
             </div>
           </div>
@@ -200,37 +228,62 @@ const Dashboard = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="bg-slate-800/30 text-slate-400 text-xs uppercase tracking-wider">
-                  <th className="px-6 py-4 font-semibold">Cargo Original</th>
-                  <th className="px-6 py-4 font-semibold">Área</th>
-                  <th className="px-6 py-4 font-semibold">Estado</th>
-                  <th className="px-6 py-4 font-semibold">Cargo Homologado</th>
-                  <th className="px-6 py-4 font-semibold">Acciones</th>
+                <tr className="bg-emerald-50/50 text-emerald-800 text-[10px] font-bold uppercase tracking-widest">
+                  <th className="px-8 py-5">Cargo Original</th>
+                  <th className="px-8 py-5">Área / Proceso</th>
+                  <th className="px-8 py-5 text-center">Estado</th>
+                  <th className="px-8 py-5">Cargo Homologado</th>
+                  <th className="px-8 py-5 text-right">Detalle</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
-                {cargos.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-800/20 transition-colors group">
-                    <td className="px-6 py-4 text-sm font-medium text-white">{c.nombre_cargo}</td>
-                    <td className="px-6 py-4 text-sm text-slate-400">{c.area}</td>
-                    <td className="px-6 py-4">{getStatusBadge(c.estado)}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-sm text-primary-300 font-medium">{c.homologacion?.cargo_homologado || '-'}</span>
-                        <span className="text-xs text-slate-500 truncate max-w-xs">{c.homologacion?.justificacion}</span>
+              <tbody className="divide-y divide-emerald-50">
+                {filteredCargos.map((c) => (
+                  <tr key={c.id} className="hover:bg-white/40 transition-colors group">
+                    <td className="px-8 py-6">
+                      <p className="text-sm font-bold text-forest">{c.nombre_cargo}</p>
+                      <p className="text-[10px] text-emerald-600/50 font-bold uppercase tracking-tighter mt-0.5">ID: {c.id}</p>
+                    </td>
+                    <td className="px-8 py-6">
+                      <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
+                        {c.area || 'N/A'}
+                      </span>
+                    </td>
+                    <td className="px-8 py-6 text-center">{getStatusBadge(c.estado)}</td>
+                    <td className="px-8 py-6">
+                      <div className="flex flex-col gap-1">
+                        <span className={`text-sm font-bold ${c.homologacion ? 'text-primary' : 'text-slate-300 italic'}`}>
+                          {c.homologacion?.cargo_homologado || 'Pendiente de procesamiento'}
+                        </span>
+                        {c.homologacion?.justificacion && (
+                          <span className="text-[10px] text-slate-500 line-clamp-1 max-w-xs leading-relaxed">
+                            {c.homologacion.justificacion}
+                          </span>
+                        )}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <button className="p-2 text-slate-500 hover:text-primary-400 hover:bg-primary-500/10 rounded-lg transition-all">
-                        <Edit2 size={16} />
+                    <td className="px-8 py-6 text-right">
+                      <button className="p-2 text-emerald-400 hover:text-primary hover:bg-emerald-50 rounded-xl transition-all inline-flex items-center gap-2">
+                        <ExternalLink size={16} />
                       </button>
                     </td>
                   </tr>
                 ))}
+                {filteredCargos.length === 0 && (
+                  <tr>
+                    <td colSpan="5" className="px-8 py-20 text-center">
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
+                          <Search size={32} />
+                        </div>
+                        <p className="text-slate-400 font-medium">No se encontraron cargos con ese nombre</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
-        </div>
+        </motion.div>
       )}
     </div>
   );

@@ -1,5 +1,7 @@
 import React from 'react';
-import { LayoutDashboard, FileUp, Database, LogOut, User as UserIcon } from 'lucide-react';
+import { LayoutDashboard, FileUp, Database, LogOut, User as UserIcon, ShieldCheck } from 'lucide-react';
+import { motion } from 'framer-motion';
+import logoShr from '../assets/logo_shr.png';
 
 const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
   const menuItems = [
@@ -8,59 +10,77 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
   ];
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0f172a] text-slate-200">
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-900">
       {/* Sidebar */}
-      <aside className="w-64 glass border-r border-slate-800 flex flex-col">
-        <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-900/20">
-            <Database className="text-white" size={24} />
+      <aside className="w-72 bg-white border-r border-emerald-100 flex flex-col shadow-xl z-20">
+        <div className="p-8">
+          <div className="flex items-center gap-4 mb-2">
+            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/10 p-2 border border-emerald-50">
+              <img src={logoShr} alt="SHR Logo" className="w-full h-full object-contain" />
+            </div>
+            <div>
+              <h2 className="font-bold text-xl text-forest leading-tight">SHR</h2>
+              <p className="text-[10px] text-emerald-600 font-bold tracking-widest uppercase">Automatización</p>
+            </div>
           </div>
-          <span className="font-bold text-xl tracking-tight text-white">SHR Match</span>
         </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-2">
+        <nav className="flex-1 px-4 py-4 space-y-1">
           {menuItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-                activeTab === item.id
-                  ? 'bg-primary-600 text-white shadow-lg shadow-primary-900/40'
-                  : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-              }`}
+              className={`nav-link w-full ${activeTab === item.id ? 'active' : ''}`}
             >
-              <item.icon size={20} />
-              <span className="font-medium">{item.label}</span>
+              <item.icon size={20} className={activeTab === item.id ? 'text-white' : 'text-emerald-600'} />
+              <span className="font-semibold">{item.label}</span>
+              {activeTab === item.id && (
+                <motion.div 
+                  layoutId="activeTab"
+                  className="ml-auto w-1.5 h-5 bg-white/40 rounded-full"
+                />
+              )}
             </button>
           ))}
         </nav>
 
-        <div className="p-4 mt-auto">
-          <div className="p-4 glass-card rounded-2xl flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700">
-              <UserIcon size={20} className="text-slate-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate text-white">{user?.email || 'Analista'}</p>
-              <p className="text-xs text-slate-500 truncate">Analista RH</p>
+        <div className="p-6 mt-auto">
+          <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-white shadow-md">
+                <UserIcon size={18} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold truncate text-forest">{user?.email || 'Admin User'}</p>
+                <div className="flex items-center gap-1">
+                  <ShieldCheck size={10} className="text-emerald-500" />
+                  <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-tighter">Analista Senior</span>
+                </div>
+              </div>
             </div>
             <button 
               onClick={onLogout}
-              className="p-2 text-slate-500 hover:text-red-400 transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-white hover:bg-red-50 text-slate-500 hover:text-red-600 rounded-xl transition-all duration-300 border border-slate-200 text-xs font-bold"
             >
-              <LogOut size={18} />
+              <LogOut size={14} />
+              Cerrar Sesión
             </button>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-8 relative">
-        {/* Background blobs for aesthetics */}
-        <div className="absolute top-0 right-0 -z-10 w-96 h-96 bg-primary-600/10 blur-[100px] rounded-full" />
-        <div className="absolute bottom-0 left-0 -z-10 w-64 h-64 bg-indigo-600/10 blur-[80px] rounded-full" />
-        
-        <div className="max-w-6xl mx-auto">
+      <main className="flex-1 overflow-y-auto relative bg-transparent">
+        <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-emerald-100 px-8 py-4 flex justify-between items-center">
+          <h2 className="text-lg font-bold text-forest">
+            {menuItems.find(i => i.id === activeTab)?.label}
+          </h2>
+          <div className="text-xs font-medium text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+            Conexión Segura • Producción
+          </div>
+        </header>
+
+        <div className="p-8 max-w-7xl mx-auto">
           {children}
         </div>
       </main>

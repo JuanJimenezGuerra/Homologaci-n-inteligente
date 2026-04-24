@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Database, Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import axios from 'axios';
+import { motion } from 'framer-motion';
+import logoShr from '../assets/logo_shr.png';
 
 const Login = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
@@ -13,68 +15,93 @@ const Login = ({ onLoginSuccess }) => {
     setLoading(true);
     setError('');
     
+    // URL de la API: Usa la variable de entorno o local si no existe
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    
     try {
-      const response = await axios.post('http://localhost:8000/auth/login', {
-        email,
-        password
+      // Intentar login con formato de formulario (común en FastAPI/OAuth2)
+      const params = new URLSearchParams();
+      params.append('username', email);
+      params.append('password', password);
+
+      const response = await axios.post(`${apiUrl}/token`, params, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
+      
       localStorage.setItem('token', response.data.access_token);
       onLoginSuccess(response.data.access_token, email);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al iniciar sesión');
+      console.error("Login Error:", err);
+      if (!err.response) {
+        setError('No se pudo conectar con el servidor. Verifica la URL de la API.');
+      } else {
+        setError('Correo o contraseña incorrectos');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen w-screen flex items-center justify-center bg-[#0f172a] p-4 relative overflow-hidden">
-      {/* Decorative Blobs */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary-600/20 blur-[120px] rounded-full animate-pulse-slow" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-indigo-600/20 blur-[100px] rounded-full animate-pulse-slow" />
+    <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Decorative Blobs - Green Inspired */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-600/20 blur-[120px] rounded-full" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-green-600/20 blur-[100px] rounded-full" />
 
       <div className="w-full max-w-md z-10">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-primary-900/40 mx-auto mb-4">
-            <Database className="text-white" size={32} />
-          </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Bienvenido</h1>
-          <p className="text-slate-400 mt-2">Plataforma de Homologación de Cargos</p>
+          <motion.div 
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-28 h-28 bg-white rounded-3xl flex items-center justify-center shadow-2xl shadow-emerald-900/20 mx-auto mb-6 p-4 border border-emerald-50"
+          >
+            <img src={logoShr} alt="Logo SHR" className="w-full h-full object-contain" />
+          </motion.div>
+          <h1 className="text-3xl font-bold text-forest tracking-tight">Homologación Inteligente</h1>
+          <p className="text-emerald-700/70 mt-2 font-medium">Gestión de Talento Humano</p>
         </div>
 
-        <div className="glass-card p-8 rounded-3xl shadow-2xl">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card p-8 rounded-3xl shadow-2xl border border-white/40"
+        >
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-sm text-center">
+              <motion.div 
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-red-500/10 border border-red-500/20 text-red-600 p-4 rounded-xl text-sm text-center font-medium"
+              >
                 {error}
-              </div>
+              </motion.div>
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 ml-1">Correo Electrónico</label>
+              <label className="text-sm font-semibold text-emerald-900 ml-1">Correo Electrónico</label>
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-600/50" size={18} />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl py-3 pl-12 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
+                  className="w-full bg-white/50 border border-emerald-100 rounded-xl py-3 pl-12 pr-4 text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all placeholder:text-emerald-300"
                   placeholder="analista@shr.com"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 ml-1">Contraseña</label>
+              <label className="text-sm font-semibold text-emerald-900 ml-1">Contraseña</label>
               <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-600/50" size={18} />
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl py-3 pl-12 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
+                  className="w-full bg-white/50 border border-emerald-100 rounded-xl py-3 pl-12 pr-4 text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all placeholder:text-emerald-300"
                   placeholder="••••••••"
                 />
               </div>
@@ -83,23 +110,23 @@ const Login = ({ onLoginSuccess }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-primary-600 hover:bg-primary-500 text-white font-semibold py-4 rounded-xl transition-all duration-300 shadow-lg shadow-primary-900/40 flex items-center justify-center gap-2 group disabled:opacity-70"
+              className="btn-primary w-full py-4 text-lg"
             >
               {loading ? (
-                <Loader2 className="animate-spin" size={20} />
+                <Loader2 className="animate-spin" size={24} />
               ) : (
                 <>
                   Ingresar
-                  <ArrowRight className="group-hover:translate-x-1 transition-transform" size={20} />
+                  <ArrowRight size={20} />
                 </>
               )}
             </button>
           </form>
           
           <div className="mt-8 text-center">
-            <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold">Acceso Protegido</p>
+            <p className="text-[10px] text-emerald-600/50 uppercase tracking-[0.2em] font-bold">Secure Access • SHR Automatización</p>
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
   );
