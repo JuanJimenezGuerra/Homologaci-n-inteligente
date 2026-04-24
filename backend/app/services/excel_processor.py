@@ -52,11 +52,11 @@ def process_requirements_excel(file_path: str, upload_id: int, db: Session):
             db.add(cargo)
             db.flush() # Get cargo ID
 
-            # Pre-create empty homologacion to store metadata
+            # Pre-create empty homologacion to store datos_excel
             homo = Homologacion(
                 cargo_id=cargo.id,
                 cargo_homologado="PENDIENTE",
-                metadata=row_metadata
+                datos_excel=row_metadata
             )
             db.add(homo)
             

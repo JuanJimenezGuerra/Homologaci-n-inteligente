@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Play, Download, Search, AlertCircle, CheckCircle2, Clock, RotateCcw, Edit2, FileUp, MoreVertical, ExternalLink } from 'lucide-react';
+import { Play, Download, Search, AlertCircle, CheckCircle2, Clock, RotateCcw, Edit2, FileUp, MoreVertical, ExternalLink, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Dashboard = () => {
@@ -317,11 +317,11 @@ const Dashboard = () => {
                       </button>
                     </td>
                   </tr>
-                  {expandedId === c.id && c.homologacion?.metadata && (
+                  {expandedId === c.id && c.homologacion?.datos_excel && (
                     <tr className="bg-emerald-50/30">
                       <td colSpan="5" className="px-8 py-6">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-2">
-                          {Object.entries(c.homologacion.metadata).map(([key, val]) => (
+                          {Object.entries(c.homologacion.datos_excel).map(([key, val]) => (
                             <div key={key} className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
                               <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-tighter mb-1 truncate" title={key}>{key}</p>
                               <p className="text-xs text-forest font-medium truncate" title={val || 'N/A'}>{val || 'N/A'}</p>
