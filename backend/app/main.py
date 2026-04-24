@@ -44,22 +44,35 @@ class HomologacionUpdate(BaseModel):
 @app.on_event("startup")
 def seed_users():
     db = next(get_db())
-    if db.query(User).count() == 0:
-        users = [
+    # Verificar si el admin principal existe
+    admin_email = "admin@shr.com"
+    if not db.query(User).filter(User.email == admin_email).first():
+        admin = User(email=admin_email, password_hash=get_password_hash("admin123"))
+        db.add(admin)
+        
+        # Otros analistas de prueba
+        analistas = [
             User(email="analista1@shr.com", password_hash=get_password_hash("admin123")),
             User(email="analista2@shr.com", password_hash=get_password_hash("admin123")),
-            User(email="analista3@shr.com", password_hash=get_password_hash("admin123")),
         ]
-        db.add_all(users)
+        db.add_all(analistas)
         db.commit()
+        print("Usuarios base creados (admin@shr.com / admin123)")
 
 # --- Endpoints ---
 
+from fastapi.security import OAuth2PasswordRequestForm
+
+@app.post("/token")
 @app.post("/auth/login")
-def login(req: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == req.email).first()
-    if not user or not verify_password(req.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Correo o contraseña incorrectos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
     access_token = create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
@@ -102,6 +115,7 @@ from .services.file_extractor import process_extra_descriptions
 async def upload_manuales(upload_id: int, files: List[UploadFile] = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     count = process_extra_descriptions(upload_id, files, db)
     return {"message": f"Se procesaron {len(files)} archivos y se mapearon {count} descripciones de cargo", "count": count}
+@app.get("/uploads")
 def list_uploads(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(Upload).all()
 
