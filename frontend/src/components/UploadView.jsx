@@ -32,8 +32,7 @@ const UploadView = ({ onSuccess }) => {
       // Enviamos todo en el formData para mayor estabilidad
       const response = await axios.post(`${apiUrl}/uploads/requirements`, formData, {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
+          'Authorization': `Bearer ${token}`
         }
       });
       setUploadId(response.data.upload_id);
@@ -66,8 +65,7 @@ const UploadView = ({ onSuccess }) => {
       const token = localStorage.getItem('token');
       await axios.post(`${apiUrl}/uploads/${uploadId}/manuales`, formData, {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
+          'Authorization': `Bearer ${token}`
         }
       });
       onSuccess();
