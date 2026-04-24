@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.db
+*.log
+__pycache__/
+.env
+temp_req_*
+temp_master_*
+.DS_Store
+.vscode/
