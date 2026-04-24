@@ -14,10 +14,12 @@ def process_requirements_excel(file_path: str, upload_id: int, db: Session):
     """
     try:
         xl = pd.ExcelFile(file_path)
-        sheet_name = next((s for s in xl.sheet_names if "Informaci" in s and "cargo" in s.lower()), None)
+        # Buscar pestaña que contenga "Informaci" y "cargo" (sin importar mayúsculas/minúsculas)
+        sheet_name = next((s for s in xl.sheet_names if "informaci" in s.lower() and "cargo" in s.lower()), None)
         
         if not sheet_name:
-            raise ValueError("No se encontró la pestaña 'Información de cargo'")
+            print(f"Pestañas disponibles: {xl.sheet_names}")
+            raise ValueError(f"No se encontró la pestaña 'Información de cargo'. Pestañas disponibles: {xl.sheet_names}")
             
         # Read excel, skip 4 rows
         df = pd.read_excel(file_path, sheet_name=sheet_name, skiprows=4)

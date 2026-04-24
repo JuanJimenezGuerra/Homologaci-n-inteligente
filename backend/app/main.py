@@ -100,16 +100,25 @@ def upload_requirements_file(empresa: str = Form(...), file: UploadFile = File(.
     db.commit()
     db.refresh(upload)
 
-    temp_path = f"temp_req_{upload.id}_{file.filename}"
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    
+    temp_path = os.path.join("/tmp", f"temp_req_{upload.id}_{file.filename.replace(' ', '_')}")
     try:
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
         count = process_requirements_excel(temp_path, upload.id, db)
         return {"upload_id": upload.id, "count": count}
+    except Exception as e:
+        print(f"Error procesando excel: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error en el Excel: {str(e)}"
+        )
     finally:
         if os.path.exists(temp_path):
-            os.remove(temp_path)
+            try:
+                os.remove(temp_path)
+            except:
+                pass
 
 from .services.file_extractor import process_extra_descriptions
 
