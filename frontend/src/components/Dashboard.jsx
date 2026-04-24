@@ -238,9 +238,13 @@ const Dashboard = ({ initialUploadId, onUploadIdConsumed }) => {
   const fetchUploads = async () => {
     try {
       const res = await api('/uploads');
-      // Sort newest first
       const sorted = [...res.data].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       setUploads(sorted);
+      
+      // Auto-abrir el último si estamos en la lista y no hay nada seleccionado
+      if (sorted.length > 0 && !selectedUpload && !initialUploadId) {
+        selectUpload(sorted[0].id);
+      }
     } catch (e) { console.error(e); }
   };
 

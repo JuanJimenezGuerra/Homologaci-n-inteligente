@@ -6,14 +6,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 def process_requirements_excel(file_path: str, upload_id: int, db: Session):
-    """
-    Procesador universal de Excel.
-    Busca dinámicamente la fila de encabezados y las columnas clave.
-    """
     try:
         xl = pd.ExcelFile(file_path)
         
-        # 1. Determinar la mejor pestaña
         sheet_name = xl.sheet_names[0]
         for s in xl.sheet_names:
             s_clean = s.lower().replace("ó", "o").replace("ú", "u").replace("á", "a")
@@ -21,88 +16,88 @@ def process_requirements_excel(file_path: str, upload_id: int, db: Session):
                 sheet_name = s
                 break
 
-        logger.info(f"Usando pestaña: {sheet_name}")
-
-        # 2. Leer crudo para detectar la fila de encabezado
+        # Buscar encabezado
         df_raw = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
         
         header_idx = 0
         for idx, row in df_raw.iterrows():
             row_str = " ".join([str(x).lower() for x in row if not pd.isna(x)])
-            # Si una fila tiene estas palabras clave, es muy probable que sea el header
             if "cargo" in row_str and ("nombre" in row_str or "denominaci" in row_str or "nivel" in row_str):
                 header_idx = idx
                 break
                 
-        # 3. Leer el DataFrame con el encabezado correcto
+        # Leer usando el índice del header
         df = pd.read_excel(file_path, sheet_name=sheet_name, skiprows=header_idx)
         
-        # Limpiar nombres de columnas
-        df.columns = [str(c).strip() for c in df.columns]
+        # Trabajar con índices de columnas en lugar de nombres para evitar colisiones por nombres duplicados
         columns = list(df.columns)
         
-        # 4. Detectar columnas clave dinámicamente
-        title_col = columns[0] # Por defecto la primera
-        for col in columns:
+        title_idx = 0
+        for i, col in enumerate(columns):
             col_str = str(col).lower()
             if "cargo" in col_str and ("nombre" in col_str or "denominaci" in col_str):
-                title_col = col
+                title_idx = i
                 break
                 
-        area_col = None
-        for col in columns:
+        area_idx = -1
+        for i, col in enumerate(columns):
             if "area" in str(col).lower() or "área" in str(col).lower():
-                area_col = col
+                area_idx = i
                 break
 
-        logger.info(f"Columna de cargo detectada: '{title_col}'")
-        
         cargos_created = 0
         for idx, row in df.iterrows():
-            nombre = row[title_col] if title_col in df.columns else None
+            # Extraer de forma segura por índice, no por nombre
+            nombre = row.iloc[title_idx] if title_idx < len(row) else None
             
-            # Saltar filas vacías
-            if pd.isna(nombre) or str(nombre).strip() == "" or str(nombre).strip().upper() == "NAN":
+            # Chequeo seguro de NaN para evitar el error de Series
+            if nombre is None or pd.isna(nombre):
                 continue
                 
-            nombre_str = str(nombre).strip().upper()
-            area_str = str(row[area_col]).strip().upper() if area_col and area_col in df.columns and not pd.isna(row[area_col]) else "N/A"
-            
-            # Extraer todas las columnas como diccionario
-            datos_excel = {}
-            for col in columns:
-                val = row[col]
-                # Limpiar floats que son NaN o NaT
-                if pd.isna(val):
-                    datos_excel[str(col)] = None
-                else:
-                    datos_excel[str(col)] = str(val).strip()
+            nombre_str = str(nombre).strip()
+            if not nombre_str or nombre_str.upper() == "NAN":
+                continue
                 
-            cargo = Cargo(
-                upload_id=upload_id,
-                nombre_cargo=nombre_str,
-                area=area_str,
-                estado="PENDIENTE"
-            )
+            nombre_str = nombre_str.upper()
+            
+            area_str = "N/A"
+            if area_idx >= 0 and area_idx < len(row):
+                area_val = row.iloc[area_idx]
+                if not pd.isna(area_val):
+                    area_str = str(area_val).strip().upper()
+            
+            # Extraer todo a JSON usando el nombre original de la columna (haciendo cast a string seguro)
+            datos_excel = {}
+            for i, col in enumerate(columns):
+                val = row.iloc[i] if i < len(row) else None
+                # Validar si es nan de forma segura
+                is_nan = False
+                try:
+                    is_nan = pd.isna(val)
+                except:
+                    pass # Si falla es porque no es un scalar, lo tratamos como string normal
+                
+                col_name = str(col).strip()
+                if not col_name or col_name.lower() == "nan":
+                    col_name = f"Columna_{i+1}"
+                    
+                datos_excel[col_name] = None if is_nan else str(val).strip()
+                
+            cargo = Cargo(upload_id=upload_id, nombre_cargo=nombre_str, area=area_str, estado="PENDIENTE")
             db.add(cargo)
             db.flush()
             
-            homo = Homologacion(
-                cargo_id=cargo.id,
-                cargo_homologado="PENDIENTE",
-                datos_excel=datos_excel
-            )
+            homo = Homologacion(cargo_id=cargo.id, cargo_homologado="PENDIENTE", datos_excel=datos_excel)
             db.add(homo)
             cargos_created += 1
 
         if cargos_created == 0:
-            raise ValueError(f"No se pudieron extraer cargos válidos de la pestaña {sheet_name}.")
+            raise ValueError("No se encontraron cargos válidos. Verifica el formato del Excel.")
 
         db.commit()
-        logger.info(f"✅ Procesados {cargos_created} cargos del upload {upload_id}")
         return cargos_created
 
     except Exception as e:
         db.rollback()
-        logger.error(f"❌ Error procesando Excel: {e}")
+        logger.error(f"Error procesando Excel: {e}")
         raise e
