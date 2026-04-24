@@ -157,7 +157,7 @@ const Dashboard = () => {
             >
               <div className="flex justify-between items-start mb-6">
                 <div className={`p-3 rounded-2xl ${selectedUpload === u.id ? 'bg-primary text-white' : 'bg-emerald-50 text-emerald-600'}`}>
-                  <Clock size={20} />
+                  <Building2 size={20} />
                 </div>
                 <div className="flex gap-1">
                   <button 
@@ -169,8 +169,9 @@ const Dashboard = () => {
                   </button>
                 </div>
               </div>
+              <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest mb-1">{u.empresa || 'Empresa Desconocida'}</p>
               <h3 className="font-bold text-forest truncate text-lg mb-1">{u.filename}</h3>
-              <p className="text-xs text-emerald-600/60 font-bold uppercase tracking-widest">
+              <p className="text-xs text-slate-400 font-medium italic">
                 {new Date(u.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}
               </p>
               

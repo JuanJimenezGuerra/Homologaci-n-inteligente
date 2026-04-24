@@ -1,5 +1,4 @@
 import bcrypt
-
-password = "admin123".encode('utf-8')
+password = b"admin123"
 hashed = bcrypt.hashpw(password, bcrypt.gensalt())
-print(hashed.decode('utf-8'))
+print(hashed.decode())
