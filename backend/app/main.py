@@ -46,20 +46,24 @@ from .models import MasterDescription
 @app.on_event("startup")
 def startup_event():
     db = next(get_db())
-    # Verificar si el admin principal existe
-    admin_email = "admin@shr.com"
-    if not db.query(User).filter(User.email == admin_email).first():
-        admin = User(email=admin_email, password_hash=get_password_hash("admin123"))
-        db.add(admin)
-        
-        # Otros analistas de prueba
-        analistas = [
-            User(email="analista1@shr.com", password_hash=get_password_hash("admin123")),
-            User(email="analista2@shr.com", password_hash=get_password_hash("admin123")),
-        ]
-        db.add_all(analistas)
-        db.commit()
-        print("Usuarios base creados (admin@shr.com / admin123)")
+    
+    # Usuarios obligatorios con contraseña fija
+    seed_users = [
+        ("admin@shr.com", "admin123"),
+        ("analista1@shr.com", "admin123"),
+        ("analista2@shr.com", "admin123"),
+    ]
+    
+    for email, password in seed_users:
+        existing = db.query(User).filter(User.email == email).first()
+        if existing:
+            # Actualizar password hash para garantizar acceso (por si cambió el secret/SECRET_KEY)
+            existing.password_hash = get_password_hash(password)
+        else:
+            db.add(User(email=email, password_hash=get_password_hash(password)))
+    
+    db.commit()
+    print("Usuarios seed verificados/creados")
         
     # Verificar si la base maestra está vacía o incompleta y cargarla automáticamente
     master_count = db.query(MasterDescription).count()
