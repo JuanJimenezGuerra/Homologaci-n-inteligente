@@ -55,9 +55,14 @@ def find_exact_match(cargo_nombre: str, masters: list):
     return None
 
 def homologar_lote_con_openrouter(cargos_batch: list, masters: list, retries=3) -> list:
-    if not OPENROUTER_API_KEY:
-        return [{"id": c["id"], "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "No API key", "status": "sin_coincidencia"} for c in cargos_batch]
+    if not OPENROUTER_API_KEY and not N8N_WEBHOOK_URL:
+        return [{"id": c["id"], "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "No API key ni n8n configurado", "status": "sin_coincidencia"} for c in cargos_batch]
 
+    # USAR N8N si está configurado
+    if N8N_WEBHOOK_URL:
+        return homologar_lote_con_n8n(cargos_batch, masters)
+
+    # Fallback: usar OpenRouter directo
     masters_text = "\n".join([f"- {m['nombre']}: {m['descripcion'][:150]}" for m in masters[:50]])
     if not masters_text: masters_text = "No hay maestros."
 
@@ -101,7 +106,6 @@ Nunca respondas SIN COINCIDENCIA."""
             if "```json" in content: content = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content: content = content.split("```")[1].split("```")[0].strip()
             
-            # Limpiar posible basura al inicio/final
             start = content.find('[')
             end = content.rfind(']') + 1
             if start != -1 and end != 0:
@@ -116,6 +120,35 @@ Nunca respondas SIN COINCIDENCIA."""
                 logger.error(f"Error IA Lote: {e}")
                 return [{"id": c["id"], "cargo_homologado": "SIN COINCIDENCIA", "justificacion": f"Error IA: {str(e)[:40]}", "status": "error"} for c in cargos_batch]
             time.sleep(2)
+
+def homologar_lote_con_n8n(cargos_batch: list, masters: list) -> list:
+    """Envía los cargos a n8n para procesar con IA"""
+    masters_text = "\n".join([f"- {m['nombre']}: {m['descripcion'][:200]}" for m in masters[:50]])
+    
+    payload = {
+        "upload_id": cargos_batch[0].get("id", 0) if len(cargos_batch) == 1 else 0,
+        "backend_url": BACKEND_URL,
+        "cargos": [{"id": c["id"], "nombre": c["nombre"], "area": c.get("area", ""), "descripcion_empresa": c.get("descripcion", "")} for c in cargos_batch],
+        "masters": [{"nombre": m["nombre"], "descripcion": m["descripcion"]} for m in masters[:50]]
+    }
+    
+    try:
+        response = requests.post(
+            f"{N8N_WEBHOOK_URL}/homologar",
+            json=payload,
+            timeout=120
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            results = data.get("results", [])
+            if results:
+                return results
+                
+    except Exception as e:
+        logger.error(f"Error n8n: {e}")
+    
+    return [{"id": c["id"], "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "n8n no respondió", "status": "sin_coincidencia"} for c in cargos_batch]
 
 def start_batch_processing(upload_id: int, db: Session):
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
