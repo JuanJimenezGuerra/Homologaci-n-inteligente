@@ -4,7 +4,6 @@ import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import UploadView from './components/UploadView';
 import ValuacionView from './components/ValuacionView';
-import MasterUploadView from './components/MasterUploadView';
 
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
@@ -76,9 +75,6 @@ function App() {
           uploadData={valoracionUploadId}
           onBack={() => setActiveTab('dashboard')}
         />
-      )}
-      {activeTab === 'master' && (
-        <MasterUploadView onSuccess={() => setActiveTab('dashboard')} />
       )}
     </Layout>
   );

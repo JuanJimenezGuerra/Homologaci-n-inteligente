@@ -9,8 +9,7 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Panel Principal', icon: LayoutDashboard },
     { id: 'uploads', label: 'Nuevo Proceso', icon: FileUp },
-    { id: 'valoracion', label: 'Valoración', icon: Database },
-    { id: 'master', label: 'Base Maestra', icon: Database },
+    { id: 'valoracion', label: 'Valoración', icon: Database }, // 👈 agregado
   ];
 
   return (
