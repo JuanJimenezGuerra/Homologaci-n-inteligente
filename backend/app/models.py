@@ -59,6 +59,46 @@ class MasterDescription(Base):
     descripcion = Column(Text)
     area = Column(String)
 
+class Valoracion(Base):
+    __tablename__ = "valoraciones"
+    id = Column(Integer, primary_key=True, index=True)
+    cargo_id = Column(Integer, ForeignKey("cargos.id"))
+    
+    # Factor 1: Conocimiento & Habilidad
+    conocimientos = Column(String, nullable=True)  # A-H
+    experiencia = Column(String, nullable=True)    # -/o/+
+    habilidad_gerencial = Column(String, nullable=True)  # I-VII
+    rol_cargo = Column(String, nullable=True)      # 1-4
+    
+    # Factor 2: Comunicación
+    contacto = Column(String, nullable=True)       # A/B/C
+    frecuencia = Column(String, nullable=True)     # 1-4
+    contenido_relaciones = Column(String, nullable=True)  # I-V
+    
+    # Factor 3: Solución de Problemas
+    complejidad_conceptual = Column(String, nullable=True)  # 1-5
+    tendencia_cc = Column(String, nullable=True)
+    guias_apoyo = Column(String, nullable=True)    # A-H
+    tendencia_ga = Column(String, nullable=True)
+    
+    # Factor 4: Responsabilidad
+    impacto = Column(String, nullable=True)        # I-IV
+    autonomia = Column(String, nullable=True)      # A-G
+    magnitud = Column(String, nullable=True)       # 1-14
+    
+    # Criticidad
+    criterio_1 = Column(Integer, default=0)        # 0 o 1
+    criterio_2 = Column(Integer, default=0)
+    criterio_3 = Column(Integer, default=0)
+    
+    editado_manual = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    cargo = relationship("Cargo", back_populates="valoracion")
+
+# Agregar en Cargo (después de homologacion):
+Cargo.valoracion = relationship("Valoracion", back_populates="cargo", uselist=False)
+
 class ProcessingLog(Base):
     __tablename__ = "processing_logs"
     id = Column(Integer, primary_key=True, index=True)

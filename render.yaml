@@ -1,19 +1,16 @@
 services:
   - type: web
-    name: shr-n8n-prod
-    runtime: docker
-    dockerfilePath: n8n/Dockerfile
-    plan: free
+    name: shr-api-prod
+    plan: starter
+    region: oregon
     envVars:
-      - key: N8N_PORT
-        value: 10000  # Render prefiere el 10000 o el que diga $PORT
-      - key: N8N_HOST
-        value: 0.0.0.0
-      - key: N8N_PROTOCOL
-        value: https
-      - key: NODE_OPTIONS
-        value: "--max-old-space-size=400"
-      - key: N8N_METRICS
-        value: "false"
-      - key: N8N_ENCRYPTION_KEY
-        generateValue: true
+      - key: SECRET_KEY
+        value: SHR-Prod-Secret-2026-Homologacion-Inteligente
+      - key: DATABASE_URL
+        value: postgresql://postgres.mttizxynbskldwoxznva:shr2026SHR2020@aws-1-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require
+      - key: OPENROUTER_API_KEY
+        value: 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
+      - key: BACKEND_URL
+        value: https://shr-backend-prod.onrender.com
+      - key: N8N_WEBHOOK_URL
+        value: https://n8n-hoj5.onrender.com/webhook

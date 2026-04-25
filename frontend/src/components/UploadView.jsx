@@ -63,14 +63,15 @@ const UploadView = ({ onSuccess }) => {
 
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`${apiUrl}/uploads/${uploadId}/manuales`, formData, {
+      const res = await axios.post(`${apiUrl}/uploads/${uploadId}/manuales`, formData, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      onSuccess(uploadId); // Pass upload_id so Dashboard can auto-select it
+      onSuccess(uploadId);
     } catch (err) {
-      setError('Error al cargar manuales de funciones');
+      const msg = err.response?.data?.detail || err.message || 'Error al cargar manuales';
+      setError(msg);
     } finally {
       setLoading(false);
     }

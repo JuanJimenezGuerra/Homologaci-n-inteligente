@@ -46,20 +46,24 @@ from .models import MasterDescription
 @app.on_event("startup")
 def startup_event():
     db = next(get_db())
-    # Verificar si el admin principal existe
-    admin_email = "admin@shr.com"
-    if not db.query(User).filter(User.email == admin_email).first():
-        admin = User(email=admin_email, password_hash=get_password_hash("admin123"))
-        db.add(admin)
-        
-        # Otros analistas de prueba
-        analistas = [
-            User(email="analista1@shr.com", password_hash=get_password_hash("admin123")),
-            User(email="analista2@shr.com", password_hash=get_password_hash("admin123")),
-        ]
-        db.add_all(analistas)
-        db.commit()
-        print("Usuarios base creados (admin@shr.com / admin123)")
+    
+    # Usuarios obligatorios con contraseña fija
+    seed_users = [
+        ("admin@shr.com", "admin123"),
+        ("analista1@shr.com", "admin123"),
+        ("analista2@shr.com", "admin123"),
+    ]
+    
+    for email, password in seed_users:
+        existing = db.query(User).filter(User.email == email).first()
+        if existing:
+            # Actualizar password hash para garantizar acceso (por si cambió el secret/SECRET_KEY)
+            existing.password_hash = get_password_hash(password)
+        else:
+            db.add(User(email=email, password_hash=get_password_hash(password)))
+    
+    db.commit()
+    print("Usuarios seed verificados/creados")
         
     # Verificar si la base maestra está vacía o incompleta y cargarla automáticamente
     master_count = db.query(MasterDescription).count()
@@ -280,6 +284,126 @@ def update_cargo_manual(cargo_id: int, req: HomologacionUpdate, db: Session = De
     return {"message": "Actualizado manualmente"}
 
 from .services.excel_exporter import export_to_excel
+
+from .models import Valoracion
+
+@app.post("/procesar-valoracion/{upload_id}")
+def start_valoracion_processing(upload_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Inicia el proceso de valoración de cargos con IA"""
+    from .services.valoracion_processor import start_valoracion_batch
+    background_tasks.add_task(start_valoracion_batch, upload_id, db)
+    return {"message": "Valoración iniciada en segundo plano"}
+
+@app.get("/uploads/{upload_id}/valoraciones")
+def list_valoraciones(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Obtiene las valoraciones de un upload"""
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    result = []
+    for c in cargos:
+        val = c.valoracion
+        result.append({
+            "id": c.id,
+            "nombre_cargo": c.nombre_cargo,
+            "area": c.area,
+            "cargo_homologado": c.homologacion.cargo_homologado if c.homologacion else None,
+            "valoracion": {
+                "conocimientos": val.conocimientos if val else None,
+                "experiencia": val.experiencia if val else None,
+                "habilidad_gerencial": val.habilidad_gerencial if val else None,
+                "rol_cargo": val.rol_cargo if val else None,
+                "contacto": val.contacto if val else None,
+                "frecuencia": val.frecuencia if val else None,
+                "contenido_relaciones": val.contenido_relaciones if val else None,
+                "complejidad_conceptual": val.complejidad_conceptual if val else None,
+                "tendencia_cc": val.tendencia_cc if val else None,
+                "guias_apoyo": val.guias_apoyo if val else None,
+                "tendencia_ga": val.tendencia_ga if val else None,
+                "impacto": val.impacto if val else None,
+                "autonomia": val.autonomia if val else None,
+                "magnitud": val.magnitud if val else None,
+                "criterio_1": val.criterio_1 if val else 0,
+                "criterio_2": val.criterio_2 if val else 0,
+                "criterio_3": val.criterio_3 if val else 0,
+                "editado_manual": val.editado_manual if val else False,
+            } if val else None
+        })
+    return result
+
+@app.patch("/valoracion/{cargo_id}")
+def update_valoracion_manual(cargo_id: int, req: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Actualiza manualmente una valoración"""
+    cargo = db.query(Cargo).get(cargo_id)
+    if not cargo:
+        raise HTTPException(status_code=404, detail="Cargo no encontrado")
+    
+    val = db.query(Valoracion).filter(Valoracion.cargo_id == cargo.id).first()
+    if not val:
+        val = Valoracion(cargo_id=cargo.id)
+        db.add(val)
+    
+    # Actualizar campos
+    for key, value in req.items():
+        if hasattr(val, key):
+            setattr(val, key, value)
+    
+    val.editado_manual = True
+    db.commit()
+    return {"message": "Valoración actualizada"}
+
+@app.post("/webhook/n8n-valoracion")
+def n8n_valoracion_webhook(data: dict, db: Session = Depends(get_db)):
+    """
+    Recibe resultados de valoración desde n8n.
+    Expected: {
+        "results": [
+            {"cargo_id": 1, "conocimientos": "C", "experiencia": "o", ...},
+            ...
+        ]
+    }
+    """
+    results = data.get("results", [])
+    for res in results:
+        cargo_id = res.get("cargo_id")
+        cargo = db.query(Cargo).get(cargo_id)
+        if not cargo:
+            continue
+        
+        # Upsert valoracion
+        val = db.query(Valoracion).filter(Valoracion.cargo_id == cargo.id).first()
+        if not val:
+            val = Valoracion(cargo_id=cargo.id)
+            db.add(val)
+        
+        # Actualizar campos
+        val.conocimientos = res.get("conocimientos")
+        val.experiencia = res.get("experiencia")
+        val.habilidad_gerencial = res.get("habilidad_gerencial")
+        val.rol_cargo = res.get("rol_cargo")
+        val.contacto = res.get("contacto")
+        val.frecuencia = res.get("frecuencia")
+        val.contenido_relaciones = res.get("contenido_relaciones")
+        val.complejidad_conceptual = res.get("complejidad_conceptual")
+        val.tendencia_cc = res.get("tendencia_cc")
+        val.guias_apoyo = res.get("guias_apoyo")
+        val.tendencia_ga = res.get("tendencia_ga")
+        val.impacto = res.get("impacto")
+        val.autonomia = res.get("autonomia")
+        val.magnitud = res.get("magnitud")
+        val.criterio_1 = res.get("criterio_1", 0)
+        val.criterio_2 = res.get("criterio_2", 0)
+        val.criterio_3 = res.get("criterio_3", 0)
+        
+        log = ProcessingLog(
+            upload_id=cargo.upload_id,
+            cargo_id=cargo.id,
+            level="INFO",
+            message=f"Valoración procesada por IA",
+            raw_response=str(res)
+        )
+        db.add(log)
+            
+    db.commit()
+    return {"status": "ok"}
 
 @app.get("/descargar/{upload_id}")
 def download_excel(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

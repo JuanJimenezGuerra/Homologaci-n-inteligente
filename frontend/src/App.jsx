@@ -3,12 +3,14 @@ import Login from './components/Login';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import UploadView from './components/UploadView';
+import ValuacionView from './components/ValuacionView';
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [userEmail, setUserEmail] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [newUploadId, setNewUploadId] = useState(null);
+  const [valoracionUploadId, setValoracionUploadId] = useState(null);
 
   useEffect(() => {
     if (token) {
@@ -16,12 +18,15 @@ function App() {
         const payload = JSON.parse(atob(token.split('.')[1]));
         setUserEmail(payload.sub || 'analista@shr.com');
       } catch {
-        setUserEmail('analista@shr.com');
+        // Token malformado — limpiar sesión
+        localStorage.removeItem('token');
+        setToken(null);
       }
     }
   }, [token]);
 
   const handleLoginSuccess = (newToken, email) => {
+    localStorage.setItem('token', newToken);
     setToken(newToken);
     setUserEmail(email);
   };
@@ -30,14 +35,20 @@ function App() {
     localStorage.removeItem('token');
     setToken(null);
     setUserEmail(null);
+    setActiveTab('dashboard');
   };
 
-  // Called after a successful upload — passes the new upload_id to Dashboard
   const handleUploadSuccess = (uploadId) => {
     setNewUploadId(uploadId);
     setActiveTab('dashboard');
   };
 
+  const handleGoToValoracion = (uploadId) => {
+    setValoracionUploadId(uploadId);
+    setActiveTab('valoracion');
+  };
+
+  // Guard: sin token → pantalla de login
   if (!token) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
@@ -53,10 +64,17 @@ function App() {
         <Dashboard
           initialUploadId={newUploadId}
           onUploadIdConsumed={() => setNewUploadId(null)}
+          onGoToValoracion={handleGoToValoracion}
         />
       )}
       {activeTab === 'uploads' && (
         <UploadView onSuccess={handleUploadSuccess} />
+      )}
+      {activeTab === 'valoracion' && (
+        <ValuacionView
+          uploadData={valoracionUploadId}
+          onBack={() => setActiveTab('dashboard')}
+        />
       )}
     </Layout>
   );
