@@ -66,6 +66,11 @@ const DataframeTable = ({ cargos, onEdit, onSaveEdit, editingId, editValue, setE
               <button onClick={onCancel} className="flex items-center justify-center px-2.5 border-l border-white/20 text-red-200 hover:text-white hover:bg-red-500 transition-all" title="Detener proceso">
                 <X size={13}/>
               </button>
+          <button onClick={() => props.onGoToValoracion && props.onGoToValoracion(upload.id)} 
+            className="flex items-center gap-1.5 bg-purple-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-purple-700 transition-all shadow-sm"
+>
+  Paso 2 · Valorar →
+</button>
             )}
           </div>
           <button onClick={onDownload} className="flex items-center gap-1.5 bg-white border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-emerald-50 transition-all shadow-sm">
