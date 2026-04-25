@@ -4,15 +4,20 @@ import { motion } from 'framer-motion';
 import logoShr from '../assets/logo_shr.png';
 
 const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
+
+  // ✅ AQUÍ está la actualización
   const menuItems = [
     { id: 'dashboard', label: 'Panel Principal', icon: LayoutDashboard },
     { id: 'uploads', label: 'Nuevo Proceso', icon: FileUp },
+    { id: 'valoracion', label: 'Valoración', icon: Database }, // 👈 agregado
   ];
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-900">
+      
       {/* Sidebar */}
       <aside className="w-72 bg-white border-r border-emerald-100 flex flex-col shadow-xl z-20">
+        
         <div className="p-8">
           <div className="flex items-center gap-4 mb-2">
             <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/10 p-2 border border-emerald-50">
@@ -25,6 +30,7 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
           </div>
         </div>
 
+        {/* Menu */}
         <nav className="flex-1 px-4 py-4 space-y-1">
           {menuItems.map((item) => (
             <button
@@ -34,6 +40,7 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
             >
               <item.icon size={20} className={activeTab === item.id ? 'text-white' : 'text-emerald-600'} />
               <span className="font-semibold">{item.label}</span>
+
               {activeTab === item.id && (
                 <motion.div 
                   layoutId="activeTab"
@@ -44,20 +51,28 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
           ))}
         </nav>
 
+        {/* User Card */}
         <div className="p-6 mt-auto">
           <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex flex-col gap-4">
+            
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-white shadow-md">
                 <UserIcon size={18} />
               </div>
+
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold truncate text-forest">{user?.email || 'Admin User'}</p>
+                <p className="text-sm font-bold truncate text-forest">
+                  {user?.email || 'Admin User'}
+                </p>
                 <div className="flex items-center gap-1">
                   <ShieldCheck size={10} className="text-emerald-500" />
-                  <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-tighter">Analista Senior</span>
+                  <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-tighter">
+                    Analista Senior
+                  </span>
                 </div>
               </div>
             </div>
+
             <button 
               onClick={onLogout}
               className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-white hover:bg-red-50 text-slate-500 hover:text-red-600 rounded-xl transition-all duration-300 border border-slate-200 text-xs font-bold"
@@ -67,14 +82,18 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
             </button>
           </div>
         </div>
+
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto relative bg-transparent">
+        
         <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-emerald-100 px-8 py-4 flex justify-between items-center">
+          
           <h2 className="text-lg font-bold text-forest">
             {menuItems.find(i => i.id === activeTab)?.label}
           </h2>
+
           <div className="text-xs font-medium text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
             Conexión Segura • Producción
           </div>
@@ -83,6 +102,7 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
         <div className="p-8 max-w-7xl mx-auto">
           {children}
         </div>
+
       </main>
     </div>
   );
