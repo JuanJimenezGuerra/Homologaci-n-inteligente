@@ -7,10 +7,10 @@ services:
       - key: SECRET_KEY
         value: SHR-Prod-Secret-2026-Homologacion-Inteligente
       - key: DATABASE_URL
-        fromDatabase:
-          name: shr-homologacion-db
-          property: connectionString
-      - key: ANTHROPIC_API_KEY
-        sync: false
+        value: postgresql://postgres.mttizxynbskldwoxznva:shr2026SHR2020@aws-1-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require
+      - key: OPENROUTER_API_KEY
+        value: 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
+      - key: BACKEND_URL
+        value: https://shr-backend-prod.onrender.com
       - key: N8N_WEBHOOK_URL
-        sync: false
+        value: https://n8n-service-xxxx.onrender.com

@@ -272,37 +272,70 @@ const StatusIcon = ({ estado }) => {
   return <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-200"/>;
 };
 
+// ─── API helpers ─────────────────────────────────────────────────────────────
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+
+const getToken = () => localStorage.getItem('token') || '';
+
+const fetchCargosFromUpload = async (uploadId) => {
+  const res = await fetch(`${API_BASE}/uploads/${uploadId}/cargos`, {
+    headers: { Authorization: `Bearer ${getToken()}` }
+  });
+  if (!res.ok) throw new Error('Error fetching cargos');
+  return res.json();
+};
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 const ValuacionView = ({ uploadData }) => {
-  // uploadData comes from Step 1: array of { id, nombre_cargo, area, homologacion: { cargo_homologado } }
+  // uploadData puede ser: uploadId (number) o array de cargos
   const [cargos, setCargos] = useState([]);
   const [valoraciones, setValoraciones] = useState({});
+  const [loading, setLoading] = useState(false);
   const [processingIds, setProcessingIds] = useState(new Set());
   const [expandedId, setExpandedId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [processAll, setProcessAll] = useState(false);
   const [processAllProgress, setProcessAllProgress] = useState(0);
+  const [error, setError] = useState(null);
   const abortRef = useRef(false);
 
-  // Load cargos from props or localStorage
+  // Load cargos from uploadId or props
   useEffect(() => {
-    if (uploadData && uploadData.length > 0) {
-      setCargos(uploadData);
-      // Persist for reload resilience
-      try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(uploadData)); } catch {}
-    } else {
-      // Try to restore from localStorage
+    const loadCargos = async () => {
+      // Si ya es un array, usar directamente
+      if (Array.isArray(uploadData) && uploadData.length > 0) {
+        setCargos(uploadData);
+        try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(uploadData)); } catch {}
+        return;
+      }
+      
+      // Si es un uploadId (number/string), fetch del backend
+      const uploadId = Number(uploadData);
+      if (uploadId && !isNaN(uploadId)) {
+        setLoading(true);
+        setError(null);
+        try {
+          const fetched = await fetchCargosFromUpload(uploadId);
+          setCargos(fetched);
+          try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(fetched)); } catch {}
+        } catch (e) {
+          setError('No se pudieron cargar los cargos. Ve al dashboard y procesa primero.');
+          setCargos([]);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+      
+      // Intentar localStorage como fallback
       try {
         const saved = localStorage.getItem('shr_valoracion_cargos');
         if (saved) setCargos(JSON.parse(saved));
       } catch {}
-    }
-    // Restore valoraciones
-    try {
-      const savedV = localStorage.getItem('shr_valoraciones');
-      if (savedV) setValoraciones(JSON.parse(savedV));
-    } catch {}
+    };
+    
+    loadCargos();
   }, [uploadData]);
 
   const saveValoraciones = (updated) => {
@@ -419,6 +452,30 @@ const ValuacionView = ({ uploadData }) => {
     'complejidadConceptual','tendenciaCC','guiasApoyo','tendenciaGA',
     'impacto','autonomia','magnitud','criterio1','criterio2','criterio3'
   ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 gap-3 text-primary">
+        <Loader2 className="animate-spin" size={24}/>
+        <span className="font-medium">Cargando cargos...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 text-center space-y-4">
+        <div className="inline-flex p-4 bg-red-50 rounded-2xl text-red-500">
+          <AlertCircle size={40}/>
+        </div>
+        <p className="text-red-600 font-medium">{error}</p>
+        <button onClick={() => { setError(null); setActiveTab('dashboard'); }}
+          className="btn-primary">
+          Volver al Dashboard
+        </button>
+      </div>
+    );
+  }
 
   if (cargos.length === 0) {
     return (
