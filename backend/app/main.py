@@ -61,9 +61,9 @@ def startup_event():
         db.commit()
         print("Usuarios base creados (admin@shr.com / admin123)")
         
-    # Verificar si la base maestra está vacía y cargarla automáticamente
+    # Verificar si la base maestra está vacía o incompleta y cargarla automáticamente
     master_count = db.query(MasterDescription).count()
-    if master_count == 0:
+    if master_count < 100:
         master_path = os.path.join(os.path.dirname(__file__), "..", "data", "master_cargos.xlsx")
         if os.path.exists(master_path):
             try:
