@@ -65,21 +65,12 @@ def homologar_lote_con_openrouter(cargos_batch: list, masters: list, retries=3) 
     for c in cargos_batch:
         cargos_text += f"ID: {c['id']} | Nombre: {c['nombre']} | Area: {c['area']} | Funciones: {str(c['descripcion'])[:200]}\n"
 
-    prompt = f"""Eres experto en RRHH. 
-CARGOS MAESTROS DISPONIBLES:
-{masters_text}
-
-CARGOS A HOMOLOGAR:
-{cargos_text}
-
-INSTRUCCIONES:
-Para cada cargo a homologar, debes actuar como un experto analista. Analiza el nombre del cargo y sus funciones y selecciona el cargo maestro que MÁS SE PAREZCA o sea MÁS LÓGICO como equivalente. 
-¡JAMÁS TE RINDAS! NUNCA devuelvas 'SIN COINCIDENCIA'. SIEMPRE debes proponer una sugerencia válida extraída de los CARGOS MAESTROS DISPONIBLES.
-IMPORTANTE: Evita sugerir cargos directivos (como VICEPRESIDENTE, DIRECTOR, GERENTE) a menos que las funciones claramente lo exijan. Si hay poca información, prefiere cargos base, operativos o medios (ANALISTA, ASISTENTE, AUXILIAR, COORDINADOR, TÉCNICO, ESPECIALISTA).
-Devuelve ÚNICAMENTE un arreglo JSON estricto con esta estructura exacta para cada ID proporcionado:
-[
-  {{"id": ID_AQUI, "cargo_homologado": "NOMBRE MAESTRO SUGERIDO", "justificacion": "Breve razón por la que lo sugieres (max 20 words)", "status": "sugerido"}}
-]"""
+    prompt = f"""Eres experto en RRHH colombiano.
+MAESTROS: {masters_text}
+CARGO: {cargos_text[:300]}
+Selecciona el maestro más similar. Responde JSON array:
+[{{"id": ID, "cargo_homologado": "NOMBRE", "justificacion": "razón", "status": "sugerido"}}]
+Nunca respondas SIN COINCIDENCIA."""
 
     for attempt in range(retries):
         try:
@@ -92,7 +83,7 @@ Devuelve ÚNICAMENTE un arreglo JSON estricto con esta estructura exacta para ca
                     "X-Title": "SHR Homologacion"
                 },
                 json={
-                    "model": "openrouter/free",
+                    "model": "google/gemini-2.0-flash-thinking",
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.1,
                     "max_tokens": 800
