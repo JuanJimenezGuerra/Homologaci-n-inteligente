@@ -75,6 +75,7 @@ CARGOS A HOMOLOGAR:
 INSTRUCCIONES:
 Para cada cargo a homologar, debes actuar como un experto analista. Analiza el nombre del cargo y sus funciones y selecciona el cargo maestro que MÁS SE PAREZCA o sea MÁS LÓGICO como equivalente. 
 ¡JAMÁS TE RINDAS! NUNCA devuelvas 'SIN COINCIDENCIA'. SIEMPRE debes proponer una sugerencia válida extraída de los CARGOS MAESTROS DISPONIBLES.
+IMPORTANTE: Evita sugerir cargos directivos (como VICEPRESIDENTE, DIRECTOR, GERENTE) a menos que las funciones claramente lo exijan. Si hay poca información, prefiere cargos base, operativos o medios (ANALISTA, ASISTENTE, AUXILIAR, COORDINADOR, TÉCNICO, ESPECIALISTA).
 Devuelve ÚNICAMENTE un arreglo JSON estricto con esta estructura exacta para cada ID proporcionado:
 [
   {{"id": ID_AQUI, "cargo_homologado": "NOMBRE MAESTRO SUGERIDO", "justificacion": "Breve razón por la que lo sugieres (max 20 words)", "status": "sugerido"}}
