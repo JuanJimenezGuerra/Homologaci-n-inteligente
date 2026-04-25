@@ -141,6 +141,28 @@ def start_batch_processing(upload_id: int, db: Session):
     upload.status = "completado"
     db.commit()
 
+def homologar_lote_con_n8n(cargos_batch: list, masters: list, upload_id: int, db: Session) -> bool:
+    if not N8N_WEBHOOK_URL:
+        logger.warning("N8N_WEBHOOK_URL no configurado, usando OpenRouter directo")
+        return False
+    
+    # Preparar payload para n8n
+    payload = {
+        "upload_id": upload_id,
+        "backend_url": BACKEND_URL,
+        "cargos": [{"id": c.id, "nombre": c.nombre_cargo, "area": c.area, "descripcion_empresa": c.descripcion_empresa or ""} for c in cargos_batch],
+        "masters": masters[:40]  # Limitar a 40 para el prompt
+    }
+    
+    try:
+        response = requests.post(N8N_WEBHOOK_URL, json=payload, timeout=30)
+        response.raise_for_status()
+        logger.info(f"Enviados {len(cargos_batch)} cargos a n8n para procesamiento")
+        return True
+    except Exception as e:
+        logger.error(f"Error enviando a n8n: {e}")
+        return False
+
 def _process_direct_batch(upload_id: int, cargos: list, masters: list, db: Session):
     # FASE 1: Resolución Inmediata (Exact Match)
     cargos_para_ia = []
@@ -174,34 +196,44 @@ def _process_direct_batch(upload_id: int, cargos: list, masters: list, db: Sessi
             break
             
         batch = cargos_para_ia[i:i+batch_size]
-        batch_dicts = [
-            {"id": c.id, "nombre": c.nombre_cargo, "area": c.area, "descripcion": c.descripcion_empresa or ""} 
-            for c in batch
-        ]
         
-        resultados_ia = homologar_lote_con_openrouter(batch_dicts, masters)
+        # Intentar con n8n primero, si falla usar OpenRouter directo
+        enviado_n8n = homologar_lote_con_n8n(batch, masters, upload_id, db)
         
-        # Mapear resultados a la DB
-        for res in resultados_ia:
-            cargo_id = res.get("id")
-            if not cargo_id: continue
+        if enviado_n8n:
+            # n8n procesa de forma asíncrona,delegamos completamente
+            logger.info(f"Procesamiento delegated a n8n para batch {i//batch_size + 1}")
+            break
+        else:
+            # Fallback: usar OpenRouter directo
+            batch_dicts = [
+                {"id": c.id, "nombre": c.nombre_cargo, "area": c.area, "descripcion": c.descripcion_empresa or ""} 
+                for c in batch
+            ]
+            resultados_ia = homologar_lote_con_openrouter(batch_dicts, masters)
             
-            cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
-            if not cargo: continue
-            
-            homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
-            if not homo:
-                homo = Homologacion(cargo_id=cargo.id)
-                db.add(homo)
+            # Mapear resultados a la DB
+            for res in resultados_ia:
+                cargo_id = res.get("id")
+                if not cargo_id: continue
                 
-            cargo_homologado_ia = str(res.get("cargo_homologado", "")).upper().strip()
-            homo.cargo_homologado = cargo_homologado_ia
-            
-            just_ia = res.get("justificacion", "")
-            homo.justificacion = f"🤖 {just_ia}"
-            
-            status = res.get("status", "sugerido")
-            cargo.estado = "SUGERIDO" if status == "sugerido" or status == "homologado" else "ERROR"
-            
+                cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+                if not cargo: continue
+                
+                homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
+                if not homo:
+                    homo = Homologacion(cargo_id=cargo.id)
+                    db.add(homo)
+                    
+                cargo_homologado_ia = str(res.get("cargo_homologado", "")).upper().strip()
+                homo.cargo_homologado = cargo_homologado_ia
+                
+                just_ia = res.get("justificacion", "")
+                homo.justificacion = f"🤖 {just_ia}"
+                
+                status = res.get("status", "sugerido")
+                cargo.estado = "SUGERIDO" if status == "sugerido" or status == "homologado" else "ERROR"
+                
         db.commit()
-        time.sleep(1) # Pequeña pausa entre lotes para cuidar la cuota gratuita
+        if not enviado_n8n:
+            time.sleep(1) # Pequeña pausa entre lotes para cuidar la cuota gratuita
