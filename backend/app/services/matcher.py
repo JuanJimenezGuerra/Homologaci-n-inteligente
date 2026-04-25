@@ -4,6 +4,7 @@ import json
 import logging
 import time
 import re
+import difflib
 from sqlalchemy.orm import Session
 from ..models import Cargo, Homologacion, ProcessingLog, MasterDescription, Upload
 
@@ -25,14 +26,32 @@ def normalize_text(text):
 
 def find_exact_match(cargo_nombre: str, masters: list):
     norm_cargo = normalize_text(cargo_nombre)
+    
+    # 1. Búsqueda exacta
     for m in masters:
         if normalize_text(m["nombre"]) == norm_cargo:
             return m
+            
+    # 2. Búsqueda por similitud (Fuzzy matching)
+    best_match = None
+    best_ratio = 0.0
     for m in masters:
         norm_m = normalize_text(m["nombre"])
-        if norm_cargo in norm_m or norm_m in norm_cargo:
-            if abs(len(norm_cargo) - len(norm_m)) < 5:
-                return m
+        ratio = difflib.SequenceMatcher(None, norm_cargo, norm_m).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_match = m
+            
+    # Umbral del 80% de similitud para atrapar variaciones leves como "Gerente General" vs "GERENT GENERAL."
+    if best_ratio >= 0.80:
+        return best_match
+        
+    # 3. Búsqueda de contención parcial
+    for m in masters:
+        norm_m = normalize_text(m["nombre"])
+        if (norm_cargo in norm_m or norm_m in norm_cargo) and abs(len(norm_cargo) - len(norm_m)) < 10:
+            return m
+            
     return None
 
 def homologar_lote_con_openrouter(cargos_batch: list, masters: list, retries=3) -> list:
@@ -135,7 +154,8 @@ def _process_direct_batch(upload_id: int, cargos: list, masters: list, db: Sessi
                 homo = Homologacion(cargo_id=cargo.id)
                 db.add(homo)
             homo.cargo_homologado = match["nombre"]
-            homo.justificacion = ""
+            homo.justificacion = "⚡ Homologación Directa (Coincidencia de nombre)"
+            cargo.estado = "HOMOLOGADO"
             cargo.estado = "HOMOLOGADO"
         else:
             cargos_para_ia.append(cargo)
@@ -175,7 +195,9 @@ def _process_direct_batch(upload_id: int, cargos: list, masters: list, db: Sessi
                 
             cargo_homologado_ia = str(res.get("cargo_homologado", "SIN COINCIDENCIA")).upper().strip()
             homo.cargo_homologado = cargo_homologado_ia
-            homo.justificacion = res.get("justificacion", "")
+            
+            just_ia = res.get("justificacion", "")
+            homo.justificacion = f"🤖 {just_ia}" if "SIN COINCIDENCIA" not in cargo_homologado_ia else just_ia
             
             # Forzar estado lógico si el texto es SIN COINCIDENCIA
             status = res.get("status", "sin_coincidencia")
