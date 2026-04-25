@@ -34,6 +34,7 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
 
     for file_obj in files:
         filename = file_obj.filename
+        # Leer el contenido del stream (FastAPI streams se consumen)
         content = file_obj.file.read()
         
         # 1. Extract text based on extension
@@ -54,14 +55,17 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
             # 2. Map filename to cargo name using fuzzy matching
             # We strip extension for better matching
             clean_filename = os.path.splitext(filename)[0]
-            best_match = process.extractOne(clean_filename, cargo_names)
+            best_match = process.extractOne(clean_filename, list(cargo_names.values()))
             
             if best_match and best_match[1] > 80: # 80% similarity threshold
-                cargo_id = best_match[2]
-                cargo = db.query(Cargo).get(cargo_id)
-                cargo.descripcion_empresa = text
-                mapped_count += 1
-                
+                # Find the cargo by name
+                matched_name = best_match[0]
+                cargo_id = next((cid for cid, name in cargo_names.items() if name == matched_name), None)
+                if cargo_id:
+                    cargo = db.query(Cargo).get(cargo_id)
+                    cargo.descripcion_empresa = text
+                    mapped_count += 1
+                    
         except Exception as e:
             print(f"Error processing file {filename}: {e}")
             continue
