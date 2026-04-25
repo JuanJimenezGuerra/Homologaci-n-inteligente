@@ -6,7 +6,7 @@ import UploadView from './components/UploadView';
 import ValuacionView from './components/ValuacionView';
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [userEmail, setUserEmail] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [newUploadId, setNewUploadId] = useState(null);
@@ -18,12 +18,15 @@ function App() {
         const payload = JSON.parse(atob(token.split('.')[1]));
         setUserEmail(payload.sub || 'analista@shr.com');
       } catch {
-        setUserEmail('analista@shr.com');
+        // Token malformado — limpiar sesión
+        localStorage.removeItem('token');
+        setToken(null);
       }
     }
   }, [token]);
 
   const handleLoginSuccess = (newToken, email) => {
+    localStorage.setItem('token', newToken);
     setToken(newToken);
     setUserEmail(email);
   };
@@ -32,6 +35,7 @@ function App() {
     localStorage.removeItem('token');
     setToken(null);
     setUserEmail(null);
+    setActiveTab('dashboard');
   };
 
   const handleUploadSuccess = (uploadId) => {
@@ -44,6 +48,7 @@ function App() {
     setActiveTab('valoracion');
   };
 
+  // Guard: sin token → pantalla de login
   if (!token) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
@@ -66,8 +71,8 @@ function App() {
         <UploadView onSuccess={handleUploadSuccess} />
       )}
       {activeTab === 'valoracion' && (
-        <ValuacionView 
-          uploadId={valoracionUploadId} 
+        <ValuacionView
+          uploadData={valoracionUploadId}
           onBack={() => setActiveTab('dashboard')}
         />
       )}
