@@ -3,12 +3,14 @@ import Login from './components/Login';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import UploadView from './components/UploadView';
+import ValuacionView from './components/ValuacionView';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [userEmail, setUserEmail] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [newUploadId, setNewUploadId] = useState(null);
+  const [valoracionUploadId, setValoracionUploadId] = useState(null);
 
   useEffect(() => {
     if (token) {
@@ -32,10 +34,14 @@ function App() {
     setUserEmail(null);
   };
 
-  // Called after a successful upload — passes the new upload_id to Dashboard
   const handleUploadSuccess = (uploadId) => {
     setNewUploadId(uploadId);
     setActiveTab('dashboard');
+  };
+
+  const handleGoToValoracion = (uploadId) => {
+    setValoracionUploadId(uploadId);
+    setActiveTab('valoracion');
   };
 
   if (!token) {
@@ -53,10 +59,17 @@ function App() {
         <Dashboard
           initialUploadId={newUploadId}
           onUploadIdConsumed={() => setNewUploadId(null)}
+          onGoToValoracion={handleGoToValoracion}
         />
       )}
       {activeTab === 'uploads' && (
         <UploadView onSuccess={handleUploadSuccess} />
+      )}
+      {activeTab === 'valoracion' && (
+        <ValuacionView 
+          uploadId={valoracionUploadId} 
+          onBack={() => setActiveTab('dashboard')}
+        />
       )}
     </Layout>
   );
