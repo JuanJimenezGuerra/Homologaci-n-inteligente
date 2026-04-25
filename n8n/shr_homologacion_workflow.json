@@ -29,11 +29,13 @@
       "parameters": {
         "method": "POST",
         "url": "https://openrouter.ai/api/v1/chat/completions",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $credentials.openrouter_api_key }}"
+            },
             {
               "name": "HTTP-Referer",
               "value": "https://shr-backend-prod.onrender.com"
@@ -41,28 +43,15 @@
             {
               "name": "X-Title",
               "value": "SHR Homologacion"
-            }
-          ]
-        },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "model",
-              "value": "openrouter/free"
             },
             {
-              "name": "temperature",
-              "value": "0.1"
-            },
-            {
-              "name": "max_tokens",
-              "value": "400"
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'openrouter/free', messages: [{ role: 'user', content: $json.prompt }], temperature: 0.1, max_tokens: 400 }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'qwen/qwen3-8b', messages: [{ role: 'user', content: $json.prompt }], temperature: 0.1, max_tokens: 400 }) }}",
         "options": {}
       },
       "id": "openrouter-call",
