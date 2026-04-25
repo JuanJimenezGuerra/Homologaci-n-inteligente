@@ -26,7 +26,7 @@ const StatusBadge = ({ estado }) => {
 };
 
 // ---- DataFrame Table ----
-const DataframeTable = ({ cargos, onEdit, onSaveEdit, editingId, editValue, setEditValue, setEditingId, expandedId, setExpandedId, showMeta, setShowMeta, searchTerm, setSearchTerm, loading, onProcess, onDownload, upload }) => {
+const DataframeTable = ({ cargos, onEdit, onSaveEdit, editingId, editValue, setEditValue, setEditingId, expandedId, setExpandedId, showMeta, setShowMeta, searchTerm, setSearchTerm, loading, onProcess, onDownload, upload, processing, onCancel }) => {
   const filtered = cargos.filter(c =>
     c.nombre_cargo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.area?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -57,10 +57,17 @@ const DataframeTable = ({ cargos, onEdit, onSaveEdit, editingId, editValue, setE
           <button onClick={() => setShowMeta(!showMeta)} className={`flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg border transition-all ${showMeta ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:border-primary'}`}>
             {showMeta ? <EyeOff size={13}/> : <Eye size={13}/>} {showMeta ? 'Ocultar' : 'Ver'} A-AS
           </button>
-          <button onClick={onProcess} className="flex items-center gap-1.5 bg-forest text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-primary transition-all">
-            <Play size={11} fill="currentColor"/> PROCESAR IA
-          </button>
-          <button onClick={onDownload} className="flex items-center gap-1.5 bg-white border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-emerald-50 transition-all">
+          <div className="flex bg-forest rounded-lg overflow-hidden shadow-sm">
+            <button onClick={onProcess} disabled={processing} className="flex items-center gap-1.5 text-white px-3 py-1.5 font-bold text-xs hover:bg-primary transition-all disabled:opacity-80 disabled:cursor-wait">
+              {processing ? <Loader2 size={11} className="animate-spin"/> : <Play size={11} fill="currentColor"/>} PROCESAR IA
+            </button>
+            {processing && (
+              <button onClick={onCancel} className="flex items-center justify-center px-2.5 border-l border-white/20 text-red-200 hover:text-white hover:bg-red-500 transition-all" title="Detener proceso">
+                <X size={13}/>
+              </button>
+            )}
+          </div>
+          <button onClick={onDownload} className="flex items-center gap-1.5 bg-white border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-emerald-50 transition-all shadow-sm">
             <Download size={12}/> Descargar
           </button>
           <div className="relative">
@@ -285,6 +292,19 @@ const Dashboard = ({ initialUploadId, onUploadIdConsumed }) => {
     }
   };
 
+  const handleCancelProcess = async (uploadId) => {
+    try {
+      await apiPost(`/procesar/${uploadId}/cancel`, {});
+      if (pollRef.current) clearInterval(pollRef.current);
+      setProcessingId(null);
+      // Refrescar para ver el estado real (PENDIENTE de los que no alcanzaron a procesar)
+      const res = await api(`/uploads/${uploadId}/cargos`);
+      setCargos(res.data);
+    } catch (e) {
+      console.error("Error cancelando:", e);
+    }
+  };
+
   const handleDownload = async (uploadId) => {
     try {
       const res = await axios.get(`${API}/descargar/${uploadId}`, {
@@ -366,6 +386,8 @@ const Dashboard = ({ initialUploadId, onUploadIdConsumed }) => {
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
               onProcess={() => handleProcess(selectedUpload)}
+              onCancel={() => handleCancelProcess(selectedUpload)}
+              processing={processingId === selectedUpload}
               onDownload={() => handleDownload(selectedUpload)}
             />
           </motion.div>

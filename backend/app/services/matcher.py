@@ -125,10 +125,11 @@ def _process_direct_batch(upload_id: int, cargos: list, masters: list, db: Sessi
     # FASE 1: Resolución Inmediata (Exact Match)
     cargos_para_ia = []
     
+    upload = db.query(Upload).filter(Upload.id == upload_id).first()
+    
     for cargo in cargos:
         match = find_exact_match(cargo.nombre_cargo, masters)
         if match:
-            # Encontró coincidencia local, se actualiza al instante
             homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
             if not homo:
                 homo = Homologacion(cargo_id=cargo.id)
@@ -137,15 +138,20 @@ def _process_direct_batch(upload_id: int, cargos: list, masters: list, db: Sessi
             homo.justificacion = ""
             cargo.estado = "HOMOLOGADO"
         else:
-            # Va para la IA
             cargos_para_ia.append(cargo)
             cargo.estado = "PROCESANDO"
             
     db.commit()
 
     # FASE 2: Procesamiento por Lotes en IA (5 a la vez para velocidad)
-    batch_size = 5
+    batch_size = 10  # Aumentado a 10 para mayor velocidad
     for i in range(0, len(cargos_para_ia), batch_size):
+        # Verificar si el usuario canceló el proceso
+        db.refresh(upload)
+        if upload.status == "cancelado":
+            logger.info(f"Procesamiento cancelado por el usuario para upload {upload_id}")
+            break
+            
         batch = cargos_para_ia[i:i+batch_size]
         batch_dicts = [
             {"id": c.id, "nombre": c.nombre_cargo, "area": c.area, "descripcion": c.descripcion_empresa or ""} 
@@ -167,11 +173,16 @@ def _process_direct_batch(upload_id: int, cargos: list, masters: list, db: Sessi
                 homo = Homologacion(cargo_id=cargo.id)
                 db.add(homo)
                 
-            homo.cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
+            cargo_homologado_ia = str(res.get("cargo_homologado", "SIN COINCIDENCIA")).upper().strip()
+            homo.cargo_homologado = cargo_homologado_ia
             homo.justificacion = res.get("justificacion", "")
             
+            # Forzar estado lógico si el texto es SIN COINCIDENCIA
             status = res.get("status", "sin_coincidencia")
-            cargo.estado = "HOMOLOGADO" if status == "homologado" else "SIN_COINCIDENCIA" if status == "sin_coincidencia" else "ERROR"
+            if "SIN COINCIDENCIA" in cargo_homologado_ia:
+                cargo.estado = "SIN_COINCIDENCIA"
+            else:
+                cargo.estado = "HOMOLOGADO" if status == "homologado" else "SIN_COINCIDENCIA" if status == "sin_coincidencia" else "ERROR"
             
         db.commit()
-        time.sleep(1) # Pequeña pausa entre lotes
+        time.sleep(1) # Pequeña pausa entre lotes para cuidar la cuota gratuita

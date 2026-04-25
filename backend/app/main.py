@@ -172,6 +172,22 @@ def start_processing(upload_id: int, background_tasks: BackgroundTasks, db: Sess
     background_tasks.add_task(start_batch_processing, upload_id, db)
     return {"message": "Procesamiento iniciado en segundo plano"}
 
+@app.post("/procesar/{upload_id}/cancel")
+def cancel_processing(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    upload = db.query(Upload).filter(Upload.id == upload_id).first()
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload no encontrado")
+    
+    upload.status = "cancelado"
+    
+    # Marcar los cargos pendientes o procesando como PENDIENTE para que se puedan reintentar luego
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id, Cargo.estado.in_(["PROCESANDO", "PENDIENTE"])).all()
+    for c in cargos:
+        c.estado = "PENDIENTE"
+        
+    db.commit()
+    return {"message": "Procesamiento cancelado"}
+
 @app.post("/webhook/n8n")
 def n8n_webhook(data: dict, db: Session = Depends(get_db)):
     """
