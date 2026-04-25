@@ -73,12 +73,12 @@ CARGOS A HOMOLOGAR:
 {cargos_text}
 
 INSTRUCCIONES:
-Para cada cargo a homologar, encuentra el maestro más similar considerando el nombre y las funciones leídas.
+Para cada cargo a homologar, debes actuar como un experto analista. Analiza el nombre del cargo y sus funciones y selecciona el cargo maestro que MÁS SE PAREZCA o sea MÁS LÓGICO como equivalente. 
+¡JAMÁS TE RINDAS! NUNCA devuelvas 'SIN COINCIDENCIA'. SIEMPRE debes proponer una sugerencia válida extraída de los CARGOS MAESTROS DISPONIBLES.
 Devuelve ÚNICAMENTE un arreglo JSON estricto con esta estructura exacta para cada ID proporcionado:
 [
-  {{"id": ID_AQUI, "cargo_homologado": "NOMBRE MAESTRO EXACTO", "justificacion": "Breve razón (max 20 words)", "status": "homologado"}}
-]
-Si ninguno sirve, pon "SIN COINCIDENCIA"."""
+  {{"id": ID_AQUI, "cargo_homologado": "NOMBRE MAESTRO SUGERIDO", "justificacion": "Breve razón por la que lo sugieres (max 20 words)", "status": "sugerido"}}
+]"""
 
     for attempt in range(retries):
         try:
@@ -193,18 +193,14 @@ def _process_direct_batch(upload_id: int, cargos: list, masters: list, db: Sessi
                 homo = Homologacion(cargo_id=cargo.id)
                 db.add(homo)
                 
-            cargo_homologado_ia = str(res.get("cargo_homologado", "SIN COINCIDENCIA")).upper().strip()
+            cargo_homologado_ia = str(res.get("cargo_homologado", "")).upper().strip()
             homo.cargo_homologado = cargo_homologado_ia
             
             just_ia = res.get("justificacion", "")
-            homo.justificacion = f"🤖 {just_ia}" if "SIN COINCIDENCIA" not in cargo_homologado_ia else just_ia
+            homo.justificacion = f"🤖 {just_ia}"
             
-            # Forzar estado lógico si el texto es SIN COINCIDENCIA
-            status = res.get("status", "sin_coincidencia")
-            if "SIN COINCIDENCIA" in cargo_homologado_ia:
-                cargo.estado = "SIN_COINCIDENCIA"
-            else:
-                cargo.estado = "HOMOLOGADO" if status == "homologado" else "SIN_COINCIDENCIA" if status == "sin_coincidencia" else "ERROR"
+            status = res.get("status", "sugerido")
+            cargo.estado = "SUGERIDO" if status == "sugerido" or status == "homologado" else "ERROR"
             
         db.commit()
         time.sleep(1) # Pequeña pausa entre lotes para cuidar la cuota gratuita

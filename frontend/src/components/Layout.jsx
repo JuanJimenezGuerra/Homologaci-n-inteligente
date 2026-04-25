@@ -7,7 +7,6 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Panel Principal', icon: LayoutDashboard },
     { id: 'uploads', label: 'Nuevo Proceso', icon: FileUp },
-    { id: 'master', label: 'Base Maestra', icon: Database },
   ];
 
   return (
