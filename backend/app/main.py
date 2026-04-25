@@ -40,9 +40,11 @@ class HomologacionUpdate(BaseModel):
     cargo_homologado: str
     justificacion: str
 
-# --- Seed Users ---
+# --- Seed Data ---
+from .models import MasterDescription
+
 @app.on_event("startup")
-def seed_users():
+def startup_event():
     db = next(get_db())
     # Verificar si el admin principal existe
     admin_email = "admin@shr.com"
@@ -58,6 +60,19 @@ def seed_users():
         db.add_all(analistas)
         db.commit()
         print("Usuarios base creados (admin@shr.com / admin123)")
+        
+    # Verificar si la base maestra está vacía y cargarla automáticamente
+    master_count = db.query(MasterDescription).count()
+    if master_count == 0:
+        master_path = os.path.join(os.path.dirname(__file__), "..", "data", "master_cargos.xlsx")
+        if os.path.exists(master_path):
+            try:
+                count = process_master_excel(master_path, db)
+                print(f"Base maestra inicializada con {count} cargos desde {master_path}")
+            except Exception as e:
+                print(f"Error al inicializar base maestra: {e}")
+        else:
+            print(f"No se encontró el archivo maestro en {master_path}")
 
 # --- Endpoints ---
 
