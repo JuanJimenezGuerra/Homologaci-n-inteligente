@@ -1,19 +1,16 @@
 services:
   - type: web
-    name: shr-n8n-prod
-    runtime: docker
-    dockerfilePath: n8n/Dockerfile
-    plan: free
+    name: shr-api-prod
+    plan: starter
+    region: oregon
     envVars:
-      - key: N8N_PORT
-        value: 10000  # Render prefiere el 10000 o el que diga $PORT
-      - key: N8N_HOST
-        value: 0.0.0.0
-      - key: N8N_PROTOCOL
-        value: https
-      - key: NODE_OPTIONS
-        value: "--max-old-space-size=400"
-      - key: N8N_METRICS
-        value: "false"
-      - key: N8N_ENCRYPTION_KEY
-        generateValue: true
+      - key: SECRET_KEY
+        value: SHR-Prod-Secret-2026-Homologacion-Inteligente
+      - key: DATABASE_URL
+        fromDatabase:
+          name: shr-homologacion-db
+          property: connectionString
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: N8N_WEBHOOK_URL
+        sync: false
