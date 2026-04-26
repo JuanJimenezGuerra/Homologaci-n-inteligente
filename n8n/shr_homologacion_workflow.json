@@ -106,28 +106,50 @@
     "Webhook": {
       "main": [
         [
-          { "node": "Preparar Cargos", "type": "main", "index": 0 },
+          { "node": "Preparar Cargos", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
           { "node": "Responder", "type": "main", "index": 0 }
         ]
       ]
     },
     "Preparar Cargos": {
-      "main": [[{ "node": "OpenRouter IA", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          { "node": "OpenRouter IA", "type": "main", "index": 0 }
+        ]
+      ]
     },
     "OpenRouter IA": {
-      "main": [[{ "node": "Parsear Respuesta", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          { "node": "Parsear Respuesta", "type": "main", "index": 0 }
+        ]
+      ]
     },
     "Parsear Respuesta": {
-      "main": [[{ "node": "Agrupar", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          { "node": "Agrupar", "type": "main", "index": 0 }
+        ]
+      ]
     },
     "Agrupar": {
-      "main": [[{ "node": "Enviar al Backend", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          { "node": "Enviar al Backend", "type": "main", "index": 0 }
+        ]
+      ]
     }
   },
   "settings": {},
   "staticData": null,
   "tags": [],
   "triggerCount": 1,
-  "updatedAt": "2026-04-26T18:00:00Z",
-  "versionId": "v3"
+  "updatedAt": "2026-04-26T18:30:00Z",
+  "versionId": "v4"
 }
