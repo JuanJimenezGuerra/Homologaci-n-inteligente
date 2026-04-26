@@ -5,7 +5,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "homologar",
-        "responseMode": "onReceived",
+        "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook-trigger",
@@ -99,7 +99,7 @@
       "name": "Responder",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [450, 500]
+      "position": [1250, 450]
     }
   ],
   "connections": {
@@ -107,13 +107,6 @@
       "main": [
         [
           { "node": "Preparar Cargos", "type": "main", "index": 0 }
-        ]
-      ]
-    },
-    "Webhook": {
-      "main": [
-        [
-          { "node": "Responder", "type": "main", "index": 0 }
         ]
       ]
     },
@@ -141,7 +134,8 @@
     "Agrupar": {
       "main": [
         [
-          { "node": "Enviar al Backend", "type": "main", "index": 0 }
+          { "node": "Enviar al Backend", "type": "main", "index": 0 },
+          { "node": "Responder", "type": "main", "index": 0 }
         ]
       ]
     }
@@ -150,6 +144,6 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 1,
-  "updatedAt": "2026-04-26T18:30:00Z",
-  "versionId": "v4"
+  "updatedAt": "2026-04-26T18:45:00Z",
+  "versionId": "v5"
 }
