@@ -23,15 +23,18 @@ function HomologacionView({ empresaId, onComplete }) {
 
   const cargarCargos = async () => {
     const token = localStorage.getItem('token');
+    console.log('=== cargarCargos called with empresaId:', empresaId);
     try {
       // Intentar primero con endpoint de empresa
       let res = await fetch(`${API}/empresas/${empresaId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log('/empresas response:', res.status);
       
       let data = [];
       if (res.ok) {
         const empresaData = await res.json();
+        console.log('empresaData:', empresaData);
         data = empresaData.cargos || [];
       }
       
@@ -40,12 +43,15 @@ function HomologacionView({ empresaId, onComplete }) {
         res = await fetch(`${API}/uploads/${empresaId}/cargos`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        console.log('/uploads/cargos response:', res.status);
         if (res.ok) {
           data = await res.json();
+          console.log('cargos data from uploads:', data);
         }
       }
       
       setCargos(data);
+      console.log('=== setCargos:', data.length);
     } catch (e) {
       console.error('Error cargando:', e);
       setError('Error al cargar datos');
