@@ -183,15 +183,15 @@ function CargaPrincipal({ onSuccess }) {
             )}
           </div>
 
-          {/* PDFs opcionales */}
+          {/* PDFs opcionales - permite xlsx, doc, pdf */}
           <div
             className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center cursor-pointer hover:border-emerald-500 mb-4"
             onClick={() => pdfRef.current?.click()}
           >
-            <input ref={pdfRef} type="file" accept=".pdf" multiple className="hidden" onChange={handlePdfChange} />
+            <input ref={pdfRef} type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" multiple className="hidden" onChange={handlePdfChange} />
             <div className="text-slate-500 text-sm">
               <Files className="w-6 h-6 mx-auto mb-1" />
-              PDFs con descripciones (opcional)
+              Descripciones (PDF, Excel, Word) - opcional
             </div>
           </div>
 

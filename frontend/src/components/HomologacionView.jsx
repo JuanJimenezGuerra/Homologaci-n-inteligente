@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link2, Settings, Play, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { Link2, Settings, Play, CheckCircle, AlertCircle, Loader, Users } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
 
@@ -11,10 +11,9 @@ function HomologacionView({ empresaId, onComplete }) {
     exigir_coincidencia_fuerte: false,
   });
   const [cargos, setCargos] = useState([]);
-  const [homologaciones, setHomologaciones] = useState({});
   const [loading, setLoading] = useState(false);
-  const [showSettings, setShowSettings] = useState(true);
-  const [procesado, setProcesado] = useState(false);
+  const [error, setError] = useState('');
+  const [mensaje, setMensaje] = useState('');
 
   useEffect(() => {
     if (empresaId) {
@@ -25,28 +24,43 @@ function HomologacionView({ empresaId, onComplete }) {
   const cargarCargos = async () => {
     const token = localStorage.getItem('token');
     try {
-      const res = await fetch(`${API}/empresas/${empresaId}`, {
+      // Intentar primero con endpoint de empresa
+      let res = await fetch(`${API}/empresas/${empresaId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
-      setCargos(data.cargos || []);
       
-      // Verificar si ya están homologados
-      const homologados = (data.cargos || []).filter(c => c.homologado);
-      if (homologados.length > 0) {
-        setProcesado(true);
+      let data = [];
+      if (res.ok) {
+        const empresaData = await res.json();
+        data = empresaData.cargos || [];
       }
+      
+      // Si no hay datos, probar con uploads
+      if (data.length === 0) {
+        res = await fetch(`${API}/uploads/${empresaId}/cargos`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          data = await res.json();
+        }
+      }
+      
+      setCargos(data);
     } catch (e) {
-      console.error('Error:', e);
+      console.error('Error cargando:', e);
+      setError('Error al cargar datos');
     }
   };
 
   const ejecutarHomologacion = async () => {
     const token = localStorage.getItem('token');
     setLoading(true);
+    setError('');
+    setMensaje('Procesando homologación...');
     
     try {
-      const res = await fetch(`${API}/homologacion/ejecutar?empresa_id=${empresaId}`, {
+      // Intentar con empresa_id
+      let res = await fetch(`${API}/homologacion/ejecutar?empresa_id=${empresaId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -55,17 +69,46 @@ function HomologacionView({ empresaId, onComplete }) {
         body: JSON.stringify(criterios),
       });
       
-      await cargarCargos();
+      // Si falla, intentar con upload_id
+      if (!res.ok) {
+        res = await fetch(`${API}/procesar/${empresaId}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+      }
+      
+      if (res.ok) {
+        setMensaje('Homologación completada');
+        await cargarCargos();
+      } else {
+        const data = await res.json();
+        setError(data.detail || 'Error al procesar');
+      }
     } catch (e) {
-      console.error('Error:', e);
+      setError('Error: ' + e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const editarHomologacion = (cargoId, valor) => {
-    setHomologaciones({ ...homologaciones, [cargoId]: valor });
-  };
+  // Si no hay cargos
+  if (cargos.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+          <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold mb-2">No hay datos</h2>
+          <p className="text-slate-600 mb-4">
+            Primero carga el archivo de requerimientos en la pestaña "Formulario"
+          </p>
+          {error && <p className="text-red-500">{error}</p>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -73,17 +116,17 @@ function HomologacionView({ empresaId, onComplete }) {
       <div className="bg-white rounded-2xl shadow-lg p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link2 className="text-emerald-600" size={28} />
+            <Link2 className="text-emerald-600 w-8 h-8" />
             <div>
-              <h2 className="text-xl font-bold">Homologación de Cargos</h2>
+              <h2 className="text-xl font-bold">2. Homologación de Cargos</h2>
               <p className="text-sm text-slate-500">
-                Matching de cargos al catálogo maestro
+                {cargos.length} cargos cargados
               </p>
             </div>
           </div>
           
           <button
-            onClick={() => setShowSettings(!showSettings)}
+            onClick={() => {}}
             className="btn-secondary"
           >
             <Settings size={18} />
@@ -92,158 +135,64 @@ function HomologacionView({ empresaId, onComplete }) {
         </div>
       </div>
 
-      {/* Configuración de Criterios */}
-      {showSettings && (
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <h3 className="font-bold mb-4">Criterios de Homologación</h3>
-          
-          <div className="grid grid-cols-2 gap-6">
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="priorizar_funciones"
-                checked={criterios.priorizar_funciones}
-                onChange={(e) => setCriterios({ ...criterios, priorizar_funciones: e.target.checked })}
-                className="w-5 h-5 text-emerald-600"
-              />
-              <label htmlFor="priorizar_funciones" className="text-sm">
-                Priorizar funciones sobre nombre
-              </label>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="priorizar_nivel"
-                checked={criterios.priorizar_nivel}
-                onChange={(e) => setCriterios({ ...criterios, priorizar_nivel: e.target.checked })}
-                className="w-5 h-5 text-emerald-600"
-              />
-              <label htmlFor="priorizar_nivel" className="text-sm">
-                Considerar nivel jerárquico
-              </label>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Nivel de Agresividad</label>
-              <select
-                className="input-field"
-                value={criterios.nivel_agresividad}
-                onChange={(e) => setCriterios({ ...criterios, nivel_agresividad: e.target.value })}
-              >
-                <option value="conservador">Conservador (solo matches &gt;90%)</option>
-                <option value="medio">Medio (matches &gt;70%)</option>
-                <option value="agresivo">Agresivo (matches &gt;50%)</option>
-              </select>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="exigir_coincidencia"
-                checked={criterios.exigir_coincidencia_fuerte}
-                onChange={(e) => setCriterios({ ...criterios, exigir_coincidencia_fuerte: e.target.checked })}
-                className="w-5 h-5 text-emerald-600"
-              />
-              <label htmlFor="exigir_coincidencia" className="text-sm">
-                Exigir coincidencia fuerte en responsabilidades
-              </label>
-            </div>
-          </div>
-          
-          <div className="flex justify-end mt-4">
-            <button
-              onClick={ejecutarHomologacion}
-              disabled={loading || cargos.length === 0}
-              className="btn-primary"
-            >
-              <Play size={18} />
-              {loading ? 'Procesando...' : 'Ejecutar Homologación'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Lista de Cargos */}
+      {/* Tabla de cargas */}
       <div className="bg-white rounded-2xl shadow-lg p-6">
-        <h3 className="font-bold mb-4">
-          Cargos a Homologar ({cargos.length})
-        </h3>
-        
-        {cargos.length === 0 ? (
-          <div className="text-center py-12 text-slate-500">
-            <AlertCircle size={48} className="mx-auto mb-4 text-slate-300" />
-            <p>No hay cargos para homologar</p>
-            <p className="text-sm">Primero complete el formulario de la empresa</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="text-left p-3">#</th>
-                  <th className="text-left p-3">Cargo Empresa</th>
-                  <th className="text-left p-3">Área</th>
-                  <th className="text-left p-3">Cargo Homologado</th>
-                  <th className="text-left p-3">Nivel</th>
-                  <th className="text-left p-3">Estado</th>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-slate-50">
+                <th className="text-left p-3">#</th>
+                <th className="text-left p-3">Cargo</th>
+                <th className="text-left p-3">Área</th>
+                <th className="text-left p-3">Personas</th>
+                <th className="text-left p-3">Homologado</th>
+                <th className="text-left p-3">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cargos.slice(0, 20).map((cargo, i) => (
+                <tr key={cargo.id || i} className="border-t">
+                  <td className="p-3">{i + 1}</td>
+                  <td className="p-3 font-medium">{cargo.nombre_cargo || cargo.nombre}</td>
+                  <td className="p-3 text-slate-600">{cargo.area}</td>
+                  <td className="p-3">{cargo.num_personas || 1}</td>
+                  <td className="p-3">
+                    {cargo.cargo_homologado || cargo.homologado ? (
+                      <span className="text-emerald-600">{cargo.cargo_homologado || cargo.homologado}</span>
+                    ) : (
+                      <span className="text-slate-400">-</span>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      cargo.estado === 'HOMOLOGADO' ? 'bg-emerald-100 text-emerald-700' : 
+                      cargo.estado === 'PROCESANDO' ? 'bg-amber-100 text-amber-700' :
+                      'bg-slate-100 text-slate-600'
+                    }`}>
+                      {cargo.estado || 'PENDIENTE'}
+                    </span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {cargos.map((cargo, i) => (
-                  <tr key={cargo.id} className="border-t hover:bg-slate-50">
-                    <td className="p-3">{i + 1}</td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <Briefcase size={16} className="text-slate-400" />
-                        {cargo.nombre_cargo}
-                      </div>
-                    </td>
-                    <td className="p-3 text-slate-600">{cargo.area}</td>
-                    <td className="p-3">
-                      {cargo.homologado ? (
-                        <span className="text-emerald-600 font-medium">
-                          {cargo.homologado}
-                        </span>
-                      ) : (
-                        <input
-                          type="text"
-                          className="input-field"
-                          placeholder="Editar..."
-                          value={homologaciones[cargo.id] || ''}
-                          onChange={(e) => editarHomologacion(cargo.id, e.target.value)}
-                        />
-                      )}
-                    </td>
-                    <td className="p-3 text-slate-500">
-                      {cargo.homologado ? 'Nivel' : '-'}
-                    </td>
-                    <td className="p-3">
-                      {cargo.estado === 'HOMOLOGADO' ? (
-                        <span className="flex items-center gap-1 text-emerald-600">
-                          <CheckCircle size={16} />
-                          Homologado
-                        </span>
-                      ) : cargo.estado === 'PENDIENTE' ? (
-                        <span className="text-amber-600">Pendiente</span>
-                      ) : (
-                        <span className="text-red-600">{cargo.estado}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              ))}
+            </tbody>
+          </table>
+        </div>
         
-        {cargos.some(c => c.estado === 'HOMOLOGADO') && (
-          <div className="flex justify-end mt-6">
-            <button onClick={onComplete} className="btn-primary">
-              Continuar a Valoración
-            </button>
-          </div>
+        {cargos.length > 20 && (
+          <p className="text-sm text-slate-500 mt-2">
+            Y {cargos.length - 20} más...
+          </p>
         )}
+
+        {mensaje && <p className="text-emerald-600 mt-4">{mensaje}</p>}
+        {error && <p className="text-red-500 mt-4">{error}</p>}
+
+        <div className="flex justify-end mt-6">
+          <button onClick={ejecutarHomologacion} disabled={loading} className="btn-primary">
+            {loading ? <Loader className="w-5 h-5 animate-spin mr-2" /> : <Play className="w-5 h-5 mr-2" />}
+            {loading ? 'Procesando...' : 'Ejecutar Homologación'}
+          </button>
+        </div>
       </div>
     </div>
   );
