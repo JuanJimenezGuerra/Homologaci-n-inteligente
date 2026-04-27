@@ -1,0 +1,136 @@
+{
+  "name": "SHR Homologación de Cargos",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "homologar",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook - Recibir Cargos",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "homologar"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer datos del payload del backend\nconst body = $input.first().json.body || $input.first().json;\nconst cargos = body.cargos || [];\nconst masters = body.masters || [];\nconst uploadId = body.upload_id;\nconst backendUrl = body.backend_url || 'https://shr-backend-prod.onrender.com';\n\n// Construir lista de cargos maestros para el prompt\nconst mastersText = masters.slice(0, 40).map(m => \n  `- ${m.nombre}: ${(m.descripcion || '').substring(0, 120)}`\n).join('\\n');\n\n// Procesar cada cargo\nconst items = cargos.map(cargo => ({\n  json: {\n    cargo_id: cargo.id,\n    cargo_nombre: cargo.nombre,\n    cargo_area: cargo.area || 'N/A',\n    cargo_descripcion: cargo.descripcion_empresa || '',\n    upload_id: uploadId,\n    backend_url: backendUrl,\n    masters_text: mastersText,\n    prompt: `Eres experto en homologación de cargos de RRHH en Colombia.\\n\\nCARGO A HOMOLOGAR:\\n- Nombre: ${cargo.nombre}\\n- Área: ${cargo.area || 'N/A'}\\n- Descripción: ${cargo.descripcion_empresa || 'No disponible'}\\n\\nCARGOS MAESTROS DISPONIBLES:\\n${mastersText}\\n\\nResponde SOLO con JSON:\\n{\"cargo_homologado\": \"NOMBRE EXACTO DEL MAESTRO\", \"justificacion\": \"Razón breve (máx 80 palabras)\", \"status\": \"homologado\"}\\n\\nSi no hay coincidencia:\\n{\"cargo_homologado\": \"SIN COINCIDENCIA\", \"justificacion\": \"No hay cargo maestro similar.\", \"status\": \"sin_coincidencia\"}`\n  }\n}));\n\nreturn items;"
+      },
+      "id": "prepare-items",
+      "name": "Preparar Cargos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer sk-tu-api-key-aqui"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://shr-backend-prod.onrender.com"
+            },
+            {
+              "name": "X-Title",
+              "value": "SHR Homologacion"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'qwen/qwen3-8b', messages: [{ role: 'user', content: $json.prompt }], temperature: 0.1, max_tokens: 400 }) }}",
+        "options": {}
+      },
+      "id": "openrouter-call",
+      "name": "OpenRouter - Homologar con IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parsear respuesta de OpenRouter\nconst items = [];\n\nfor (const item of $input.all()) {\n  try {\n    const responseBody = item.json;\n    const inputData = $('Preparar Cargos').item.json;\n    \n    let content = responseBody.choices?.[0]?.message?.content || '';\n    \n    if (content.includes('```json')) {\n      content = content.split('```json')[1].split('```')[0].trim();\n    } else if (content.includes('```')) {\n      content = content.split('```')[1].split('```')[0].trim();\n    }\n    \n    let result;\n    try {\n      result = JSON.parse(content);\n    } catch(e) {\n      result = {\n        cargo_homologado: 'SIN COINCIDENCIA',\n        justificacion: 'Error: ' + content.substring(0, 80),\n        status: 'sin_coincidencia'\n      };\n    }\n    \n    items.push({\n      json: {\n        cargo_id: inputData.cargo_id,\n        cargo_homologado: result.cargo_homologado || 'SIN COINCIDENCIA',\n        justificacion: result.justificacion || '',\n        status: result.status || 'sin_coincidencia',\n        upload_id: inputData.upload_id,\n        backend_url: inputData.backend_url\n      }\n    });\n  } catch(e) {\n    items.push({\n      json: {\n        cargo_id: $('Preparar Cargos').item.json.cargo_id,\n        cargo_homologado: 'SIN COINCIDENCIA',\n        justificacion: 'Error: ' + e.message,\n        status: 'error',\n        upload_id: $('Preparar Cargos').item.json.upload_id,\n        backend_url: $('Preparar Cargos').item.json.backend_url\n      }\n    });\n  }\n}\n\nreturn items;"
+      },
+      "id": "parse-response",
+      "name": "Parsear Respuesta IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "results",
+        "options": {}
+      },
+      "id": "aggregate-results",
+      "name": "Agrupar Resultados",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.results[0].backend_url }}/webhook/n8n",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ results: $json.results }) }}",
+        "options": {}
+      },
+      "id": "send-to-backend",
+      "name": "Enviar Resultados al Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"status\": \"procesando\", \"message\": \"Cargos recibidos\"}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Responder al Backend",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [480, 500]
+    }
+  ],
+  "connections": {
+    "Webhook - Recibir Cargos": {
+      "main": [[{"node": "Preparar Cargos", "type": "main", "index": 0}, {"node": "Responder al Backend", "type": "main", "index": 0}]
+    },
+    "Preparar Cargos": {
+      "main": [[{"node": "OpenRouter - Homologar con IA", "type": "main", "index": 0}]]
+    },
+    "OpenRouter - Homologar con IA": {
+      "main": [[{"node": "Parsear Respuesta IA", "type": "main", "index": 0}]]
+    },
+    "Parsear Respuesta IA": {
+      "main": [[{"node": "Agrupar Resultados", "type": "main", "index": 0}]]
+    },
+    "Agrupar Resultados": {
+      "main": [[{"node": "Enviar Resultados al Backend", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {"executionOrder": "v1"},
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-04-25T00:00:00.000Z",
+  "versionId": "shr-v2"
+}
