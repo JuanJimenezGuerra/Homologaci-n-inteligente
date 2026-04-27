@@ -2,10 +2,15 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from ..models import Cargo, Homologacion, Upload
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 def process_requirements_excel(file_path: str, upload_id: int, db: Session):
+    print(f"=== process_requirements_excel called ===")
+    print(f"file_path: {file_path}")
+    print(f"upload_id: {upload_id}")
+    print(f"file exists: {os.path.exists(file_path)}")
     try:
         xl = pd.ExcelFile(file_path)
         
@@ -31,6 +36,9 @@ def process_requirements_excel(file_path: str, upload_id: int, db: Session):
         
         # Trabajar con índices de columnas en lugar de nombres para evitar colisiones por nombres duplicados
         columns = list(df.columns)
+        
+        print(f"=== Sheet: {sheet_name}, Columns: {columns[:5]}...")
+        print(f"=== Total rows: {len(df)}")
         
         title_idx = 0
         for i, col in enumerate(columns):

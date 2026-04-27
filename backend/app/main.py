@@ -140,7 +140,9 @@ def upload_requirements_file(empresa: str = Form(...), file: UploadFile = File(.
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
+        print(f"=== Calling process_requirements_excel with file: {temp_path} ===")
         count = process_requirements_excel(temp_path, upload.id, db)
+        print(f"=== Excel processed: {count} cargos created ===")
         return {"upload_id": upload.id, "count": count}
     except Exception as e:
         print(f"Error procesando excel: {str(e)}")
