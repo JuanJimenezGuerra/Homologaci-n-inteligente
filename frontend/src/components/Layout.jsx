@@ -1,15 +1,18 @@
 import React from 'react';
-import { LayoutDashboard, FileUp, Database, LogOut, User as UserIcon, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, FileUp, Database, LogOut, User as UserIcon, ShieldCheck, Building2, Link2, BarChart3, FileText, Users, Target, TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';
 import logoShr from '../assets/logo_shr.png';
 
 const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
 
-  // ✅ AQUÍ está la actualización
+  // Pestañas por PROCESO (no por hoja Excel)
   const menuItems = [
     { id: 'dashboard', label: 'Panel Principal', icon: LayoutDashboard },
-    { id: 'uploads', label: 'Nuevo Proceso', icon: FileUp },
-    { id: 'valoracion', label: 'Valoración', icon: Database }, // 👈 agregado
+    { id: 'formulario', label: '1. Formulario', icon: Building2, proceso: 'Datos de la empresa y sus cargos' },
+    { id: 'homologacion', label: '2. Homologación', icon: Link2, proceso: 'Matching de cargos al catálogo' },
+    { id: 'valoracion', label: '3. Valoración', icon: Target, proceso: 'Evaluación de 12 factores HAY' },
+    { id: 'analisis', label: '4. Análisis', icon: TrendingUp, proceso: 'Curvas, equidad y competitividad' },
+    { id: 'uploads', label: 'Archivos', icon: FileUp },
   ];
 
   return (
