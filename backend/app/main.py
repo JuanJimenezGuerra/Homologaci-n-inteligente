@@ -117,11 +117,23 @@ from fastapi import Form
 
 @app.post("/uploads/requirements")
 def upload_requirements_file(empresa: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    print(f"=== Upload request ===")
+    print(f"empresa param: {empresa}")
+    print(f"file: {file.filename}")
+    print(f"user_id: {current_user.id}")
+    print(f"Columns in Upload: {Upload.__table__.columns.keys()}")
+    
     # Create upload record
-    upload = Upload(user_id=current_user.id, filename=file.filename, empresa=empresa.upper())
+    upload = Upload(
+        user_id=current_user.id, 
+        filename=file.filename, 
+        empresa=empresa.upper(),
+        status="pendiente"
+    )
     db.add(upload)
     db.commit()
     db.refresh(upload)
+    print(f"Upload created with id: {upload.id}")
 
     temp_path = os.path.join("/tmp", f"temp_req_{upload.id}_{file.filename.replace(' ', '_')}")
     try:

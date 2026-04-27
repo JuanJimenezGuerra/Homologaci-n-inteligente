@@ -491,12 +491,12 @@ class Curva(Base):
 class Upload(Base):
     __tablename__ = "uploads"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=True)
-    filename = Column(String)
-    empresa = Column(String, nullable=True)
+    filename = Column(String, nullable=False)
+    empresa = Column(String, nullable=True)  # Nullable para permitir null
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    status = Column(String, default="pendiente")
+    status = Column(String, default="pendiente", nullable=False)
     
     cargos = relationship("Cargo", back_populates="upload")
 
