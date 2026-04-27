@@ -551,13 +551,13 @@ from .services.matcher import find_exact_match
 @app.post("/homologacion/ejecutar")
 def ejecutar_homologacion(
     upload_id: int = Query(..., description="Upload ID"),
-    usar_ia: bool = Query(False, description="Usar Anthropic para los no encontrados"),
+    usar_ia: bool = Query(False, description="Usar IA para los no encontrados"),
     criterios: dict = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Ejecutar homologación para todos los cargos de un upload"""
-    print(f"=== /homologacion/ejecutar called with upload_id={upload_id} ===")
+    print(f"=== /homologacion/ejecutar called with upload_id={upload_id}, usar_ia={usar_ia} ===")
     
     try:
         criterios = criterios or {}
@@ -568,12 +568,14 @@ def ejecutar_homologacion(
         
         # Obtener master_descriptions para búsqueda
         masters = db.query(MasterDescription).all()
-        masters_list = [{"nombre": m.nombre_cargo, "descripcion": m.descripcion, "area": m.area} for m in masters]
+        masters_list = [{"nombre": m.nombre_cargo or "", "descripcion": m.descripcion or "", "area": m.area or ""} for m in masters]
         print(f"=== Master descriptions disponibles: {len(masters_list)} ===")
+        
+        # Importar el servicio de IA
+        from .services.matcher import find_exact_match, homologar_lote_con_ia
         
         matched = 0
         not_matched = 0
-        fuzzy_matched = 0
         
         for cargo in cargos:
             nombre_cargo = cargo.nombre_cargo
@@ -595,6 +597,49 @@ def ejecutar_homologacion(
                     db.add(homo)
                 
                 cargo.estado = "HOMOLOGADO"
+                matched += 1
+            else:
+                cargo.estado = "SIN_COINCIDENCIA"
+                not_matched += 1
+        
+        db.commit()
+        print(f"=== Homologación (sin IA): {matched} coincidencia(s), {not_matched} sin coincidir ===")
+        
+        # Si hay muchos sin encontrar y usar_ia=True, intentar con IA
+        ia_resultados = []
+        if usar_ia and not_matched > 0:
+            print(f"=== Intentando homologación con IA para {not_matched} cargos ===")
+            # Obtener los cargos sin homologar
+            sin_match = [c for c in cargos if c.estado == "SIN_COINCIDENCIA"]
+            
+            if sin_match:
+                # Preparar para IA
+                cargos_batch = [{"id": c.id, "nombre": c.nombre_cargo, "area": c.area} for c in sin_match]
+                try:
+                    ia_resultados = homologar_lote_con_ia(cargos_batch, masters_list)
+                    print(f"=== IA resultados: {len(ia_resultados)} ===")
+                    
+                    # Actualizar resultados de IA
+                    for res in ia_resultados:
+                        cargo_id = res.get("id")
+                        if cargo_id:
+                            cargo = next((c for c in sin_match if c.id == cargo_id), None)
+                            if cargo:
+                                cargo.cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
+                                cargo.justificacion = res.get("justificacion", "Homologado por IA")
+                                cargo.estado = "HOMOLOGADO"
+                    
+                    db.commit()
+                    print(f"=== Homologación con IA completada ===")
+                except Exception as e:
+                    print(f"=== Error con IA: {e} ===")
+        
+        return {
+            "mensaje": f"Se procesaron {len(cargos)} cargos",
+            "matched": matched + len(ia_resultados),
+            "not_matched": not_matched - len(ia_resultados),
+            "upload_id": upload_id
+        }
                 matched += 1
             else:
                 cargo.estado = "SIN_COINCIDENCIA"

@@ -58,17 +58,20 @@ function HomologacionView({ empresaId, onComplete }) {
     }
   };
 
-  const ejecutarHomologacion = async () => {
+  const ejecutarHomologacion = async (conIA = false) => {
     const token = localStorage.getItem('token');
     setLoading(true);
     setError('');
-    setMensaje('Procesando homologación...');
+    setMensaje(conIA ? 'Procesando con IA para los no encontrados...' : 'Procesando homologación...');
     
-    console.log('=== ejecutarHomologacion called, empresaId:', empresaId);
+    console.log('=== ejecutarHomologacion called, empresaId:', empresaId, 'conIA:', conIA);
     
     try {
-      // Usar upload_id (que es empresaId en props)
-      const res = await fetch(`${API}/homologacion/ejecutar?upload_id=${empresaId}`, {
+      const url = conIA 
+        ? `${API}/homologacion/ejecutar?upload_id=${empresaId}&usar_ia=true`
+        : `${API}/homologacion/ejecutar?upload_id=${empresaId}`;
+      
+      const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
