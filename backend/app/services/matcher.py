@@ -2,22 +2,22 @@ import os
 import requests
 import json
 import logging
-import time
 import re
 import difflib
 from anthropic import Anthropic
 from sqlalchemy.orm import Session
-from ..models import Cargo, Homologacion, ProcessingLog, MasterDescription, Upload
+from ..models import Cargo, Homologacion, MasterDescription, Upload
 
 logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+DEFAULT_OPENROUTER = "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"
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
 
 def get_master_descriptions(db: Session):
     masters = db.query(MasterDescription).all()
-    return [{"nombre": m.nombre_cargo, "descripcion": m.descripcion or "", "area": m.area or ""} for m in masters]
+    return [{"nombre": m.nombre_cargo or "", "descripcion": m.descripcion or "", "area": m.area or ""} for m in masters]
 
 def normalize_text(text):
     if not text: return ""
@@ -31,10 +31,13 @@ def find_exact_match(cargo_nombre: str, masters: list):
         return None
         
     norm_cargo = normalize_text(cargo_nombre)
+    
+    # 1. Búsqueda exacta
     for m in masters:
         if normalize_text(m["nombre"]) == norm_cargo:
             return m
             
+    # 2. Búsqueda fuzzy con threshold más bajo
     best_match = None
     best_ratio = 0.0
     for m in masters:
@@ -47,6 +50,7 @@ def find_exact_match(cargo_nombre: str, masters: list):
     if best_ratio >= 0.55:
         return best_match
         
+    # 3. Búsqueda por palabras clave
     for m in masters:
         norm_m = normalize_text(m["nombre"])
         palabras = norm_cargo.split()
@@ -54,6 +58,7 @@ def find_exact_match(cargo_nombre: str, masters: list):
             if len(palabra) > 4 and palabra in norm_m:
                 return m
                 
+    # 4. Si el cargo es muy corto
     if len(norm_cargo) <= 15:
         for m in masters:
             norm_m = normalize_text(m["nombre"])
@@ -63,8 +68,7 @@ def find_exact_match(cargo_nombre: str, masters: list):
     return None
 
 def _homologar_con_openrouter(cargos_batch, masters_text, cargos_text):
-    """Fallback usando OpenRouter (gratis)"""
-    api_key = os.getenv("OPENROUTER_API_KEY") or "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"
+    api_key = os.getenv("OPENROUTER_API_KEY") or DEFAULT_OPENROUTER
     if not api_key:
         return [{"id": c.get("id", 0), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key", "status": "sin_key"} for c in cargos_batch]
     
@@ -98,35 +102,36 @@ Responde solo JSON: [{{"id": ID, "cargo_homologado": "NOMBRE", "justificacion": 
     return [{"id": c.get("id", 0), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Error IA", "status": "error"} for c in cargos_batch]
 
 def _homologar_con_anthropic(cargos_batch, masters_text, cargos_text):
-    """Homologar usando Anthropic"""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return None
+    
     prompt = f"""Eres experto en RRHH colombiano.
 MAESTROS: {masters_text}
 CARGO: {cargos_text}
 Selecciona el maestro más similar. Responde JSON array:
 [{{"id": ID, "cargo_homologado": "NOMBRE", "justificacion": "razón"}}]"""
 
-    client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    response = client.messages.create(
-        model="claude-3-haiku-20240307",
-        max_tokens=800,
-        temperature=0.1,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    content = response.content[0].text.strip()
-    if "```json" in content: content = content.split("```json")[1].split("```")[0].strip()
-    elif "```" in content: content = content.split("```")[1].split("```")[0].strip()
+    try:
+        client = Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=800,
+            temperature=0.1,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        content = response.content[0].text.strip()
+        if "[" in content:
+            start = content.find("[")
+            end = content.rfind("]") + 1
+            return json.loads(content[start:end])
+    except Exception as e:
+        logger.error(f"Anthropic error: {e}")
     
-    start = content.find('[')
-    end = content.rfind(']') + 1
-    if start != -1 and end != 0:
-        content = content[start:end]
-        
-    return json.loads(content)
+    return None
 
-def homologar_lote_con_ia(cargos_batch: list, masters: list, retries=3) -> list:
-    # Intentar Anthropic primero, luego OpenRouter
-    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+def homologar_lote_con_ia(cargos_batch: list, masters: list) -> list:
+    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENROUTER_API_KEY") or DEFAULT_OPENROUTER
     
     if not api_key:
         return [{"id": c.get("id", 0), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key", "status": "sin_key"} for c in cargos_batch]
@@ -136,54 +141,32 @@ def homologar_lote_con_ia(cargos_batch: list, masters: list, retries=3) -> list:
 
     cargos_text = ""
     for c in cargos_batch[:8]:
-        cargos_text += f"ID: {c.get('id', 0)} | {c.get('nombre', c.get('cargo_nombre', ''))}\n"
+        nm = c.get('nombre', c.get('cargo_nombre', ''))
+        cargos_text += f"ID: {c.get('id', 0)} | {nm}\n"
 
     # Try Anthropic first
     if os.getenv("ANTHROPIC_API_KEY"):
         try:
-            return _homologar_con_anthropic(cargos_batch, masters_text, cargos_text)
+            result = _homologar_con_anthropic(cargos_batch, masters_text, cargos_text)
+            if result:
+                return result
         except Exception as e:
-            logger.warning(f"Anthropic failed: {e}, trying OpenRouter")
+            logger.warning(f"Anthropic failed: {e}")
     
     # Fallback a OpenRouter
     return _homologar_con_openrouter(cargos_batch, masters_text, cargos_text)
-        try:
-            response = client.messages.create(
-                model="claude-3-haiku-20240307",
-                max_tokens=800,
-                temperature=0.1,
-                messages=[{"role": "user", "content": prompt}]
-            )
-
-            content = response.content[0].text.strip()
-            if "```json" in content: content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content: content = content.split("```")[1].split("```")[0].strip()
-            
-            start = content.find('[')
-            end = content.rfind(']') + 1
-            if start != -1 and end != 0:
-                content = content[start:end]
-                
-            resultados = json.loads(content)
-            if isinstance(resultados, list):
-                return resultados
-            
-        except Exception as e:
-            if attempt == retries - 1:
-                logger.error(f"Error IA Lote: {e}")
-                return [{"id": c["id"], "cargo_homologado": "SIN COINCIDENCIA", "justificacion": f"Error IA: {str(e)[:40]}", "status": "error"} for c in cargos_batch]
-            time.sleep(2)
 
 def start_batch_processing(upload_id: int, db: Session):
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
-    if not upload: return
+    if not upload:
+        return
 
     upload.status = "procesando"
     db.commit()
 
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id, Cargo.estado == "PENDIENTE").all()
     masters = get_master_descriptions(db)
-
+    
     _process_direct_batch(upload_id, cargos, masters, db)
     
     upload.status = "completado"
@@ -192,59 +175,63 @@ def start_batch_processing(upload_id: int, db: Session):
 def _process_direct_batch(upload_id: int, cargos: list, masters: list, db: Session):
     cargos_para_ia = []
     
-    upload = db.query(Upload).filter(Upload.id == upload_id).first()
-    
     for cargo in cargos:
-        match = find_exact_match(cargo.nombre_cargo, masters)
-        if match:
-            homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
-            if not homo:
-                homo = Homologacion(cargo_id=cargo.id)
+        nombre_cargo = cargo.nombre_cargo
+        
+        # Buscar coincidencia local
+        master = find_exact_match(nombre_cargo, masters)
+        
+        if master:
+            # Ya tiene match local
+            homo = cargo.homologacion
+            if homo:
+                homo.cargo_homologado = master["nombre"]
+                homo.justificacion = f"Coincidencia exacta en base ({master.get('area', '')})"
+                homo.editado_manual = False
+            else:
+                homo = Homologacion(
+                    cargo_id=cargo.id, 
+                    cargo_homologado=master["nombre"], 
+                    justificacion=f"Coincidencia exacta en base ({master.get('area', '')})"
+                )
                 db.add(homo)
-            homo.cargo_homologado = match["nombre"]
-            homo.justificacion = "⚡ Homologación Directa (Coincidencia de nombre)"
+            
             cargo.estado = "HOMOLOGADO"
         else:
+            # No tiene match, marcar para IA
+            cargo.estado = "SIN_COINCIDENCIA"
             cargos_para_ia.append(cargo)
-            cargo.estado = "PROCESANDO"
-            
+    
     db.commit()
-
-    batch_size = 10
-    for i in range(0, len(cargos_para_ia), batch_size):
-        db.refresh(upload)
-        if upload.status == "cancelado":
-            logger.info(f"Procesamiento cancelado por el usuario para upload {upload_id}")
-            break
-            
-        batch = cargos_para_ia[i:i+batch_size]
+    
+    # Si hay cargos sin match, intentar con IA
+    if cargos_para_ia:
+        cargos_batch = [{"id": c.id, "nombre": c.nombre_cargo, "area": c.area} for c in cargos_para_ia]
         
-        batch_dicts = [
-            {"id": c.id, "nombre": c.nombre_cargo, "area": c.area, "descripcion": c.descripcion_empresa or ""} 
-            for c in batch
-        ]
-        resultados_ia = homologar_lote_con_ia(batch_dicts, masters)
-        
-        for res in resultados_ia:
-            cargo_id = res.get("id")
-            if not cargo_id: continue
+        try:
+            resultados = homologar_lote_con_ia(cargos_batch, masters)
             
-            cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
-            if not cargo: continue
+            for res in resultados:
+                cargo_id = res.get("id")
+                if cargo_id:
+                    cargo = next((c for c in cargos_para_ia if c.id == cargo_id), None)
+                    if cargo:
+                        cargo.cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
+                        cargo.justificacion = res.get("justificacion", "Sugerido por IA")
+                        cargo.estado = "HOMOLOGADO"
+                        
+                        homo = cargo.homologacion
+                        if homo:
+                            homo.cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
+                            homo.justificacion = f"Sugerido por IA: {res.get('justificacion', '')}"
+                        else:
+                            homo = Homologacion(
+                                cargo_id=cargo.id,
+                                cargo_homologado=res.get("cargo_homologado", "SIN COINCIDENCIA"),
+                                justificacion=f"Sugerido por IA: {res.get('justificacion', '')}"
+                            )
+                            db.add(homo)
             
-            homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
-            if not homo:
-                homo = Homologacion(cargo_id=cargo.id)
-                db.add(homo)
-                
-            cargo_homologado_ia = str(res.get("cargo_homologado", "")).upper().strip()
-            homo.cargo_homologado = cargo_homologado_ia
-            
-            just_ia = res.get("justificacion", "")
-            homo.justificacion = f"🤖 {just_ia}"
-            
-            status = res.get("status", "sugerido")
-            cargo.estado = "SUGERIDO" if status == "sugerido" or status == "homologado" else "ERROR"
-            
-        db.commit()
-        time.sleep(1)
+            db.commit()
+        except Exception as e:
+            logger.error(f"Error en procesamiento IA: {e}")
