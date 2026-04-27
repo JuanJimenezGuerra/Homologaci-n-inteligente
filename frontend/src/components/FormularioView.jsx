@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Building2, Save, Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Building2, Upload as UploadIcon, FileCheck, Loader2, AlertCircle, Files, ArrowRight, CheckCircle, FileText } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
 
@@ -7,19 +7,27 @@ function FormularioView({ empresaId, onEmpresaCreated }) {
   const [loading, setLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
+  const [step, setStep] = useState(0); // 0: Empresa, 1: Excel, 2: PDFs
+  
+  // Datos empresa
   const [empresaNombre, setEmpresaNombre] = useState('');
-  const [file, setFile] = useState(null);
-  const [procesado, setProcesado] = useState(false);
-  const fileInputRef = useRef(null);
+  
+  // Archivos
+  const [excelFile, setExcelFile] = useState(null);
+  const [pdfFiles, setPdfFiles] = useState([]);
+  const [uploadId, setUploadId] = useState(null);
+  
+  const excelInputRef = useRef(null);
+  const pdfInputRef = useRef(null);
 
-  // Si ya tiene empresaId, cargar datos existentes
+  // Si ya tiene empresaId, mostrar que ya está procesado
   useEffect(() => {
     if (empresaId) {
-      cargarDatosExistentes();
+      verificarEstado();
     }
   }, [empresaId]);
 
-  const cargarDatosExistentes = async () => {
+  const verificarEstado = async () => {
     const token = localStorage.getItem('token');
     try {
       const res = await fetch(`${API}/empresas/${empresaId}`, {
@@ -27,37 +35,54 @@ function FormularioView({ empresaId, onEmpresaCreated }) {
       });
       if (res.ok) {
         const data = await res.json();
-        setProcesado(true);
-        setEmpresaNombre(data.nombre_empresa);
+        if (data.cargos && data.cargos.length > 0) {
+          setStep(3); // Ya procesado
+        }
       }
     } catch (e) {
       console.error('Error:', e);
     }
   };
 
-  const handleFileChange = (e) => {
-    const selected = e.target.files[0];
-    if (selected) {
-      setFile(selected);
+  const handleExcelChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setExcelFile(file);
       setError('');
     }
   };
 
+  const handlePdfChange = (e) => {
+    const files = Array.from(e.target.files);
+    setPdfFiles([...pdfFiles, ...files]);
+  };
+
+  const removePdf = (index) => {
+    setPdfFiles(pdfFiles.filter((_, i) => i !== index));
+  };
+
+  const procesarPaso1 = async () => {
+    if (!empresaNombre.trim()) {
+      setError('Ingresa el nombre de la empresa');
+      return;
+    }
+    setStep(1);
+  };
+
   const procesarExcel = async () => {
-    if (!file && !empresaNombre) {
+    if (!excelFile && !empresaId) {
       setError('Selecciona un archivo Excel');
       return;
     }
 
-    const nombreEmpresa = empresaNombre.trim() || 'EMPRESA';
     setLoading(true);
     setError('');
-    setMensaje('Procesando archivo Excel...');
+    setMensaje('Procesando archivo Excel de requerimientos...');
 
     const formData = new FormData();
-    formData.append('empresa', nombreEmpresa);
-    if (file) {
-      formData.append('file', file);
+    formData.append('empresa', empresaNombre.trim().toUpperCase());
+    if (excelFile) {
+      formData.append('file', excelFile);
     }
 
     const token = localStorage.getItem('token');
@@ -72,9 +97,16 @@ function FormularioView({ empresaId, onEmpresaCreated }) {
       const data = await res.json();
 
       if (res.ok) {
-        setMensaje('Archivo procesado correctamente');
-        setProcesado(true);
-        onEmpresaCreated(data.empresa_id);
+        setUploadId(data.upload_id || data.empresa_id);
+        setMensaje('Excel procesado correctamente');
+        
+        // Si hay PDFs, ir a step 2, sino terminar
+        if (pdfFiles.length > 0) {
+          setStep(2);
+        } else {
+          // Finalizar
+          onEmpresaCreated(data.empresa_id);
+        }
       } else {
         setError(data.detail || 'Error al procesar');
       }
@@ -85,24 +117,53 @@ function FormularioView({ empresaId, onEmpresaCreated }) {
     }
   };
 
-  // Si ya está procesado, mostrar resumen
-  if (procesado && empresaId) {
+  const procesarPDFs = async () => {
+    if (!pdfFiles.length || !uploadId) {
+      onEmpresaCreated(uploadId || empresaId);
+      return;
+    }
+
+    setLoading(true);
+    setMensaje(`Procesando ${pdfFiles.length} archivos...`);
+
+    const formData = new FormData();
+    for (const file of pdfFiles) {
+      formData.append('files', file);
+    }
+
+    const token = localStorage.getItem('token');
+
+    try {
+      const res = await fetch(`${API}/uploads/${uploadId}/manuales`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (res.ok) {
+        onEmpresaCreated(uploadId);
+      } else {
+        const data = await res.json();
+        setError(data.detail || 'Error al procesar PDFs');
+      }
+    } catch (e) {
+      setError('Error: ' + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Si ya está procesado, mostrar opción de continuar o recargar
+  if (step === 3 && empresaId) {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
           <CheckCircle className="w-16 h-16 text-emerald-600 mx-auto mb-4" />
-          <h2 className="text-xl font-bold mb-2">Archivo Procesado</h2>
-          <p className="text-slate-600 mb-4">
-            Los datos de <strong>{empresaNombre}</strong> han sido cargados exitosamente
-          </p>
-          <div className="flex gap-3 justify-center mt-6">
-            <button
-              onClick={() => onEmpresaCreated(empresaId)}
-              className="btn-primary"
-            >
-              Ir a Homologación
-            </button>
-          </div>
+          <h2 className="text-xl font-bold mb-2">Datos Cargados</h2>
+          <p className="text-slate-600 mb-6">Los datos de la empresa han sido cargados.</p>
+          <button onClick={() => onEmpresaCreated(empresaId)} className="btn-primary">
+            Ir a Homologación
+          </button>
         </div>
       </div>
     );
@@ -110,109 +171,160 @@ function FormularioView({ empresaId, onEmpresaCreated }) {
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <FileSpreadsheet className="text-emerald-600 w-8 h-8" />
-          <div>
-            <h2 className="text-xl font-bold">1. Cargar Archivo de Requerimientos</h2>
-            <p className="text-sm text-slate-500">Sube el Excel del formulario de requerimientos</p>
-          </div>
+      {/* Progress */}
+      <div className="flex items-center gap-2 mb-6">
+        <div className={`px-3 py-1 rounded-full text-sm ${step >= 0 ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>
+          1. Empresa
+        </div>
+        <ArrowRight className="text-slate-300" size={16} />
+        <div className={`px-3 py-1 rounded-full text-sm ${step >= 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>
+          2. Excel
+        </div>
+        <ArrowRight className="text-slate-300" size={16} />
+        <div className={`px-3 py-1 rounded-full text-sm ${step >= 2 ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>
+          3. PDFs (opcional)
         </div>
       </div>
 
-      {/* Formulario de carga */}
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="space-y-6">
-          {/* Nombre empresa */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Nombre de la Empresa *
-            </label>
-            <input
-              type="text"
-              className="input-field"
-              value={empresaNombre}
-              onChange={(e) => setEmpresaNombre(e.target.value)}
-              placeholder="Ej: EXTRUSIONES S.A."
-            />
-          </div>
+      {/* Step 0: Empresa */}
+      {step === 0 && (
+        <div className="bg-white rounded-2xl shadow-lg p-6">
+          <h2 className="text-lg font-bold mb-4">Nombre de la Empresa</h2>
+          <input
+            type="text"
+            className="input-field"
+            value={empresaNombre}
+            onChange={(e) => setEmpresaNombre(e.target.value)}
+            placeholder="Ej: EXTRUSIONES S.A."
+          />
+          {error && step === 0 && (
+            <p className="text-red-500 text-sm mt-2">{error}</p>
+          )}
+          <button
+            onClick={procesarPaso1}
+            className="btn-primary mt-4"
+            disabled={!empresaNombre.trim()}
+          >
+            Continuar
+          </button>
+        </div>
+      )}
 
-          {/* Upload Excel */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Archivo Excel de Requerimientos
-            </label>
-            <div
-              className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-emerald-500 transition-colors"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                className="hidden"
-                onChange={handleFileChange}
-              />
-              {file ? (
-                <div className="flex items-center justify-center gap-2 text-emerald-600">
-                  <FileSpreadsheet className="w-8 h-8" />
-                  <span className="font-medium">{file.name}</span>
-                </div>
-              ) : (
-                <div className="text-slate-500">
-                  <Upload className="w-8 h-8 mx-auto mb-2" />
-                  <p>Haz clic para seleccionar el archivo</p>
-                  <p className="text-xs mt-1">Formatos: .xlsx, .xls</p>
-                </div>
-              )}
-            </div>
+      {/* Step 1: Excel */}
+      {step === 1 && (
+        <div className="bg-white rounded-2xl shadow-lg p-6">
+          <h2 className="text-lg font-bold mb-4">Archivo de Requerimientos (Excel)</h2>
+          
+          <div
+            className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-emerald-500"
+            onClick={() => excelInputRef.current?.click()}
+          >
+            <input
+              ref={excelInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleExcelChange}
+            />
+            {excelFile ? (
+              <div className="flex items-center justify-center gap-2 text-emerald-600">
+                <FileCheck className="w-8 h-8" />
+                <span className="font-medium">{excelFile.name}</span>
+              </div>
+            ) : (
+              <div className="text-slate-500">
+                <UploadIcon className="w-8 h-8 mx-auto mb-2" />
+                <p>Seleccionar archivo Excel</p>
+                <p className="text-xs">Formatos: .xlsx, .xls</p>
+              </div>
+            )}
           </div>
 
           {/* Mensajes */}
-          {mensaje && (
-            <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 p-3 rounded-lg">
-              <Loader className="w-5 h-5 animate-spin" />
+          {mensaje && step === 1 && (
+            <div className="flex items-center gap-2 text-emerald-600 mt-4">
+              <Loader2 className="w-5 h-5 animate-spin" />
               <span>{mensaje}</span>
             </div>
           )}
-
-          {error && (
-            <div className="flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg">
+          {error && step === 1 && (
+            <div className="flex items-center gap-2 text-red-600 mt-4">
               <AlertCircle className="w-5 h-5" />
               <span>{error}</span>
             </div>
           )}
 
-          {/* Botón procesar */}
-          <button
-            onClick={procesarExcel}
-            disabled={loading || (!file && !empresaNombre)}
-            className="btn-primary w-full justify-center"
-          >
-            {loading ? (
-              <>
-                <Loader className="w-5 h-5 animate-spin mr-2" />
-                Procesando...
-              </>
-            ) : (
-              <>
-              <Building2 className="w-5 h-5 mr-2" />
-              Procesar Archivo
-            </>
-          )}
+          <div className="flex gap-3 mt-4">
+            <button onClick={() => setStep(0)} className="btn-secondary">
+              Atrás
+            </button>
+            <button
+              onClick={procesarExcel}
+              disabled={loading}
+              className="btn-primary"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
+              Procesar Excel
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Info help */}
-      <div className="mt-6 bg-blue-50 rounded-xl p-4 text-sm text-blue-800">
-        <p><strong>Nota:</strong> El archivo Excel debe contener las pestañas:</p>
-        <ul className="mt-2 list-disc list-inside space-y-1">
-          <li>Datos Generales - Información de la empresa</li>
-          <li>Prácticas de Compensación - Políticas y primas</li>
-          <li>Información por Cargo - Lista de cargos con compensaciones</li>
-        </ul>
-      </div>
+      {/* Step 2: PDFs opcionales */}
+      {step === 2 && (
+        <div className="bg-white rounded-2xl shadow-lg p-6">
+          <h2 className="text-lg font-bold mb-4">Descripciones de Cargos (Opcional)</h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Sube archivos PDF con descripciones de cargos (manuales, perfiles, etc.)
+          </p>
+          
+          <div
+            className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:border-emerald-500"
+            onClick={() => pdfInputRef.current?.click()}
+          >
+            <input
+              ref={pdfInputRef}
+              type="file"
+              accept=".pdf"
+              multiple
+              className="hidden"
+              onChange={handlePdfChange}
+            />
+            <Files className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+            <p className="text-sm text-slate-500">Agregar más PDFs</p>
+          </div>
+
+          {/* Lista de PDFs */}
+          {pdfFiles.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {pdfFiles.map((file, i) => (
+                <div key={i} className="flex items-center justify-between bg-slate-50 p-2 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-red-500" />
+                    <span className="text-sm">{file.name}</span>
+                  </div>
+                  <button onClick={() => removePdf(i)} className="text-red-500 text-sm">
+                    Eliminar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {error && step === 2 && (
+            <p className="text-red-500 text-sm mt-2">{error}</p>
+          )}
+
+          <div className="flex gap-3 mt-4">
+            <button onClick={() => setStep(1)} className="btn-secondary">
+              Atrás
+            </button>
+            <button onClick={procesarPDFs} disabled={loading} className="btn-primary">
+              {loading ? 'Procesando...' : 'Finalizar'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

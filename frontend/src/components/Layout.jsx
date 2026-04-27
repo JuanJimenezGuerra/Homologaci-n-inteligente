@@ -1,18 +1,16 @@
 import React from 'react';
-import { LayoutDashboard, FileUp, Database, LogOut, User as UserIcon, ShieldCheck, Building2, Link2, BarChart3, FileText, Users, Target, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, LogOut, User as UserIcon, ShieldCheck, Building2, Link2, Target, TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';
 import logoShr from '../assets/logo_shr.png';
 
 const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
 
-  // Pestañas por PROCESO (no por hoja Excel)
+  // Pestañas por PROCESO
   const menuItems = [
-    { id: 'dashboard', label: 'Panel Principal', icon: LayoutDashboard },
-    { id: 'formulario', label: '1. Formulario', icon: Building2, proceso: 'Datos de la empresa y sus cargos' },
-    { id: 'homologacion', label: '2. Homologación', icon: Link2, proceso: 'Matching de cargos al catálogo' },
-    { id: 'valoracion', label: '3. Valoración', icon: Target, proceso: 'Evaluación de 12 factores HAY' },
-    { id: 'analisis', label: '4. Análisis', icon: TrendingUp, proceso: 'Curvas, equidad y competitividad' },
-    { id: 'uploads', label: 'Archivos', icon: FileUp },
+    { id: 'formulario', label: '1. Formulario', icon: Building2, desc: 'Cargar datos empresa y Excel' },
+    { id: 'homologacion', label: '2. Homologación', icon: Link2, desc: 'Matching de cargos' },
+    { id: 'valoracion', label: '3. Valoración', icon: Target, desc: 'Evaluación 12 factores' },
+    { id: 'analisis', label: '4. Análisis', icon: TrendingUp, desc: 'Curvas y reportes' },
   ];
 
   return (
@@ -42,7 +40,14 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
               className={`nav-link w-full ${activeTab === item.id ? 'active' : ''}`}
             >
               <item.icon size={20} className={activeTab === item.id ? 'text-white' : 'text-emerald-600'} />
-              <span className="font-semibold">{item.label}</span>
+              <div className="text-left">
+                <span className="font-semibold">{item.label}</span>
+                {item.desc && (
+                  <span className={`block text-xs ${activeTab === item.id ? 'text-white/70' : 'text-slate-400'}`}>
+                    {item.desc}
+                  </span>
+                )}
+              </div>
 
               {activeTab === item.id && (
                 <motion.div 
