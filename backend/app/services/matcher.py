@@ -12,7 +12,7 @@ from ..models import Cargo, Homologacion, ProcessingLog, MasterDescription, Uplo
 logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
 
 def get_master_descriptions(db: Session):
@@ -64,7 +64,7 @@ def find_exact_match(cargo_nombre: str, masters: list):
 
 def _homologar_con_openrouter(cargos_batch, masters_text, cargos_text):
     """Fallback usando OpenRouter (gratis)"""
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    api_key = os.getenv("OPENROUTER_API_KEY") or "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"
     if not api_key:
         return [{"id": c.get("id", 0), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key", "status": "sin_key"} for c in cargos_batch]
     
