@@ -1,65 +1,26 @@
 import os
-import requests
 import json
 import time
+from anthropic import Anthropic
 from sqlalchemy.orm import Session
 from ..models import Cargo, Valoracion, ProcessingLog
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
 
 def start_valoracion_batch(upload_id: int, db: Session):
-    """Procesa la valoración de todos los cargos de un upload"""
-    
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
-    
-    # Si hay N8N_WEBHOOK_URL, usar n8n
-    if N8N_WEBHOOK_URL:
-        _process_with_n8n(upload_id, cargos, db)
-    else:
-        # Fallback: usar OpenRouter directo
-        _process_with_openrouter_direct(upload_id, cargos, db)
+    _process_with_ia(upload_id, cargos, db)
 
-def _process_with_n8n(upload_id: int, cargos: list, db: Session):
-    """Envía cargos a n8n para valoración"""
-    
-    cargos_data = []
-    for c in cargos:
-        cargos_data.append({
-            "id": c.id,
-            "nombre": c.nombre_cargo,
-            "area": c.area,
-            "cargo_homologado": c.homologacion.cargo_homologado if c.homologacion else "",
-            "descripcion": c.descripcion_empresa or ""
-        })
-    
-    payload = {
-        "cargos": cargos_data,
-        "upload_id": upload_id,
-        "backend_url": BACKEND_URL
-    }
-    
-    try:
-        # Llamar al webhook de n8n para valoración
-        webhook_url = N8N_WEBHOOK_URL if N8N_WEBHOOK_URL.endswith("/valoracion") or N8N_WEBHOOK_URL.endswith("/homologar") else f"{N8N_WEBHOOK_URL}/valoracion"
-        requests.post(webhook_url, json=payload, timeout=10)
-        # n8n procesará y devolverá los resultados al webhook /webhook/n8n-valoracion
-    except Exception as e:
-        print(f"Error llamando a n8n para valoración: {e}")
-
-def _process_with_openrouter_direct(upload_id: int, cargos: list, db: Session):
-    """Procesamiento directo con OpenRouter si no hay n8n"""
-    
-    if not OPENROUTER_API_KEY:
-        print("No hay OPENROUTER_API_KEY ni N8N_WEBHOOK_URL configurado")
+def _process_with_ia(upload_id: int, cargos: list, db: Session):
+    if not ANTHROPIC_API_KEY:
+        print("ANTHROPIC_API_KEY no configurado")
         return
     
     for cargo in cargos:
         try:
-            resultado = _valorar_cargo_con_openrouter(cargo)
+            resultado = _valorar_cargo_con_ia(cargo)
             
-            # Guardar en DB
             val = db.query(Valoracion).filter(Valoracion.cargo_id == cargo.id).first()
             if not val:
                 val = Valoracion(cargo_id=cargo.id)
@@ -84,15 +45,13 @@ def _process_with_openrouter_direct(upload_id: int, cargos: list, db: Session):
             val.criterio_3 = resultado.get("criterio_3", 0)
             
             db.commit()
-            time.sleep(1)  # Rate limiting
+            time.sleep(1)
             
         except Exception as e:
             print(f"Error valorando cargo {cargo.id}: {e}")
             continue
 
-def _valorar_cargo_con_openrouter(cargo) -> dict:
-    """Llama a OpenRouter para valorar un cargo"""
-    
+def _valorar_cargo_con_ia(cargo) -> dict:
     prompt = f"""Eres experto en valoración de cargos bajo metodología HAY/SHR.
 
 CARGO A VALORAR:
@@ -151,27 +110,17 @@ Responde SOLO con JSON sin explicaciones:
   "criterio_3": 0
 }}"""
 
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": BACKEND_URL,
-            "X-Title": "SHR Valoracion"
-        },
-        json={
-            "model": "openrouter/free",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
-            "max_tokens": 600
-        },
-        timeout=45
+    client = Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    response = client.messages.create(
+        model="claude-3-haiku-20240307",
+        max_tokens=600,
+        temperature=0.1,
+        messages=[{"role": "user", "content": prompt}]
     )
+
+    content = response.content[0].text.strip()
     
-    response.raise_for_status()
-    content = response.json()["choices"][0]["message"]["content"].strip()
-    
-    # Limpiar markdown
     if "```json" in content:
         content = content.split("```json")[1].split("```")[0].strip()
     elif "```" in content:
