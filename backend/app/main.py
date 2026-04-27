@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, B
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from .database import get_db, engine, Base
-from .models import User, Upload, Cargo, Homologacion, JobStatus, ProcessingLog, Empresa, CargoEmpresa, ValoracionCargo
+from .models import User, Upload, Cargo, Homologacion, JobStatus, ProcessingLog, Empresa, CargoEmpresa, ValoracionCargo, MasterDescription
 from .auth import get_password_hash, create_access_token, verify_password, get_current_user
 from .services.excel_processor import process_requirements_excel
 from .services.master_data import process_master_excel
@@ -565,8 +565,7 @@ def ejecutar_homologacion(
         cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
         print(f"=== Ejecutando homologación para {len(cargos)} cargos (upload {upload_id}) ===")
         
-        # Obtener master_cargos para búsqueda exacta
-        from ..models import MasterDescription
+        # Obtener master_cargos para búsqueda exacta (ya importado al inicio)
         masters = db.query(MasterDescription).all()
         print(f"=== Master descriptions disponibles: {len(masters)} ===")
         
