@@ -65,8 +65,8 @@ function HomologacionView({ empresaId, onComplete }) {
     setMensaje('Procesando homologación...');
     
     try {
-      // Intentar con empresa_id
-      let res = await fetch(`${API}/homologacion/ejecutar?empresa_id=${empresaId}`, {
+      // Usar upload_id (que es empresaId en props)
+      const res = await fetch(`${API}/homologacion/ejecutar?upload_id=${empresaId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -75,19 +75,9 @@ function HomologacionView({ empresaId, onComplete }) {
         body: JSON.stringify(criterios),
       });
       
-      // Si falla, intentar con upload_id
-      if (!res.ok) {
-        res = await fetch(`${API}/procesar/${empresaId}`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-      }
-      
       if (res.ok) {
-        setMensaje('Homologación completada');
+        const data = await res.json();
+        setMensaje(`Homologación completada: ${data.matched} coincidencia(s), ${data.not_matched} sin encontrar`);
         await cargarCargos();
       } else {
         const data = await res.json();
@@ -156,7 +146,7 @@ function HomologacionView({ empresaId, onComplete }) {
               </tr>
             </thead>
             <tbody>
-              {cargos.slice(0, 20).map((cargo, i) => (
+              {cargos.map((cargo, i) => (
                 <tr key={cargo.id || i} className="border-t">
                   <td className="p-3">{i + 1}</td>
                   <td className="p-3 font-medium">{cargo.nombre_cargo || cargo.nombre}</td>
@@ -186,7 +176,7 @@ function HomologacionView({ empresaId, onComplete }) {
         
         {cargos.length > 20 && (
           <p className="text-sm text-slate-500 mt-2">
-            Y {cargos.length - 20} más...
+            {cargos.length} cargos cargados
           </p>
         )}
 

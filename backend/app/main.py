@@ -546,30 +546,66 @@ def list_empresas(db: Session = Depends(get_db), current_user: User = Depends(ge
     ]
 
 
-# Ejecutar homologación
 @app.post("/homologacion/ejecutar")
 def ejecutar_homologacion(
-    empresa_id: int,
+    upload_id: int,
     criterios: dict = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Ejecutar homologación para todos los cargos de una empresa"""
-    
-    # Validar API key
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="ANTHROPIC_API_KEY no configurada"
-        )
+    """Ejecutar homologación para todos los cargos de un upload (usa modelo Cargo legacy)"""
     
     criterios = criterios or {}
-    resultados = homologar_lote(db, empresa_id, criterios)
+    
+    # Obtener todos los cargos del upload
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    print(f"=== Ejecutando homologación para {len(cargos)} cargos (upload {upload_id}) ===")
+    
+    # Obtener master_cargos para búsqueda exacta
+    from ..models import MasterDescription
+    masters = db.query(MasterDescription).all()
+    print(f"=== Master descriptions disponibles: {len(masters)} ===")
+    
+    # Convertir a dict para búsqueda rápida
+    master_dict = {m.nombre_cargo.upper().strip(): m for m in masters}
+    
+    results = []
+    matched = 0
+    not_matched = 0
+    
+    for cargo in cargos:
+        nombre_busqueda = cargo.nombre_cargo.upper().strip()
+        
+        # Buscar coincidencia exacta en master
+        master = master_dict.get(nombre_busqueda)
+        
+        if master:
+            # Actualizar homologación existente o crear nueva
+            homo = cargo.homologacion
+            if homo:
+                homo.cargo_homologado = master.nombre_cargo
+                homo.justificacion = f"Coincidencia exacta en base maestra (área: {master.area})"
+            else:
+                homo = Homologacion(cargo_id=cargo.id, cargo_homologado=master.nombre_cargo, 
+                                    justificacion=f"Coincidencia exacta en base maestra (área: {master.area})")
+                db.add(homo)
+            
+            cargo.estado = "HOMOLOGADO"
+            matched += 1
+            results.append({"cargo": cargo.nombre_cargo, "status": "MATCHED", "master": master.nombre_cargo})
+        else:
+            cargo.estado = "SIN_COINCIDENCIA"
+            not_matched += 1
+            results.append({"cargo": cargo.nombre_cargo, "status": "NOT_FOUND"})
+    
+    db.commit()
+    print(f"=== Homologación completa: {matched} coincidencia(s), {not_matched} sin coincidir ===")
     
     return {
-        "mensaje": f"Se procesaron {len(resultados)} cargos",
-        "resultados": len(resultados)
+        "mensaje": f"Se procesaron {len(cargos)} cargos",
+        "matched": matched,
+        "not_matched": not_matched,
+        "upload_id": upload_id
     }
 
 
