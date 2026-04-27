@@ -2,11 +2,15 @@ from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, B
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from .database import get_db, engine, Base
-from .models import User, Upload, Cargo, Homologacion, JobStatus, ProcessingLog
+from .models import User, Upload, Cargo, Homologacion, JobStatus, ProcessingLog, Empresa, CargoEmpresa, ValoracionCargo
 from .auth import get_password_hash, create_access_token, verify_password, get_current_user
 from .services.excel_processor import process_requirements_excel
 from .services.master_data import process_master_excel
 from .services.matcher import start_batch_processing
+from .services.excel_formulario_service import procesar_excel_formulario, guardar_en_db
+from .services.homologacion_service import homologar_cargo, homologar_lote, obtener_criterios, guardar_criterios
+from .services.valoracion_service import valorar_cargo, valorar_lote, resumen_valoracion
+from .services.analisis_service import calcular_curvas_equidad, analizar_equidad, calcular_nivelacion, reporte_consolidado
 import os
 import shutil
 from typing import List
@@ -408,3 +412,191 @@ def n8n_valoracion_webhook(data: dict, db: Session = Depends(get_db)):
 @app.get("/descargar/{upload_id}")
 def download_excel(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return export_to_excel(upload_id, db)
+
+
+# ==========================================
+# NUEVOS ENDPOINTS PARA PROCESO COMPLETO
+# ==========================================
+
+# Endpoint para cargar Excel de Requerimientos
+@app.post("/procesar/formulario")
+async def procesar_formulario(
+    empresa: str = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Cargar archivo Excel de Requerimientos y procesar"""
+    
+    # Validar API key
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY no configurada en el servidor"
+        )
+    
+    # Crear empresa
+    empresa_obj = Empresa(
+        user_id=current_user.id,
+        nombre_empresa=empresa.upper()
+    )
+    db.add(empresa_obj)
+    db.commit()
+    db.refresh(empresa_obj)
+    
+    # Guardar archivo temporal
+    temp_path = os.path.join("/tmp", f"formulario_{empresa_obj.id}_{file.filename}")
+    try:
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Procesar Excel
+        datos = procesar_excel_formulario(temp_path)
+        
+        # Guardar en DB
+        resultados = guardar_en_db(db, empresa_obj.id, datos)
+        
+        return {
+            "empresa_id": empresa_obj.id,
+            "mensaje": "Archivo procesado exitosamente",
+            "datos": resultados
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+
+
+# Obtener empresa con todos sus datos
+@app.get("/empresas/{empresa_id}")
+def get_empresa(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Obtener empresa con todos sus datos"""
+    
+    empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    
+    # Obtener cargos
+    cargos = db.query(CargoEmpresa).filter(CargoEmpresa.empresa_id == empresa_id).all()
+    
+    return {
+        "id": empresa.id,
+        "nombre_empresa": empresa.nombre_empresa,
+        "nit": empresa.nit,
+        "razon_social": empresa.razon_social,
+        "direccion": empresa.direccion,
+        "telefono": empresa.telefono,
+        "departamento": empresa.departamento,
+        "ciudad": empresa.ciudad,
+        "sector_economico": empresa.sector_economico,
+        "tipo_empresa": empresa.tipo_empresa,
+        "num_personas_contratadas": empresa.num_personas_contratadas,
+        "cargos": [
+            {
+                "id": c.id,
+                "nombre_cargo": c.nombre_cargo,
+                "area": c.area,
+                "num_personas": c.num_personas,
+                "basico": c.basico,
+                "modalidad": c.modalidad,
+                "estado": c.estado,
+                "homologado": c.homologado,
+            }
+            for c in cargos
+        ]
+    }
+
+
+# Obtener lista de empresas
+@app.get("/empresas")
+def list_empresas(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Listar todas las empresas"""
+    empresas = db.query(Empresa).all()
+    return [
+        {
+            "id": e.id,
+            "nombre_empresa": e.nombre_empresa,
+            "nit": e.nit,
+            "ciudad": e.ciudad,
+        }
+        for e in empresas
+    ]
+
+
+# Ejecutar homologación
+@app.post("/homologacion/ejecutar")
+def ejecutar_homologacion(
+    empresa_id: int,
+    criterios: dict = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Ejecutar homologación para todos los cargos de una empresa"""
+    
+    # Validar API key
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY no configurada"
+        )
+    
+    criterios = criterios or {}
+    resultados = homologar_lote(db, empresa_id, criterios)
+    
+    return {
+        "mensaje": f"Se procesaron {len(resultados)} cargos",
+        "resultados": len(resultados)
+    }
+
+
+# Ejecutar evaluación
+@app.post("/valoracion/ejecutar")
+def ejecutar_valoracion(
+    empresa_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Ejecutar evaluación de 12 factores para todos los cargos"""
+    
+    resultados = valorar_lote(db, empresa_id)
+    
+    return {
+        "mensaje": f"Se valoraron {len(resultados)} cargos",
+        "resultados": len(resultados)
+    }
+
+
+# Análisis - Curvas
+@app.post("/analisis/curvas/{empresa_id}")
+def generar_curvas(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Generar curvas de equidad"""
+    curvas = calcular_curvas_equidad(db, empresa_id)
+    return {"curvas_generadas": len(curvas)}
+
+
+# Análisis - Equidad
+@app.get("/analisis/equidad/{empresa_id}")
+def get_equidad(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Obtener análisis de equidad"""
+    return analizar_equidad(db, empresa_id)
+
+
+# Análisis - Nivelación
+@app.get("/analisis/nivelacion/{empresa_id}")
+def get_nivelacion(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Obtener costos de nivelación"""
+    return calcular_nivelacion(db, empresa_id)
+
+
+# Reporte consolidado
+@app.get("/analisis/reporte/{empresa_id}")
+def get_reporte(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Obtener reporte consolidado"""
+    return reporte_consolidado(db, empresa_id)

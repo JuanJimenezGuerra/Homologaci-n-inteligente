@@ -501,3 +501,76 @@ class Upload(Base):
     
     empresa_rel = relationship("Empresa", back_populates="uploads")
     cargos = relationship("Cargo", back_populates="upload")
+
+
+# ==========================================
+# CLASES DE BACKWARDS COMPATIBILITY
+# ==========================================
+
+class Cargo(Base):
+    __tablename__ = "cargos"
+    id = Column(Integer, primary_key=True, index=True)
+    upload_id = Column(Integer, ForeignKey("uploads.id"))
+    nombre_cargo = Column(String)
+    area = Column(String)
+    descripcion_empresa = Column(Text, nullable=True)
+    estado = Column(String, default="PENDIENTE")
+    
+    upload = relationship("Upload", back_populates="cargos")
+    homologacion = relationship("Homologacion", back_populates="cargo", uselist=False)
+
+class Homologacion(Base):
+    __tablename__ = "homologaciones"
+    id = Column(Integer, primary_key=True, index=True)
+    cargo_id = Column(Integer, ForeignKey("cargos.id"))
+    cargo_homologado = Column(String)
+    justificacion = Column(Text, nullable=True)
+    datos_excel = Column(JSON, nullable=True)
+    editado_manual = Column(Boolean, default=False)
+    
+    cargo = relationship("Cargo", back_populates="homologacion")
+
+class MasterDescription(Base):
+    __tablename__ = "master_descriptions"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre_cargo = Column(String, index=True)
+    descripcion = Column(Text)
+    area = Column(String)
+
+class Valoracion(Base):
+    __tablename__ = "valoraciones"
+    id = Column(Integer, primary_key=True, index=True)
+    cargo_id = Column(Integer, ForeignKey("cargos.id"))
+    conocimientos = Column(String, nullable=True)
+    experiencia = Column(String, nullable=True)
+    habilidad_gerencial = Column(String, nullable=True)
+    rol_cargo = Column(String, nullable=True)
+    contacto = Column(String, nullable=True)
+    frecuencia = Column(String, nullable=True)
+    contenido_relaciones = Column(String, nullable=True)
+    complejidad_conceptual = Column(String, nullable=True)
+    tendencia_cc = Column(String, nullable=True)
+    guias_apoyo = Column(String, nullable=True)
+    tendencia_ga = Column(String, nullable=True)
+    impacto = Column(String, nullable=True)
+    autonomia = Column(String, nullable=True)
+    magnitud = Column(String, nullable=True)
+    criterio_1 = Column(Integer, default=0)
+    criterio_2 = Column(Integer, default=0)
+    criterio_3 = Column(Integer, default=0)
+    creado_manual = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    cargo = relationship("Cargo", back_populates="valoracion")
+
+Cargo.valoracion = relationship("Valoracion", back_populates="cargo", uselist=False)
+
+class ProcessingLog(Base):
+    __tablename__ = "processing_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    upload_id = Column(Integer, ForeignKey("uploads.id"))
+    cargo_id = Column(Integer, ForeignKey("cargos.id"), nullable=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    level = Column(String)
+    message = Column(Text)
+    raw_response = Column(Text, nullable=True)
