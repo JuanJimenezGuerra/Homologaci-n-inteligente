@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link2, Play, Loader, Users, AlertCircle } from 'lucide-react';
+import { Link2, Play, Loader, Users, AlertCircle, Settings } from 'lucide-react';
 
 const API = 'https://shr-backend-prod.onrender.com';
 
