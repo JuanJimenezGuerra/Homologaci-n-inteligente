@@ -169,7 +169,9 @@ def list_uploads(db: Session = Depends(get_db), current_user: User = Depends(get
 
 @app.get("/uploads/{upload_id}/cargos")
 def list_cargos(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    print(f"=== list_cargos called with upload_id: {upload_id} ===")
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    print(f"Found {len(cargos)} cargos for upload_id {upload_id}")
     result = []
     for c in cargos:
         homo = c.homologacion
@@ -186,6 +188,7 @@ def list_cargos(upload_id: int, db: Session = Depends(get_db), current_user: Use
                 "datos_excel": homo.datos_excel if homo else {},
             } if homo else None
         })
+    print(f"Returning {len(result)} cargos")
     return result
 
 @app.put("/homologacion/{cargo_id}")
