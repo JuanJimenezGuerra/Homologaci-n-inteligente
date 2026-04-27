@@ -586,13 +586,15 @@ def ejecutar_homologacion(
             if master:
                 homo = cargo.homologacion
                 if homo:
+                    # Preservar el cargo original si existe
+                    cargo_original = cargo.nombre_cargo
                     homo.cargo_homologado = master["nombre"]
-                    homo.justificacion = f"Coincidencia en base maestra (área: {master['area']})"
+                    homo.justificacion = f"DB: {master['area']} | Original: {cargo_original}"
                 else:
                     homo = Homologacion(
                         cargo_id=cargo.id, 
                         cargo_homologado=master["nombre"], 
-                        justificacion=f"Coincidencia en base maestra (área: {master['area']})"
+                        justificacion=f"Coincidencia DB (área: {master['area']})"
                     )
                     db.add(homo)
                 
@@ -625,8 +627,10 @@ def ejecutar_homologacion(
                         if cargo_id:
                             cargo = next((c for c in sin_match if c.id == cargo_id), None)
                             if cargo:
+                                # Preservar cargo original y marcar como sugerencia IA
+                                cargo_original = cargo.nombre_cargo
                                 cargo.cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
-                                cargo.justificacion = res.get("justificacion", "Homologado por IA")
+                                cargo.justificacion = f"IA sugerencia | Original: {cargo_original} | Razon: {res.get('justificacion', '')}"
                                 cargo.estado = "HOMOLOGADO"
                     
                     db.commit()
