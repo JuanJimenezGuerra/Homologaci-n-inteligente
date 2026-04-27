@@ -121,9 +121,9 @@ def upload_requirements_file(empresa: str = Form(...), file: UploadFile = File(.
     print(f"empresa param: {empresa}")
     print(f"file: {file.filename}")
     print(f"user_id: {current_user.id}")
-    print(f"Columns in Upload: {Upload.__table__.columns.keys()}")
+    print(f"Columns in Upload (actual): {list(Upload.__table__.columns.keys())}")
     
-    # Create upload record
+    # Create upload record SIN empresa_id
     upload = Upload(
         user_id=current_user.id, 
         filename=file.filename, 
