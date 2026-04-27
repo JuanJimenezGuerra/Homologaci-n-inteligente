@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # PROCESO 4: ANÁLISIS Y CURVAS
 # ==========================================
 
-def calcular_curvas_equidad(db: Session, empresa_id: int) -> List[Curva]:
+def calcular_curvas_equidad(db: Session, empresa_id: int = None, upload_id: int = None) -> List[Curva]:
     """
     Calcular curvas de equidad por categoría.
     
@@ -22,23 +22,28 @@ def calcular_curvas_equidad(db: Session, empresa_id: int) -> List[Curva]:
     - Q3 (75%): Sobrepago
     """
     
-    # Obtener valoraciones con compensaciones
-    valoraciones = db.query(ValoracionCargo).join(CargoEmpresa).filter(
-        CargoEmpresa.empresa_id == empresa_id,
-        ValoracionCargo.g.isnot(None)
-    ).all()
+    from ..models import Valoracion, Cargo
     
-    if not valoraciones:
-        logger.warning(f"No hay valoraciones con datos para empresa {empresa_id}")
+    # Obtener valoraciones segun el modelo
+    if upload_id:
+        valoraciones = db.query(Valoracion).join(Cargo).filter(
+            Cargo.upload_id == upload_id,
+            Valoracion.g.isnot(None)
+        ).all()
+    elif empresa_id:
+        valoraciones = db.query(ValoracionCargo).join(CargoEmpresa).filter(
+            CargoEmpresa.empresa_id == empresa_id,
+            ValoracionCargo.g.isnot(None)
+        ).all()
+    else:
         return []
     
-    # Agrupar por categoría
-    por_categoria = {}
-    for v in valoraciones:
-        cat = v.categoria or 0
-        if cat not in por_categoria:
-            por_categoria[cat] = []
-        por_categoria[cat].append(v)
+    if not valoraciones:
+        logger.warning(f"No hay valoraciones con datos")
+        return []
+    
+    # Por ahora, agrupar todos juntos (sin categoria)
+    por_categoria = {0: valoraciones}
     
     # Calcular curvas por categoría
     curvas = []
@@ -47,8 +52,8 @@ def calcular_curvas_equidad(db: Session, empresa_id: int) -> List[Curva]:
             continue
         
         garantizados = sorted([v.g or 0 for v in vals if v.g])
-        g_v = sorted([v.g_v or 0 for v in vals if v.g_v])
-        ct = sorted([v.ct or 0 for v in vals if v.ct])
+        g_v = sorted([v.g_v or 0 for v in vals if hasattr(v, 'g_v') and v.g_v])
+        ct = sorted([v.ct or 0 for v in vals if hasattr(v, 'ct') and v.ct])
         
         n = len(garantizados)
         qi_idx = n // 4

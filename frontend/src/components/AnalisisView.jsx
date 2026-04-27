@@ -1,29 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart3, Download, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = 'https://shr-backend-prod.onrender.com';
 
-function AnalisisView({ empresaId, onBack }) {
+function AnalisisView({ empresaId: uploadId, onBack }) {
   const [reportes, setReportes] = useState({});
   const [activeReport, setActiveReport] = useState('equidad');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (empresaId) {
+    if (uploadId) {
       cargarReportes();
     }
-  }, [empresaId]);
+  }, [uploadId]);
 
   const cargarReportes = async () => {
     const token = localStorage.getItem('token');
     setLoading(true);
     
     try {
-      const res = await fetch(`${API}/analisis/reporte/${empresaId}`, {
+      const res = await fetch(`${API}/analisis/reporte/upload/${uploadId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
-      setReportes(data);
+      if (res.ok) {
+        const data = await res.json();
+        setReportes(data);
+      }
     } catch (e) {
       console.error('Error:', e);
     } finally {
@@ -36,7 +38,7 @@ function AnalisisView({ empresaId, onBack }) {
     setLoading(true);
     
     try {
-      await fetch(`${API}/analisis/curvas/${empresaId}`, {
+      await fetch(`${API}/analisis/curvas/upload/${uploadId}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -47,6 +49,9 @@ function AnalisisView({ empresaId, onBack }) {
       setLoading(false);
     }
   };
+
+  // Check if we have data
+  const tieneDatos = Object.keys(reportes).length > 0;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">

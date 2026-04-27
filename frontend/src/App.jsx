@@ -80,7 +80,7 @@ function App() {
       )}
       {activeTab === 'valoracion' && (
         <ValuacionView
-          empresaId={empresaId}
+          uploadData={empresaId}
           onComplete={handleValoracionCompleta}
           onBack={() => setActiveTab('homologacion')}
         />

@@ -631,30 +631,19 @@ def ejecutar_valoracion(
     }
 
 
-# Análisis - Curvas
-@app.post("/analisis/curvas/{empresa_id}")
-def generar_curvas(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Generar curvas de equidad"""
-    curvas = calcular_curvas_equidad(db, empresa_id)
+# Análisis - Curvas (para upload_id)
+@app.post("/analisis/curvas/upload/{upload_id}")
+def generar_curvas_upload(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Generar curvas de equidad para un upload"""
+    # Usar los cargos del upload
+    from .services.analisis_service import calcular_curvas_equidad
+    curvas = calcular_curvas_equidad(db, upload_id=upload_id)
     return {"curvas_generadas": len(curvas)}
 
 
-# Análisis - Equidad
-@app.get("/analisis/equidad/{empresa_id}")
-def get_equidad(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Obtener análisis de equidad"""
-    return analizar_equidad(db, empresa_id)
-
-
-# Análisis - Nivelación
-@app.get("/analisis/nivelacion/{empresa_id}")
-def get_nivelacion(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Obtener costos de nivelación"""
-    return calcular_nivelacion(db, empresa_id)
-
-
-# Reporte consolidado
-@app.get("/analisis/reporte/{empresa_id}")
-def get_reporte(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Obtener reporte consolidado"""
-    return reporte_consolidado(db, empresa_id)
+# Análisis - Reporte consolidado (para upload_id)
+@app.get("/analisis/reporte/upload/{upload_id}")
+def get_reporte_upload(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Obtener reporte consolidado para un upload"""
+    from .services.analisis_service import reporte_consolidado
+    return reporte_consolidado(db, upload_id=upload_id)
