@@ -8,12 +8,12 @@ import FormularioView from './components/FormularioView';
 import HomologacionView from './components/HomologacionView';
 import AnalisisView from './components/AnalisisView';
 
+const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
+
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [userEmail, setUserEmail] = useState(null);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [newUploadId, setNewUploadId] = useState(null);
-  const [valoracionUploadId, setValoracionUploadId] = useState(null);
+  const [activeTab, setActiveTab] = useState('formulario');
   const [empresaId, setEmpresaId] = useState(null);
 
   useEffect(() => {
@@ -22,7 +22,6 @@ function App() {
         const payload = JSON.parse(atob(token.split('.')[1]));
         setUserEmail(payload.sub || 'analista@shr.com');
       } catch {
-        // Token malformado — limpiar sesión
         localStorage.removeItem('token');
         setToken(null);
       }
@@ -39,24 +38,23 @@ function App() {
     localStorage.removeItem('token');
     setToken(null);
     setUserEmail(null);
-    setActiveTab('dashboard');
+    setActiveTab('formulario');
   };
 
-  const handleUploadSuccess = (uploadId) => {
-    setNewUploadId(uploadId);
-    setActiveTab('dashboard');
+  const handleEmpresaCreada = (empId) => {
+    setEmpresaId(empId);
+    setActiveTab('homologacion');
   };
 
-  const handleGoToValoracion = (uploadId) => {
-    setValoracionUploadId(uploadId);
+  const handleHomologacionCompleta = () => {
     setActiveTab('valoracion');
   };
 
-  const handleEmpresaSelect = (empId) => {
-    setEmpresaId(empId);
+  const handleValoracionCompleta = () => {
+    setActiveTab('analisis');
   };
 
-  // Guard: sin token → pantalla de login
+  // Guard: sin token → login
   if (!token) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
@@ -68,34 +66,22 @@ function App() {
       user={{ email: userEmail }}
       onLogout={handleLogout}
     >
-      {activeTab === 'dashboard' && (
-        <Dashboard
-          initialUploadId={newUploadId}
-          onUploadIdConsumed={() => setNewUploadId(null)}
-          onGoToValoracion={handleGoToValoracion}
-          onEmpresaSelect={handleEmpresaSelect}
-        />
-      )}
       {activeTab === 'formulario' && (
         <FormularioView
           empresaId={empresaId}
-          onEmpresaCreated={(id) => {
-            setEmpresaId(id);
-            setActiveTab('homologacion');
-          }}
+          onEmpresaCreated={handleEmpresaCreada}
         />
       )}
       {activeTab === 'homologacion' && (
         <HomologacionView
           empresaId={empresaId}
-          onComplete={() => setActiveTab('valoracion')}
+          onComplete={handleHomologacionCompleta}
         />
       )}
       {activeTab === 'valoracion' && (
         <ValuacionView
-          uploadData={valoracionUploadId}
           empresaId={empresaId}
-          onComplete={() => setActiveTab('analisis')}
+          onComplete={handleValoracionCompleta}
           onBack={() => setActiveTab('homologacion')}
         />
       )}
@@ -104,9 +90,6 @@ function App() {
           empresaId={empresaId}
           onBack={() => setActiveTab('valoracion')}
         />
-      )}
-      {activeTab === 'uploads' && (
-        <UploadView onSuccess={handleUploadSuccess} />
       )}
     </Layout>
   );

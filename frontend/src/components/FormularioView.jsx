@@ -1,379 +1,218 @@
-import React, { useState, useEffect } from 'react';
-import { Building2, Save, Upload, Plus, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Building2, Save, Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
 
 function FormularioView({ empresaId, onEmpresaCreated }) {
-  const [empresa, setEmpresa] = useState({
-    nombre_empresa: '',
-    razon_social: '',
-    nit: '',
-    direccion: '',
-    telefono: '',
-    departamento: '',
-    ciudad: '',
-    persona_contacto: '',
-    cargo_contacto: '',
-    telefono_contacto: '',
-    email_contacto: '',
-    sector_economico: '',
-    actividad_economica: '',
-    tipo_empresa: 'Privada',
-    num_personas_contratadas: 0,
-    empleados_presenciales: 0,
-  });
-
-  const [cargos, setCargos] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(1); // 1: empresa, 2: cargos
+  const [mensaje, setMensaje] = useState('');
+  const [error, setError] = useState('');
+  const [empresaNombre, setEmpresaNombre] = useState('');
+  const [file, setFile] = useState(null);
+  const [procesado, setProcesado] = useState(false);
+  const fileInputRef = useRef(null);
 
+  // Si ya tiene empresaId, cargar datos existentes
   useEffect(() => {
     if (empresaId) {
-      cargarDatos();
+      cargarDatosExistentes();
     }
   }, [empresaId]);
 
-  const cargarDatos = async () => {
-    if (!empresaId) return;
+  const cargarDatosExistentes = async () => {
     const token = localStorage.getItem('token');
-    
     try {
       const res = await fetch(`${API}/empresas/${empresaId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
-      setEmpresa(data);
+      if (res.ok) {
+        const data = await res.json();
+        setProcesado(true);
+        setEmpresaNombre(data.nombre_empresa);
+      }
     } catch (e) {
-      console.error('Error cargando empresa:', e);
+      console.error('Error:', e);
     }
   };
 
-  const guardarEmpresa = async () => {
-    const token = localStorage.getItem('token');
+  const handleFileChange = (e) => {
+    const selected = e.target.files[0];
+    if (selected) {
+      setFile(selected);
+      setError('');
+    }
+  };
+
+  const procesarExcel = async () => {
+    if (!file && !empresaNombre) {
+      setError('Selecciona un archivo Excel');
+      return;
+    }
+
+    const nombreEmpresa = empresaNombre.trim() || 'EMPRESA';
     setLoading(true);
-    
+    setError('');
+    setMensaje('Procesando archivo Excel...');
+
+    const formData = new FormData();
+    formData.append('empresa', nombreEmpresa);
+    if (file) {
+      formData.append('file', file);
+    }
+
+    const token = localStorage.getItem('token');
+
     try {
-      const method = empresaId ? 'PUT' : 'POST';
-      const url = empresaId ? `${API}/empresas/${empresaId}` : `${API}/empresas`;
-      
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(empresa),
+      const res = await fetch(`${API}/procesar/formulario`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
       });
-      
+
       const data = await res.json();
-      setStep(2);
-      onEmpresaCreated(data.id);
+
+      if (res.ok) {
+        setMensaje('Archivo procesado correctamente');
+        setProcesado(true);
+        onEmpresaCreated(data.empresa_id);
+      } else {
+        setError(data.detail || 'Error al procesar');
+      }
     } catch (e) {
-      console.error('Error guardando empresa:', e);
+      setError('Error de conexión: ' + e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const agregarCargo = () => {
-    setCargos([
-      ...cargos,
-      {
-        nombre_cargo: '',
-        area: '',
-        num_personas: 1,
-        descripcion: '',
-        basico: 0,
-        modalidad: 'Presencial',
-      },
-    ]);
-  };
-
-  const actualizarCargo = (index, campo, valor) => {
-    const nuevos = [...cargos];
-    nuevos[index][campo] = valor;
-    setCargos(nuevos);
-  };
-
-  const eliminarCargo = (index) => {
-    setCargos(cargos.filter((_, i) => i !== index));
-  };
+  // Si ya está procesado, mostrar resumen
+  if (procesado && empresaId) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+          <CheckCircle className="w-16 h-16 text-emerald-600 mx-auto mb-4" />
+          <h2 className="text-xl font-bold mb-2">Archivo Procesado</h2>
+          <p className="text-slate-600 mb-4">
+            Los datos de <strong>{empresaNombre}</strong> han sido cargados exitosamente
+          </p>
+          <div className="flex gap-3 justify-center mt-6">
+            <button
+              onClick={() => onEmpresaCreated(empresaId)}
+              className="btn-primary"
+            >
+              Ir a Homologación
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-6xl mx-auto">
-      {/* Progress */}
-      <div className="flex items-center gap-4 mb-8">
-        <div className={`px-4 py-2 rounded-full ${step >= 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>
-          1. Datos Empresa
-        </div>
-        <div className="flex-1 h-1 bg-slate-200">
-          <div className={`h-full bg-emerald-600 transition-all ${step >= 2 ? 'w-full' : 'w-0'}`} />
-        </div>
-        <div className={`px-4 py-2 rounded-full ${step >= 2 ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>
-          2. Cargos
+    <div className="max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+        <div className="flex items-center gap-3 mb-4">
+          <FileSpreadsheet className="text-emerald-600 w-8 h-8" />
+          <div>
+            <h2 className="text-xl font-bold">1. Cargar Archivo de Requerimientos</h2>
+            <p className="text-sm text-slate-500">Sube el Excel del formulario de requerimientos</p>
+          </div>
         </div>
       </div>
 
-      {step === 1 && (
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <Building2 className="text-emerald-600" size={24} />
-            <h2 className="text-xl font-bold">Datos de la Empresa</h2>
+      {/* Formulario de carga */}
+      <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="space-y-6">
+          {/* Nombre empresa */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Nombre de la Empresa *
+            </label>
+            <input
+              type="text"
+              className="input-field"
+              value={empresaNombre}
+              onChange={(e) => setEmpresaNombre(e.target.value)}
+              placeholder="Ej: EXTRUSIONES S.A."
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Empresa *</label>
-              <input
-                type="text"
-                className="input-field"
-                value={empresa.nombre_empresa}
-                onChange={(e) => setEmpresa({ ...empresa, nombre_empresa: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">NIT</label>
-              <input
-                type="text"
-                className="input-field"
-                value={empresa.nit}
-                onChange={(e) => setEmpresa({ ...empresa, nit: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Razón Social</label>
-              <input
-                type="text"
-                className="input-field"
-                value={empresa.razon_social}
-                onChange={(e) => setEmpresa({ ...empresa, razon_social: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Dirección</label>
-              <input
-                type="text"
-                className="input-field"
-                value={empresa.direccion}
-                onChange={(e) => setEmpresa({ ...empresa, direccion: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
-              <input
-                type="text"
-                className="input-field"
-                value={empresa.telefono}
-                onChange={(e) => setEmpresa({ ...empresa, telefono: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Departamento</label>
-              <input
-                type="text"
-                className="input-field"
-                value={empresa.departamento}
-                onChange={(e) => setEmpresa({ ...empresa, departamento: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Ciudad</label>
-              <input
-                type="text"
-                className="input-field"
-                value={empresa.ciudad}
-                onChange={(e) => setEmpresa({ ...empresa, ciudad: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Sector Económico</label>
-              <select
-                className="input-field"
-                value={empresa.sector_economico}
-                onChange={(e) => setEmpresa({ ...empresa, sector_economico: e.target.value })}
-              >
-                <option value="">Seleccionar...</option>
-                <option value="Industria y Manufactura">Industria y Manufactura</option>
-                <option value="Comercio">Comercio</option>
-                <option value="Servicios">Servicios</option>
-                <option value="Tecnología">Tecnología</option>
-                <option value="Financiero">Financiero</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Persona Contacto</label>
-              <input
-                type="text"
-                className="input-field"
-                value={empresa.persona_contacto}
-                onChange={(e) => setEmpresa({ ...empresa, persona_contacto: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Cargo Contacto</label>
-              <input
-                type="text"
-                className="input-field"
-                value={empresa.cargo_contacto}
-                onChange={(e) => setEmpresa({ ...empresa, cargo_contacto: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email Contacto</label>
-              <input
-                type="email"
-                className="input-field"
-                value={empresa.email_contacto}
-                onChange={(e) => setEmpresa({ ...empresa, email_contacto: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Tipo Empresa</label>
-              <select
-                className="input-field"
-                value={empresa.tipo_empresa}
-                onChange={(e) => setEmpresa({ ...empresa, tipo_empresa: e.target.value })}
-              >
-                <option value="Privada">Privada</option>
-                <option value="Pública">Pública</option>
-                <option value="Mixta">Mixta</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1"># Personas Contratadas</label>
-              <input
-                type="number"
-                className="input-field"
-                value={empresa.num_personas_contratadas}
-                onChange={(e) => setEmpresa({ ...empresa, num_personas_contratadas: parseInt(e.target.value) || 0 })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Tipo Empresa</label>
-              <input
-                type="number"
-                className="input-field"
-                value={empresa.empleados_presenciales}
-                onChange={(e) => setEmpresa({ ...empresa, empleados_presenciales: parseInt(e.target.value) || 0 })}
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end mt-6">
-            <button
-              onClick={guardarEmpresa}
-              disabled={loading || !empresa.nombre_empresa}
-              className="btn-primary"
+          {/* Upload Excel */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Archivo Excel de Requerimientos
+            </label>
+            <div
+              className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-emerald-500 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
             >
-              <Save size={18} />
-              {loading ? 'Guardando...' : 'Continuar'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === 2 && (
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <Users className="text-emerald-600" size={24} />
-              <h2 className="text-xl font-bold">Información por Cargo</h2>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              {file ? (
+                <div className="flex items-center justify-center gap-2 text-emerald-600">
+                  <FileSpreadsheet className="w-8 h-8" />
+                  <span className="font-medium">{file.name}</span>
+                </div>
+              ) : (
+                <div className="text-slate-500">
+                  <Upload className="w-8 h-8 mx-auto mb-2" />
+                  <p>Haz clic para seleccionar el archivo</p>
+                  <p className="text-xs mt-1">Formatos: .xlsx, .xls</p>
+                </div>
+              )}
             </div>
-            <button onClick={agregarCargo} className="btn-secondary">
-              <Plus size={18} /> Agregar Cargo
-            </button>
           </div>
 
-          {cargos.length === 0 ? (
-            <div className="text-center py-12 text-slate-500">
-              <p>No hay cargos agregados</p>
-              <button onClick={agregarCargo} className="btn-primary mt-4">
-                <Plus size={18} /> Agregar Primer Cargo
-              </button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-slate-50">
-                    <th className="text-left p-3">#</th>
-                    <th className="text-left p-3">Nombre Cargo *</th>
-                    <th className="text-left p-3">Área</th>
-                    <th className="text-left p-3">Personas</th>
-                    <th className="text-left p-3">Modalidad</th>
-                    <th className="text-left p-3">Básico</th>
-                    <th className="text-left p-3">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cargos.map((cargo, i) => (
-                    <tr key={i} className="border-t">
-                      <td className="p-3">{i + 1}</td>
-                      <td className="p-3">
-                        <input
-                          type="text"
-                          className="input-field"
-                          value={cargo.nombre_cargo}
-                          onChange={(e) => actualizarCargo(i, 'nombre_cargo', e.target.value)}
-                        />
-                      </td>
-                      <td className="p-3">
-                        <input
-                          type="text"
-                          className="input-field"
-                          value={cargo.area}
-                          onChange={(e) => actualizarCargo(i, 'area', e.target.value)}
-                        />
-                      </td>
-                      <td className="p-3 w-20">
-                        <input
-                          type="number"
-                          className="input-field"
-                          value={cargo.num_personas}
-                          onChange={(e) => actualizarCargo(i, 'num_personas', parseInt(e.target.value) || 0)}
-                        />
-                      </td>
-                      <td className="p-3">
-                        <select
-                          className="input-field"
-                          value={cargo.modalidad}
-                          onChange={(e) => actualizarCargo(i, 'modalidad', e.target.value)}
-                        >
-                          <option value="Presencial">Presencial</option>
-                          <option value="Híbrido">Híbrido</option>
-                          <option value="Remoto">Remoto</option>
-                        </select>
-                      </td>
-                      <td className="p-3">
-                        <input
-                          type="number"
-                          className="input-field"
-                          value={cargo.basico}
-                          onChange={(e) => actualizarCargo(i, 'basico', parseInt(e.target.value) || 0)}
-                        />
-                      </td>
-                      <td className="p-3">
-                        <button onClick={() => eliminarCargo(i)} className="text-red-500 hover:text-red-700">
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Mensajes */}
+          {mensaje && (
+            <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 p-3 rounded-lg">
+              <Loader className="w-5 h-5 animate-spin" />
+              <span>{mensaje}</span>
             </div>
           )}
 
-          <div className="flex justify-between mt-6">
-            <button onClick={() => setStep(1)} className="btn-secondary">
-              Volver
-            </button>
-            <button onClick={() => {}} className="btn-primary">
-              <Save size={18} /> Guardar y Continuar a Homologación
-            </button>
-          </div>
+          {error && (
+            <div className="flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg">
+              <AlertCircle className="w-5 h-5" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Botón procesar */}
+          <button
+            onClick={procesarExcel}
+            disabled={loading || (!file && !empresaNombre)}
+            className="btn-primary w-full justify-center"
+          >
+            {loading ? (
+              <>
+                <Loader className="w-5 h-5 animate-spin mr-2" />
+                Procesando...
+              </>
+            ) : (
+              <>
+              <Building2 className="w-5 h-5 mr-2" />
+              Procesar Archivo
+            </>
+          )}
         </div>
-      )}
+      </div>
+
+      {/* Info help */}
+      <div className="mt-6 bg-blue-50 rounded-xl p-4 text-sm text-blue-800">
+        <p><strong>Nota:</strong> El archivo Excel debe contener las pestañas:</p>
+        <ul className="mt-2 list-disc list-inside space-y-1">
+          <li>Datos Generales - Información de la empresa</li>
+          <li>Prácticas de Compensación - Políticas y primas</li>
+          <li>Información por Cargo - Lista de cargos con compensaciones</li>
+        </ul>
+      </div>
     </div>
   );
 }

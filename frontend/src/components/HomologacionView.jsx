@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Link2, Settings, Play, CheckCircle, AlertCircle, User, Briefcase } from 'lucide-react';
+import { Link2, Settings, Play, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
 
 function HomologacionView({ empresaId, onComplete }) {
   const [criterios, setCriterios] = useState({
@@ -14,6 +14,7 @@ function HomologacionView({ empresaId, onComplete }) {
   const [homologaciones, setHomologaciones] = useState({});
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(true);
+  const [procesado, setProcesado] = useState(false);
 
   useEffect(() => {
     if (empresaId) {
@@ -24,11 +25,17 @@ function HomologacionView({ empresaId, onComplete }) {
   const cargarCargos = async () => {
     const token = localStorage.getItem('token');
     try {
-      const res = await fetch(`${API}/empresas/${empresaId}/cargos`, {
+      const res = await fetch(`${API}/empresas/${empresaId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setCargos(data);
+      setCargos(data.cargos || []);
+      
+      // Verificar si ya están homologados
+      const homologados = (data.cargos || []).filter(c => c.homologado);
+      if (homologados.length > 0) {
+        setProcesado(true);
+      }
     } catch (e) {
       console.error('Error:', e);
     }
@@ -39,13 +46,13 @@ function HomologacionView({ empresaId, onComplete }) {
     setLoading(true);
     
     try {
-      const res = await fetch(`${API}/homologacion/ejecutar`, {
+      const res = await fetch(`${API}/homologacion/ejecutar?empresa_id=${empresaId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ empresa_id: empresaId, criterios }),
+        body: JSON.stringify(criterios),
       });
       
       await cargarCargos();
