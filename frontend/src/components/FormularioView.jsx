@@ -77,42 +77,50 @@ function CargaPrincipal({ onSuccess }) {
 
     setLoading(true);
     setError('');
-    setMensaje('Procesando...');
+    setMensaje('Procesando Excel de requerimientos...');
 
     const formData = new FormData();
-    formData.append('file', excelFile);
     formData.append('empresa', empresa.trim().toUpperCase());
+    formData.append('file', excelFile, excelFile.name);
 
     const token = localStorage.getItem('token');
 
     try {
       const res = await fetch(`${API}/uploads/requirements`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+        },
         body: formData,
       });
 
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (e) {
+        console.log('Response text:', await res.text());
+      }
 
       if (res.ok) {
-        const uploadId = data.upload_id;
-
+        setMensaje('Procesando archivos adicionales...');
+        
         if (pdfFiles.length > 0) {
-          setMensaje('Subiendo PDFs...');
           const pdfData = new FormData();
           pdfFiles.forEach(f => pdfData.append('files', f));
-          await fetch(`${API}/uploads/${uploadId}/manuales`, {
+          await fetch(`${API}/uploads/${data.upload_id}/manuales`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { 'Authorization': `Bearer ${token}` },
             body: pdfData,
           });
         }
 
-        onSuccess(uploadId);
+        setMensaje('Completado!');
+        onSuccess(data.upload_id);
       } else {
-        setError(data.detail || 'Error al procesar');
+        setError(data.detail || `Error ${res.status}`);
       }
     } catch (e) {
+      console.error('Error upload:', e);
       setError('Error: ' + e.message);
     } finally {
       setLoading(false);
