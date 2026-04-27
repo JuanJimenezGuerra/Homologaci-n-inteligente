@@ -640,20 +640,6 @@ def ejecutar_homologacion(
             "not_matched": not_matched - len(ia_resultados),
             "upload_id": upload_id
         }
-                matched += 1
-            else:
-                cargo.estado = "SIN_COINCIDENCIA"
-                not_matched += 1
-        
-        db.commit()
-        print(f"=== Homologación completa: {matched} coincidencia(s), {not_matched} sin coincidir ===")
-        
-        return {
-            "mensaje": f"Se procesaron {len(cargos)} cargos",
-            "matched": matched,
-            "not_matched": not_matched,
-            "upload_id": upload_id
-        }
     except Exception as e:
         print(f"=== ERROR en homologacion: {str(e)} ===")
         raise HTTPException(status_code=500, detail=str(e))

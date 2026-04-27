@@ -12,7 +12,7 @@ from ..models import Cargo, Homologacion, ProcessingLog, MasterDescription, Uplo
 logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
 
 def get_master_descriptions(db: Session):
