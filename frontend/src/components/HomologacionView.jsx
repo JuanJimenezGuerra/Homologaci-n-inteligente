@@ -64,6 +64,8 @@ function HomologacionView({ empresaId, onComplete }) {
     setError('');
     setMensaje('Procesando homologación...');
     
+    console.log('=== ejecutarHomologacion called, empresaId:', empresaId);
+    
     try {
       // Usar upload_id (que es empresaId en props)
       const res = await fetch(`${API}/homologacion/ejecutar?upload_id=${empresaId}`, {
@@ -75,13 +77,16 @@ function HomologacionView({ empresaId, onComplete }) {
         body: JSON.stringify(criterios),
       });
       
+      console.log('homologacion response:', res.status);
+      
       if (res.ok) {
         const data = await res.json();
+        console.log('homologacion data:', data);
         setMensaje(`Homologación completada: ${data.matched} coincidencia(s), ${data.not_matched} sin encontrar`);
         await cargarCargos();
       } else {
-        const data = await res.json();
-        setError(data.detail || 'Error al procesar');
+        const text = await res.text();
+        setError(`Error ${res.status}: ${text.slice(0, 100)}`);
       }
     } catch (e) {
       setError('Error: ' + e.message);
