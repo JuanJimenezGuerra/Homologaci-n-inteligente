@@ -51,7 +51,6 @@ class Empresa(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    uploads = relationship("Upload", back_populates="empresa")
     practicas = relationship("PracticaCompensacion", back_populates="empresa")
     cargos_empresa = relationship("CargoEmpresa", back_populates="empresa")
 
@@ -499,7 +498,6 @@ class Upload(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String, default="pendiente")
     
-    empresa_rel = relationship("Empresa", back_populates="uploads")
     cargos = relationship("Cargo", back_populates="upload")
 
 
