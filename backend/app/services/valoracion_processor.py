@@ -42,7 +42,8 @@ def _process_with_n8n(upload_id: int, cargos: list, db: Session):
     
     try:
         # Llamar al webhook de n8n para valoración
-        requests.post(N8N_WEBHOOK_URL + "/valoracion", json=payload, timeout=10)
+        webhook_url = N8N_WEBHOOK_URL if N8N_WEBHOOK_URL.endswith("/valoracion") or N8N_WEBHOOK_URL.endswith("/homologar") else f"{N8N_WEBHOOK_URL}/valoracion"
+        requests.post(webhook_url, json=payload, timeout=10)
         # n8n procesará y devolverá los resultados al webhook /webhook/n8n-valoracion
     except Exception as e:
         print(f"Error llamando a n8n para valoración: {e}")

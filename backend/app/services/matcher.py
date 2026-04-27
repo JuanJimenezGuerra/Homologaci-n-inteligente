@@ -133,8 +133,9 @@ def homologar_lote_con_n8n(cargos_batch: list, masters: list) -> list:
     }
     
     try:
+        webhook_url = N8N_WEBHOOK_URL if N8N_WEBHOOK_URL.endswith("/homologar") else f"{N8N_WEBHOOK_URL}/homologar"
         response = requests.post(
-            f"{N8N_WEBHOOK_URL}/homologar",
+            webhook_url,
             json=payload,
             timeout=120
         )
