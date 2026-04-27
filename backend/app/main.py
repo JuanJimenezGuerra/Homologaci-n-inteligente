@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from .database import get_db, engine, Base
@@ -112,8 +112,6 @@ def upload_master_file(file: UploadFile = File(...), db: Session = Depends(get_d
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-
-from fastapi import Form
 
 @app.post("/uploads/requirements")
 def upload_requirements_file(empresa: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
