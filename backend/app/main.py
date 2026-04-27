@@ -546,16 +546,17 @@ def list_empresas(db: Session = Depends(get_db), current_user: User = Depends(ge
     ]
 
 
-from fastapi import Query
+from .services.matcher import find_exact_match
 
 @app.post("/homologacion/ejecutar")
 def ejecutar_homologacion(
     upload_id: int = Query(..., description="Upload ID"),
+    usar_ia: bool = Query(False, description="Usar Anthropic para los no encontrados"),
     criterios: dict = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Ejecutar homologación para todos los cargos de un upload (usa modelo Cargo legacy)"""
+    """Ejecutar homologación para todos los cargos de un upload"""
     print(f"=== /homologacion/ejecutar called with upload_id={upload_id} ===")
     
     try:
@@ -565,41 +566,39 @@ def ejecutar_homologacion(
         cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
         print(f"=== Ejecutando homologación para {len(cargos)} cargos (upload {upload_id}) ===")
         
-        # Obtener master_cargos para búsqueda exacta (ya importado al inicio)
+        # Obtener master_descriptions para búsqueda
         masters = db.query(MasterDescription).all()
-        print(f"=== Master descriptions disponibles: {len(masters)} ===")
+        masters_list = [{"nombre": m.nombre_cargo, "descripcion": m.descripcion, "area": m.area} for m in masters]
+        print(f"=== Master descriptions disponibles: {len(masters_list)} ===")
         
-        # Convertir a dict para búsqueda rápida
-        master_dict = {m.nombre_cargo.upper().strip(): m for m in masters}
-        
-        results = []
         matched = 0
         not_matched = 0
+        fuzzy_matched = 0
         
         for cargo in cargos:
-            nombre_busqueda = cargo.nombre_cargo.upper().strip()
+            nombre_cargo = cargo.nombre_cargo
             
-            # Buscar coincidencia exacta en master
-            master = master_dict.get(nombre_busqueda)
+            # Buscar con lógica mejorada (exacta + fuzzy + substring)
+            master = find_exact_match(nombre_cargo, masters_list)
             
             if master:
-                # Actualizar homologación existente o crear nueva
                 homo = cargo.homologacion
                 if homo:
-                    homo.cargo_homologado = master.nombre_cargo
-                    homo.justificacion = f"Coincidencia exacta en base maestra (área: {master.area})"
+                    homo.cargo_homologado = master["nombre"]
+                    homo.justificacion = f"Coincidencia en base maestra (área: {master['area']})"
                 else:
-                    homo = Homologacion(cargo_id=cargo.id, cargo_homologado=master.nombre_cargo, 
-                                        justificacion=f"Coincidencia exacta en base maestra (área: {master.area})")
+                    homo = Homologacion(
+                        cargo_id=cargo.id, 
+                        cargo_homologado=master["nombre"], 
+                        justificacion=f"Coincidencia en base maestra (área: {master['area']})"
+                    )
                     db.add(homo)
                 
                 cargo.estado = "HOMOLOGADO"
                 matched += 1
-                results.append({"cargo": cargo.nombre_cargo, "status": "MATCHED", "master": master.nombre_cargo})
             else:
                 cargo.estado = "SIN_COINCIDENCIA"
                 not_matched += 1
-                results.append({"cargo": cargo.nombre_cargo, "status": "NOT_FOUND"})
         
         db.commit()
         print(f"=== Homologación completa: {matched} coincidencia(s), {not_matched} sin coincidir ===")
