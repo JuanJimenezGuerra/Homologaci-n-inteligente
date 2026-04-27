@@ -20,6 +20,7 @@ function FormularioView({ empresaId, onEmpresaCreated }) {
 
   // Si ya tiene empresaId, cargar estado
   useEffect(() => {
+    console.log('FormularioView mounted, empresaId:', empresaId);
     if (empresaId) {
       cargarDatos();
     }
@@ -111,7 +112,9 @@ function FormularioView({ empresaId, onEmpresaCreated }) {
         setError(data.detail || 'Error al procesar Excel');
       }
     } catch (e) {
-      setError('Error de conexión: ' + e.message);
+      console.error('Error completo:', e);
+      const msg = e.response?.data?.detail || e.message || 'Error de conexión';
+      setError(msg);
     } finally {
       setLoading(false);
     }
