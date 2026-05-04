@@ -354,6 +354,14 @@ const fetchCargosFromUpload = async (uploadId) => {
   return res.json();
 };
 
+const fetchValoracionesFromUpload = async (uploadId) => {
+  const res = await fetch(`${API_BASE}/uploads/${uploadId}/valoraciones`, {
+    headers: { Authorization: `Bearer ${getToken()}` }
+  });
+  if (!res.ok) throw new Error('Error fetching valoraciones');
+  return res.json();
+};
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 const ValuacionView = ({ uploadData }) => {
@@ -402,6 +410,34 @@ const ValuacionView = ({ uploadData }) => {
     loadCargos();
   }, [uploadData]);
 
+  // Cargar valoraciones existentes del backend
+  useEffect(() => {
+    const loadValoraciones = async () => {
+      const uploadId = Number(uploadData);
+      if (uploadId && !isNaN(uploadId)) {
+        try {
+          const vals = await fetchValoracionesFromUpload(uploadId);
+          const map = {};
+          vals.forEach(v => {
+            if (v.valoracion) {
+              map[v.id] = v.valoracion;
+            }
+          });
+          setValoraciones(map);
+          try { localStorage.setItem('shr_valoraciones', JSON.stringify(map)); } catch {}
+        } catch {
+          // Fallback a localStorage
+          try {
+            const saved = localStorage.getItem('shr_valoraciones');
+            if (saved) setValoraciones(JSON.parse(saved));
+          } catch {}
+        }
+      }
+    };
+    
+    loadValoraciones();
+  }, [uploadData, cargos.length]);
+
   const saveValoraciones = (updated) => {
     setValoraciones(updated);
     try { localStorage.setItem('shr_valoraciones', JSON.stringify(updated)); } catch {}
@@ -428,8 +464,20 @@ const ValuacionView = ({ uploadData }) => {
 
     try {
       const result = await callIA(cargo.id);
-      const updated = { ...valoraciones, [id]: { ...result.valoracion, estado: 'valorado' } };
+      const updated = { ...valoraciones, [id]: { ...result.valoracion, estado: 'valorado', justificacion: result.justificacion_ia || result.valoracion?.justificacion || '' } };
       saveValoraciones(updated);
+      
+      // Recargar valoraciones del backend para asegurar consistencia
+      const uploadId = Number(uploadData);
+      if (uploadId && !isNaN(uploadId)) {
+        try {
+          const vals = await fetchValoracionesFromUpload(uploadId);
+          const map = {};
+          vals.forEach(v => { if (v.valoracion) map[v.id] = v.valoracion; });
+          setValoraciones(map);
+          try { localStorage.setItem('shr_valoraciones', JSON.stringify(map)); } catch {}
+        } catch {}
+      }
     } catch (err) {
       const updated = { ...valoraciones, [id]: { estado: 'error', error: String(err) } };
       saveValoraciones(updated);

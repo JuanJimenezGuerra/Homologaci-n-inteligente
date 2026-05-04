@@ -199,13 +199,14 @@ Responde SOLO con un array JSON valido, sin texto adicional:
     return prompt
 
 
-def homologar_con_ia(db, cargos: list) -> list:
+def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
     """Homologa un lote de cargos usando IA. Retorna lista de resultados."""
     if not OPENROUTER_API_KEY and not OPENAI_API_KEY:
         logger.warning("No hay API key de IA configurada")
         return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key de IA", "confianza": 0.0} for c in cargos]
 
-    masters = load_master_cargos(db)
+    if masters is None:
+        masters = load_master_cargos(db)
     if not masters:
         logger.warning("No hay cargos maestros en la base de datos")
         return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin catalogo maestro", "confianza": 0.0} for c in cargos]

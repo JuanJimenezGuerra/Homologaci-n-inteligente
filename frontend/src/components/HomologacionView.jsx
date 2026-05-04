@@ -1,112 +1,158 @@
 import React, { useState, useEffect } from 'react';
-import { Link2, Play, Loader, Users, AlertCircle, Settings } from 'lucide-react';
+import { Link2, Play, Loader2, AlertCircle, Building2, MapPin, Phone, Mail, User, Edit2, Check, X } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 const API = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
 
+const STATUS_STYLES = {
+  homologado: 'bg-emerald-100 text-emerald-700 border border-emerald-300',
+  sugerido: 'bg-purple-100 text-purple-700 border border-purple-300',
+  procesando: 'bg-blue-100 text-blue-700 border border-blue-300 animate-pulse',
+  sin_coincidencia: 'bg-amber-100 text-amber-700 border border-amber-300',
+  pendiente: 'bg-slate-100 text-slate-600 border border-slate-200',
+  error: 'bg-red-100 text-red-700 border border-red-300',
+};
+
+const StatusBadge = ({ estado }) => {
+  const key = (estado || 'pendiente').toLowerCase();
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUS_STYLES[key] || STATUS_STYLES.pendiente}`}>
+      {estado || 'PENDIENTE'}
+    </span>
+  );
+};
+
 function HomologacionView({ empresaId, onComplete }) {
-  const [criterios, setCriterios] = useState({
-    priorizar_funciones: true,
-    priorizar_nivel: true,
-    nivel_agresividad: 'medio',
-    exigir_coincidencia_fuerte: false,
-  });
   const [cargos, setCargos] = useState([]);
+  const [empresaData, setEmpresaData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
   const [mensaje, setMensaje] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     if (empresaId) {
-      cargarCargos();
+      loadData();
     }
   }, [empresaId]);
 
-  const cargarCargos = async () => {
-    const token = localStorage.getItem('token');
-    console.log('=== cargarCargos called with empresaId:', empresaId);
-    try {
-      // Intentar primero con endpoint de empresa
-      let res = await fetch(`${API}/empresas/${empresaId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      console.log('/empresas response:', res.status);
-      
-      let data = [];
-      if (res.ok) {
-        const empresaData = await res.json();
-        console.log('empresaData:', empresaData);
-        data = empresaData.cargos || [];
-      }
-      
-      // Si no hay datos, probar con uploads
-      if (data.length === 0) {
-        res = await fetch(`${API}/uploads/${empresaId}/cargos`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        console.log('/uploads/cargos response:', res.status);
-        if (res.ok) {
-          data = await res.json();
-          console.log('cargos data from uploads:', data);
-        }
-      }
-      
-      setCargos(data);
-      console.log('=== setCargos:', data.length);
-    } catch (e) {
-      console.error('Error cargando:', e);
-      setError('Error al cargar datos');
-    }
-  };
-
-  const ejecutarHomologacion = async (conIA = false) => {
-    const token = localStorage.getItem('token');
+  const loadData = async () => {
     setLoading(true);
     setError('');
-    setMensaje(conIA ? 'Procesando con IA para los no encontrados...' : 'Procesando homologación...');
-    
-    console.log('=== ejecutarHomologacion called, empresaId:', empresaId, 'conIA:', conIA);
-    
+    const token = localStorage.getItem('token');
+
     try {
-      const url = conIA 
-        ? `${API}/homologacion/ejecutar?upload_id=${empresaId}&usar_ia=true`
-        : `${API}/homologacion/ejecutar?upload_id=${empresaId}`;
-      
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(criterios),
+      // Load empresa data
+      const empRes = await fetch(`${API}/uploads/${empresaId}/empresa`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      
-      console.log('homologacion response:', res.status);
-      
-      if (res.ok) {
-        const data = await res.json();
-        console.log('homologacion data:', data);
-        setMensaje(`Homologación completada: ${data.matched} coincidencia(s), ${data.not_matched} sin encontrar`);
-        await cargarCargos();
-      } else {
-        const text = await res.text();
-        setError(`Error ${res.status}: ${text.slice(0, 100)}`);
+      if (empRes.ok) {
+        setEmpresaData(await empRes.json());
+      }
+
+      // Load cargos
+      const cargosRes = await fetch(`${API}/uploads/${empresaId}/cargos`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (cargosRes.ok) {
+        setCargos(await cargosRes.json());
       }
     } catch (e) {
-      setError('Error: ' + e.message);
+      setError('Error al cargar datos: ' + e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Si no hay cargos
-  if (cargos.length === 0) {
+  const ejecutarHomologacion = async () => {
+    const token = localStorage.getItem('token');
+    setProcessing(true);
+    setError('');
+    setMensaje('Procesando homologacion...');
+
+    try {
+      const res = await fetch(`${API}/homologacion/ejecutar?upload_id=${empresaId}&usar_ia=true`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setMensaje(`Homologacion completada: ${data.matched_exact} matchs exactos, ${data.suggested_ia} sugeridos IA, ${data.not_matched} sin coincidencia`);
+        await loadData();
+      } else {
+        const text = await res.text();
+        setError(`Error ${res.status}: ${text.slice(0, 200)}`);
+      }
+    } catch (e) {
+      setError('Error: ' + e.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleEdit = (cargoId, currentValue) => {
+    setEditingId(cargoId);
+    setEditValue(currentValue || '');
+  };
+
+  const handleSaveEdit = async (cargoId) => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API}/cargos/${cargoId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ cargo_homologado: editValue, justificacion: 'Editado manualmente' }),
+      });
+      if (res.ok) {
+        setEditingId(null);
+        await loadData();
+      }
+    } catch (e) {
+      setError('Error al guardar: ' + e.message);
+    }
+  };
+
+  const filteredCargos = cargos.filter(c =>
+    (c.nombre_cargo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.area || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.homologacion?.cargo_homologado || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const stats = {
+    total: cargos.length,
+    homologados: cargos.filter(c => (c.estado || '').toLowerCase() === 'homologado').length,
+    sugeridos: cargos.filter(c => (c.estado || '').toLowerCase() === 'sugerido').length,
+    pendientes: cargos.filter(c => (c.estado || '').toLowerCase() === 'pendiente').length,
+    sin_coincidencia: cargos.filter(c => (c.estado || '').toLowerCase() === 'sin_coincidencia').length,
+  };
+
+  if (loading && cargos.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-20 gap-3 text-primary">
+        <Loader2 className="animate-spin" size={24} />
+        <span className="font-medium">Cargando datos...</span>
+      </div>
+    );
+  }
+
+  if (cargos.length === 0 && !loading) {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
           <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold mb-2">No hay datos</h2>
           <p className="text-slate-600 mb-4">
-            Primero carga el archivo de requerimientos en la pestaña "Formulario"
+            Primero carga el archivo de requerimientos en la pestana "Formulario"
           </p>
           {error && <p className="text-red-500">{error}</p>}
         </div>
@@ -116,87 +162,163 @@ function HomologacionView({ empresaId, onComplete }) {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link2 className="text-emerald-600 w-8 h-8" />
-            <div>
-              <h2 className="text-xl font-bold">2. Homologación de Cargos</h2>
-              <p className="text-sm text-slate-500">
-                {cargos.length} cargos cargados
-              </p>
+      {/* Empresa Data Card */}
+      {empresaData && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-primary"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <Building2 className="text-primary w-6 h-6" />
+            <h2 className="text-lg font-bold text-forest">{empresaData.nombre_empresa || 'Empresa'}</h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            {empresaData.nit && (
+              <div>
+                <p className="text-slate-400 text-xs font-medium">NIT</p>
+                <p className="font-semibold text-forest">{empresaData.nit}</p>
+              </div>
+            )}
+            {(empresaData.ciudad || empresaData.departamento) && (
+              <div className="flex items-start gap-2">
+                <MapPin size={14} className="text-slate-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-slate-400 text-xs font-medium">Ubicacion</p>
+                  <p className="font-semibold text-forest">{[empresaData.ciudad, empresaData.departamento].filter(Boolean).join(', ')}</p>
+                </div>
+              </div>
+            )}
+            {empresaData.sector_economico && (
+              <div>
+                <p className="text-slate-400 text-xs font-medium">Sector</p>
+                <p className="font-semibold text-forest">{empresaData.sector_economico}</p>
+              </div>
+            )}
+            {empresaData.consultor && (
+              <div className="flex items-start gap-2">
+                <User size={14} className="text-slate-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-slate-400 text-xs font-medium">Consultor</p>
+                  <p className="font-semibold text-forest">{empresaData.consultor}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Stats & Controls */}
+      <div className="bg-white rounded-2xl shadow-lg p-4">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Link2 className="text-primary w-5 h-5" />
+            <h3 className="font-bold text-forest">Homologacion de Cargos</h3>
+            <div className="flex gap-2">
+              <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-full">{stats.total} Total</span>
+              {stats.homologados > 0 && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">{stats.homologados} Match</span>}
+              {stats.sugeridos > 0 && <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded-full">{stats.sugeridos} Sugeridos</span>}
+              {stats.pendientes > 0 && <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{stats.pendientes} Pend.</span>}
+              {stats.sin_coincidencia > 0 && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full">{stats.sin_coincidencia} S/C</span>}
             </div>
           </div>
-          
-          <button
-            onClick={() => {}}
-            className="btn-secondary"
-          >
-            <Settings size={18} />
-            Configurar Criterios
-          </button>
+          <div className="flex gap-2 items-center">
+            <input
+              type="text"
+              placeholder="Buscar cargo..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 w-44"
+            />
+            <button
+              onClick={ejecutarHomologacion}
+              disabled={processing}
+              className="flex items-center gap-2 bg-forest text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-primary transition-all disabled:opacity-70"
+            >
+              {processing ? <Loader2 size={16} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
+              {processing ? 'PROCESANDO...' : 'EJECUTAR HOMOLOGACION'}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Tabla de cargas */}
-      <div className="bg-white rounded-2xl shadow-lg p-6">
+      {/* Messages */}
+      {mensaje && (
+        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
+          className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 rounded-xl text-sm font-medium">
+          {mensaje}
+        </motion.div>
+      )}
+      {error && (
+        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
+          className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm font-medium">
+          {error}
+        </motion.div>
+      )}
+
+      {/* Cargos Table */}
+      <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-slate-50">
-                <th className="text-left p-3">#</th>
-                <th className="text-left p-3">Cargo</th>
-                <th className="text-left p-3">Área</th>
-                <th className="text-left p-3">Personas</th>
-                <th className="text-left p-3">Homologado</th>
-                <th className="text-left p-3">Estado</th>
+          <table className="w-full text-left text-sm">
+            <thead className="bg-forest text-white text-[10px] font-bold uppercase">
+              <tr>
+                <th className="px-3 py-3 w-8">#</th>
+                <th className="px-3 py-3 min-w-[200px]">Cargo</th>
+                <th className="px-3 py-3 min-w-[100px]">Area</th>
+                <th className="px-3 py-3 w-28">Estado</th>
+                <th className="px-3 py-3 min-w-[200px]">Cargo Homologado</th>
+                <th className="px-3 py-3 min-w-[180px]">Justificacion</th>
+                <th className="px-3 py-3 w-20">Acc.</th>
               </tr>
             </thead>
             <tbody>
-              {cargos.map((cargo, i) => (
-                <tr key={cargo.id || i} className="border-t">
-                  <td className="p-3">{i + 1}</td>
-                  <td className="p-3 font-medium">{cargo.nombre_cargo || cargo.nombre}</td>
-                  <td className="p-3 text-slate-600">{cargo.area}</td>
-                  <td className="p-3">{cargo.num_personas || 1}</td>
-                  <td className="p-3">
-                    {cargo.cargo_homologado || cargo.homologado ? (
-                      <span className="text-emerald-600">{cargo.cargo_homologado || cargo.homologado}</span>
-                    ) : (
-                      <span className="text-slate-400">-</span>
-                    )}
-                  </td>
-                  <td className="p-3">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      cargo.estado === 'HOMOLOGADO' ? 'bg-emerald-100 text-emerald-700' : 
-                      cargo.estado === 'PROCESANDO' ? 'bg-amber-100 text-amber-700' :
-                      'bg-slate-100 text-slate-600'
-                    }`}>
-                      {cargo.estado || 'PENDIENTE'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {filteredCargos.map((c, idx) => {
+                const h = c.homologacion || {};
+                const isEditing = editingId === c.id;
+                return (
+                  <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                    <td className="px-3 py-2.5 text-slate-300 font-mono text-center text-xs">{idx + 1}</td>
+                    <td className="px-3 py-2.5 font-semibold text-forest">{c.nombre_cargo}</td>
+                    <td className="px-3 py-2.5 text-slate-500 text-xs">{c.area}</td>
+                    <td className="px-3 py-2.5"><StatusBadge estado={c.estado} /></td>
+                    <td className="px-3 py-2.5">
+                      {isEditing ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            value={editValue}
+                            onChange={e => setEditValue(e.target.value)}
+                            autoFocus
+                            onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(c.id); if (e.key === 'Escape') setEditingId(null); }}
+                            className="border border-primary rounded px-2 py-1 text-xs w-full focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                          <button onClick={() => handleSaveEdit(c.id)} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"><Check size={13} /></button>
+                          <button onClick={() => setEditingId(null)} className="p-1 text-red-400 hover:bg-red-50 rounded"><X size={13} /></button>
+                        </div>
+                      ) : (
+                        <span className={`text-xs ${h.cargo_homologado && h.cargo_homologado !== 'SIN COINCIDENCIA' ? 'text-forest font-medium' : 'text-slate-300 italic'}`}>
+                          {h.cargo_homologado || '—'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-400 text-[10px] max-w-[200px] truncate" title={h.justificacion}>
+                      {h.justificacion || '—'}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {!isEditing && h.cargo_homologado && (
+                        <button onClick={() => handleEdit(c.id, h.cargo_homologado)} className="p-1 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded" title="Editar">
+                          <Edit2 size={13} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-        
-        {cargos.length > 20 && (
-          <p className="text-sm text-slate-500 mt-2">
-            {cargos.length} cargos cargados
-          </p>
+        {filteredCargos.length === 0 && (
+          <div className="p-8 text-center text-slate-400 text-sm">No hay cargos que coincidan con la busqueda</div>
         )}
-
-        {mensaje && <p className="text-emerald-600 mt-4">{mensaje}</p>}
-        {error && <p className="text-red-500 mt-4">{error}</p>}
-
-        <div className="flex justify-end mt-6">
-          <button onClick={ejecutarHomologacion} disabled={loading} className="btn-primary">
-            {loading ? <Loader className="w-5 h-5 animate-spin mr-2" /> : <Play className="w-5 h-5 mr-2" />}
-            {loading ? 'Procesando...' : 'Ejecutar Homologación'}
-          </button>
-        </div>
       </div>
     </div>
   );

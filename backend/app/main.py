@@ -164,7 +164,28 @@ def upload_requirements_file(
         db.refresh(upload)
 
         count = process_requirements_excel(temp_path, upload.id, db)
-        return {"upload_id": upload.id, "count": count, "empresa": empresa_nombre}
+
+        # Obtener datos de la empresa para retornarlos al frontend
+        empresa_data = None
+        if empresa_nombre:
+            emp = db.query(Empresa).filter(Empresa.nombre_empresa == empresa_nombre).order_by(Empresa.id.desc()).first()
+            if emp:
+                empresa_data = {
+                    "id": emp.id,
+                    "nombre_empresa": emp.nombre_empresa,
+                    "nit": emp.nit,
+                    "direccion": emp.direccion,
+                    "telefono": emp.telefono,
+                    "departamento": emp.departamento,
+                    "ciudad": emp.ciudad,
+                    "sector_economico": emp.sector_economico,
+                    "tipo_empresa": emp.tipo_empresa,
+                    "consultor": emp.consultor,
+                    "persona_contacto": emp.persona_contacto,
+                    "email_contacto": emp.email_contacto,
+                }
+
+        return {"upload_id": upload.id, "count": count, "empresa": empresa_nombre, "empresa_data": empresa_data}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error en el Excel: {str(e)}")
@@ -199,6 +220,38 @@ def list_cargos(upload_id: int, db: Session = Depends(get_db), current_user: Use
             } if homo else None
         })
     return result
+
+@app.get("/uploads/{upload_id}/empresa")
+def get_empresa_from_upload(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Obtiene los datos de la empresa asociados a un upload."""
+    upload = db.query(Upload).filter(Upload.id == upload_id).first()
+    if not upload or not upload.empresa:
+        raise HTTPException(status_code=404, detail="Upload no encontrado")
+
+    emp = db.query(Empresa).filter(Empresa.nombre_empresa == upload.empresa).order_by(Empresa.id.desc()).first()
+    if not emp:
+        return {"nombre_empresa": upload.empresa}
+
+    return {
+        "id": emp.id,
+        "nombre_empresa": emp.nombre_empresa,
+        "nit": emp.nit,
+        "direccion": emp.direccion,
+        "telefono": emp.telefono,
+        "departamento": emp.departamento,
+        "ciudad": emp.ciudad,
+        "sector_economico": emp.sector_economico,
+        "tipo_empresa": emp.tipo_empresa,
+        "consultor": emp.consultor,
+        "persona_contacto": emp.persona_contacto,
+        "email_contacto": emp.email_contacto,
+        "actividad_economica": emp.actividad_economica,
+        "principales_productos": emp.principales_productos,
+        "motivacion": emp.motivacion,
+        "empleados_presenciales": emp.empleados_presenciales,
+        "empleados_teletrabajo": emp.empleados_teletrabajo,
+        "empleados_mixta": emp.empleados_mixta,
+    }
 
 @app.put("/homologacion/{cargo_id}")
 async def update_homologation(cargo_id: int, data: dict, db: Session = Depends(get_db)):
@@ -257,80 +310,86 @@ def ejecutar_homologacion(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Ejecuta homologacion: match local + IA para los restantes."""
-    from .services.matcher import find_exact_match
-    from .services.ia_service import homologar_con_ia
+    """Ejecuta homologacion: match exacto + IA para los restantes (marcados como SUGERIDO)."""
+    from .services.matcher import find_exact_matches, load_all_masters, normalize_cargo_name, _process_with_ia
 
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
-    masters = db.query(MasterDescription).all()
-    masters_list = [{"nombre": m.nombre_cargo or "", "descripcion": m.descripcion or "", "area": m.area or ""} for m in masters]
+    masters = load_all_masters(db)
+    masters_list = [{"nombre": m["nombre"], "descripcion": m["descripcion"], "area": m["area"]} for m in masters]
 
-    matched = 0
-    not_matched = 0
-    cargos_sin_match = []
+    matched_exact, unmatched = find_exact_matches(cargos, masters)
 
-    for cargo in cargos:
-        master = find_exact_match(cargo.nombre_cargo, masters_list)
-        if master:
-            homo = cargo.homologacion
-            if homo:
-                homo.cargo_homologado = master["nombre"]
-                homo.justificacion = f"DB: {master.get('area', '')}"
-            else:
-                homo = Homologacion(
-                    cargo_id=cargo.id,
-                    cargo_homologado=master["nombre"],
-                    justificacion=f"Coincidencia DB (area: {master.get('area', '')})"
-                )
-                db.add(homo)
-            cargo.estado = "HOMOLOGADO"
-            matched += 1
+    # Mark exact matches as HOMOLOGADO
+    for cargo, master in matched_exact:
+        homo = cargo.homologacion
+        if homo:
+            homo.cargo_homologado = master["nombre"]
+            homo.justificacion = f"Match exacto ({master.get('area', '')})"
+            homo.editado_manual = False
         else:
-            cargo.estado = "SIN_COINCIDENCIA"
-            not_matched += 1
-            cargos_sin_match.append(cargo)
+            homo = Homologacion(
+                cargo_id=cargo.id,
+                cargo_homologado=master["nombre"],
+                justificacion=f"Match exacto ({master.get('area', '')})"
+            )
+            db.add(homo)
+        cargo.estado = "HOMOLOGADO"
 
     db.commit()
 
-    ia_count = 0
-    if usar_ia and cargos_sin_match:
+    # IA for unmatched - marked as SUGERIDO
+    ia_suggested = 0
+    if usar_ia and unmatched:
+        from .services.ia_service import homologar_con_ia
+
         cargos_batch = [{
             "id": c.id,
             "nombre_cargo": c.nombre_cargo,
             "area": c.area,
+            "descripcion": c.descripcion_empresa or "",
             "descripcion_empresa": c.descripcion_empresa or "",
             "cargo_jefe": "",
-        } for c in cargos_sin_match]
+        } for c in unmatched]
 
         try:
-            resultados = homologar_con_ia(db, cargos_batch)
+            resultados = homologar_con_ia(db, cargos_batch, masters)
             for res in resultados:
                 cargo_id = res.get("id")
-                if cargo_id:
-                    cargo = next((c for c in cargos_sin_match if c.id == cargo_id), None)
-                    if cargo:
-                        homo = cargo.homologacion
-                        if homo:
-                            homo.cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
-                            homo.justificacion = f"IA: {res.get('justificacion', '')} (confianza: {res.get('confianza', 0)})"
-                        else:
-                            homo = Homologacion(
-                                cargo_id=cargo.id,
-                                cargo_homologado=res.get("cargo_homologado", "SIN COINCIDENCIA"),
-                                justificacion=f"IA: {res.get('justificacion', '')}"
-                            )
-                            db.add(homo)
-                        cargo.estado = "HOMOLOGADO"
-                        ia_count += 1
+                if not cargo_id:
+                    continue
+                cargo = next((c for c in unmatched if c.id == cargo_id), None)
+                if not cargo:
+                    continue
+
+                homo = cargo.homologacion
+                if not homo:
+                    homo = Homologacion(cargo_id=cargo.id)
+                    db.add(homo)
+
+                cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
+                justificacion = res.get("justificacion", "")
+                confianza = res.get("confianza", 0)
+
+                if cargo_homologado and cargo_homologado != "SIN COINCIDENCIA":
+                    homo.cargo_homologado = cargo_homologado
+                    homo.justificacion = f"Sugerido IA: {justificacion} (confianza: {confianza})"
+                    homo.editado_manual = False
+                    cargo.estado = "SUGERIDO"
+                    ia_suggested += 1
+                else:
+                    homo.cargo_homologado = "SIN COINCIDENCIA"
+                    homo.justificacion = f"IA: {justificacion}" if justificacion else "Sin coincidencia"
+                    cargo.estado = "SIN_COINCIDENCIA"
+
             db.commit()
         except Exception as e:
             print(f"Error homologacion IA: {e}")
 
     return {
         "mensaje": f"Se procesaron {len(cargos)} cargos",
-        "matched": matched,
-        "matched_ia": ia_count,
-        "not_matched": not_matched - ia_count,
+        "matched_exact": len(matched_exact),
+        "suggested_ia": ia_suggested,
+        "not_matched": len(unmatched) - ia_suggested,
         "total": len(cargos),
         "upload_id": upload_id,
     }
@@ -380,12 +439,19 @@ def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), current_u
     val.criterio_1 = int(resultado.get("criterio1", 0))
     val.criterio_2 = int(resultado.get("criterio2", 0))
     val.criterio_3 = int(resultado.get("criterio3", 0))
+    val.justificacion_ia = resultado.get("justificacion", "")
     val.editado_manual = False
     db.commit()
+
+    # Calcular puntos totales
+    from .services.ia_service import valorar_cargo_con_ia
+    pts = _estimar_puntos_totales(val)
 
     return {
         "cargo_id": cargo_id,
         "valoracion": resultado,
+        "puntos_totales": pts,
+        "justificacion_ia": resultado.get("justificacion", ""),
         "estado": "valorado"
     }
 
@@ -402,6 +468,32 @@ def list_valoraciones(upload_id: int, db: Session = Depends(get_db), current_use
     result = []
     for c in cargos:
         val = c.valoracion
+        val_data = None
+        if val:
+            pts = _estimar_puntos_totales(val)
+            val_data = {
+                "conocimientos": val.conocimientos,
+                "experiencia": val.experiencia,
+                "habilidadGerencial": val.habilidad_gerencial,
+                "rolCargo": val.rol_cargo,
+                "contacto": val.contacto,
+                "frecuenciaContacto": val.frecuencia,
+                "contenidoRelaciones": val.contenido_relaciones,
+                "complejidadConceptual": val.complejidad_conceptual,
+                "tendenciaCC": val.tendencia_cc,
+                "guiasApoyo": val.guias_apoyo,
+                "tendenciaGA": val.tendencia_ga,
+                "impacto": val.impacto,
+                "autonomia": val.autonomia,
+                "magnitud": val.magnitud,
+                "criterio1": val.criterio_1 or 0,
+                "criterio2": val.criterio_2 or 0,
+                "criterio3": val.criterio_3 or 0,
+                "justificacion": val.justificacion_ia,
+                "editado_manual": val.editado_manual if val.editado_manual else False,
+                "puntos_totales": pts,
+                "estado": "valorado" if not val.editado_manual else "editado",
+            }
         result.append({
             "id": c.id,
             "nombre_cargo": c.nombre_cargo,
@@ -409,26 +501,7 @@ def list_valoraciones(upload_id: int, db: Session = Depends(get_db), current_use
             "estado": c.estado,
             "cargo_homologado": c.homologacion.cargo_homologado if c.homologacion else None,
             "descripcion_empresa": c.descripcion_empresa,
-            "valoracion": {
-                "conocimientos": val.conocimientos if val else None,
-                "experiencia": val.experiencia if val else None,
-                "habilidad_gerencial": val.habilidad_gerencial if val else None,
-                "rol_cargo": val.rol_cargo if val else None,
-                "contacto": val.contacto if val else None,
-                "frecuencia": val.frecuencia if val else None,
-                "contenido_relaciones": val.contenido_relaciones if val else None,
-                "complejidad_conceptual": val.complejidad_conceptual if val else None,
-                "tendencia_cc": val.tendencia_cc if val else None,
-                "guias_apoyo": val.guias_apoyo if val else None,
-                "tendencia_ga": val.tendencia_ga if val else None,
-                "impacto": val.impacto if val else None,
-                "autonomia": val.autonomia if val else None,
-                "magnitud": val.magnitud if val else None,
-                "criterio_1": val.criterio_1 if val else 0,
-                "criterio_2": val.criterio_2 if val else 0,
-                "criterio_3": val.criterio_3 if val else 0,
-                "editado_manual": val.editado_manual if val else False,
-            } if val else None
+            "valoracion": val_data,
         })
     return result
 

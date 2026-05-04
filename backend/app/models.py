@@ -621,6 +621,7 @@ class Valoracion(Base):
     criterio_1 = Column(Integer, default=0)
     criterio_2 = Column(Integer, default=0)
     criterio_3 = Column(Integer, default=0)
+    justificacion_ia = Column(Text, nullable=True)
     creado_manual = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
