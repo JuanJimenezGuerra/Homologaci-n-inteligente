@@ -262,7 +262,7 @@ def build_valoracion_prompt(cargo: dict) -> str:
 
     prompt = f"""Eres un experto en valoracion de cargos bajo la metodologia HAY/SHR en Colombia.
 
-Debes evaluar el siguiente cargo asignando el nivel correcto para CADA UNO de los criterios.
+Debes evaluar el siguiente cargo asignando el nivel correcto para CADA UNO de los criterios y estimar su rango salarial.
 
 === INFORMACION DEL CARGO ===
 Nombre: {nombre}
@@ -347,6 +347,21 @@ CRITERIOS DE CRITICIDAD (0 o 1):
 - criterio2: 1 si pertenece al core del negocio o procesos criticos
 - criterio3: 1 si hay oferta escasa en mercado laboral para este cargo
 
+ESTIMACION SALARIAL (en pesos colombianos COP mensual):
+Basado en el nivel del cargo, estima:
+- garantizado: Salario base garantizado (fijo mensual)
+- garantizadoVariable: Salario garantizado + variable tipico (bonos/comisiones)
+- compensacionTotal: Costo total empresa (incluye prestaciones, beneficios, etc.)
+
+Referencias mercado Colombia 2025:
+- Auxiliares: $1.5M - $2.5M garantizado
+- Tecnicos: $2M - $3.5M garantizado
+- Analistas: $3M - $5.5M garantizado
+- Coordinadores: $4.5M - $8M garantizado
+- Jefes: $6M - $10M garantizado
+- Directores: $10M - $18M garantizado
+- Gerentes: $15M - $35M+ garantizado
+
 === GUIA DE REFERENCIA RAPIDA ===
 - Gerente General/CEO: conocimientos G-H, habilidad VI-VII, autonomia F-G, impacto IV
 - Directores/Gerentes area: conocimientos F-G, habilidad IV-V, autonomia E-F, impacto III-IV
@@ -373,6 +388,9 @@ Responde EXCLUSIVAMENTE con un objeto JSON valido, sin texto adicional:
   "criterio1": 1,
   "criterio2": 1,
   "criterio3": 0,
+  "garantizado": 4500000,
+  "garantizadoVariable": 5400000,
+  "compensacionTotal": 7200000,
   "justificacion": "Analisis breve del cargo en 2-3 lineas"
 }}"""
 
@@ -413,6 +431,9 @@ def valorar_cargo_con_ia(cargo: dict) -> Optional[dict]:
         "criterio1": result.get("criterio1", result.get("criterio_1", 0)),
         "criterio2": result.get("criterio2", result.get("criterio_2", 0)),
         "criterio3": result.get("criterio3", result.get("criterio_3", 0)),
+        "garantizado": result.get("garantizado"),
+        "garantizadoVariable": result.get("garantizadoVariable", result.get("garantizado_variable")),
+        "compensacionTotal": result.get("compensacionTotal", result.get("compensacion_total")),
         "justificacion": result.get("justificacion", result.get("justificacion", "")),
     }
 

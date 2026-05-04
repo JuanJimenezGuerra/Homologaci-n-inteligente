@@ -625,6 +625,15 @@ class Valoracion(Base):
     creado_manual = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Campos salariales (pasan a Analisis)
+    basico = Column(Float, nullable=True)
+    real_pagado = Column(Float, nullable=True)
+    garantizado = Column(Float, nullable=True)
+    garantizado_variable = Column(Float, nullable=True)
+    compensacion_total = Column(Float, nullable=True)
+    punto_medio_referencia = Column(Float, nullable=True)
+    posicion_equidad_pct = Column(Float, nullable=True)
+
     cargo = relationship("Cargo", back_populates="valoracion")
 
 Cargo.valoracion = relationship("Valoracion", back_populates="cargo", uselist=False)

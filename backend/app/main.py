@@ -440,6 +440,11 @@ def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), current_u
     val.criterio_2 = int(resultado.get("criterio2", 0))
     val.criterio_3 = int(resultado.get("criterio3", 0))
     val.justificacion_ia = resultado.get("justificacion", "")
+    val.basico = resultado.get("garantizado")
+    val.real_pagado = resultado.get("garantizadoVariable")
+    val.garantizado = resultado.get("garantizado")
+    val.garantizado_variable = resultado.get("garantizadoVariable")
+    val.compensacion_total = resultado.get("compensacionTotal")
     val.editado_manual = False
     db.commit()
 
@@ -493,6 +498,13 @@ def list_valoraciones(upload_id: int, db: Session = Depends(get_db), current_use
                 "editado_manual": val.editado_manual if val.editado_manual else False,
                 "puntos_totales": pts,
                 "estado": "valorado" if not val.editado_manual else "editado",
+                "basico": val.basico,
+                "realPagado": val.real_pagado,
+                "garantizado": val.garantizado,
+                "garantizadoVariable": val.garantizado_variable,
+                "compensacionTotal": val.compensacion_total,
+                "puntoMedioReferencia": val.punto_medio_referencia,
+                "posicionEquidadPct": val.posicion_equidad_pct,
             }
         result.append({
             "id": c.id,

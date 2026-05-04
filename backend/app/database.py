@@ -66,6 +66,16 @@ def run_migrations():
             ("variable_target", "DOUBLE PRECISION"),
             ("variable_target_nc", "DOUBLE PRECISION"),
         ],
+        "valoraciones": [
+            ("justificacion_ia", "TEXT"),
+            ("basico", "DOUBLE PRECISION"),
+            ("real_pagado", "DOUBLE PRECISION"),
+            ("garantizado", "DOUBLE PRECISION"),
+            ("garantizado_variable", "DOUBLE PRECISION"),
+            ("compensacion_total", "DOUBLE PRECISION"),
+            ("punto_medio_referencia", "DOUBLE PRECISION"),
+            ("posicion_equidad_pct", "DOUBLE PRECISION"),
+        ],
         "empresas": [
             ("sede_principal_id", "INTEGER REFERENCES sedes(id)"),
             ("regional_id", "INTEGER REFERENCES regionales(id)"),

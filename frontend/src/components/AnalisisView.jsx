@@ -130,9 +130,9 @@ function AnalisisView({ uploadData, onBack }) {
         const f4 = calcF4(v);
         const total = f1 + f2 + f3 + f4;
 
-        const salario = cargo.datos_excel?.basico
-          ? parseFloat(String(cargo.datos_excel.basico).replace(/[.,]/g, '')) || 0
-          : 0;
+        const salario = v.garantizado
+          || v.basico
+          || 0;
 
         points.push({
           cargo: cargo.nombre_cargo,
@@ -140,6 +140,9 @@ function AnalisisView({ uploadData, onBack }) {
           puntos: total,
           salario,
           homologado: cargo.homologacion?.cargo_homologado || '',
+          garantizado: v.garantizado,
+          garantizadoVariable: v.garantizadoVariable,
+          compensacionTotal: v.compensacionTotal,
         });
       }
     });
@@ -147,9 +150,10 @@ function AnalisisView({ uploadData, onBack }) {
     points.sort((a, b) => a.puntos - b.puntos);
 
     const curveData = {
-      min: points.map(p => ({ puntos: p.puntos, valor: p.salario })),
-      max: points.map(p => ({ puntos: p.puntos, valor: p.salario * 1.3 })),
-      mid: points.map(p => ({ puntos: p.puntos, valor: p.salario * 1.15 })),
+      min: points.map(p => ({ puntos: p.puntos, valor: p.salario, cargo: p.cargo, minimo: p.salario * 0.85, medio: p.salario * 1.15, maximo: p.salario * 1.3 })),
+      mid: points.map(p => ({ puntos: p.puntos, valor: p.salario * 1.15, cargo: p.cargo })),
+      max: points.map(p => ({ puntos: p.puntos, valor: p.salario * 1.3, cargo: p.cargo })),
+      detalles: points,
     };
 
     setCurvesData(curveData);
