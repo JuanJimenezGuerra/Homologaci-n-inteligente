@@ -1,16 +1,16 @@
 import React from 'react';
-import { LayoutDashboard, LogOut, User as UserIcon, ShieldCheck, Building2, Link2, Target, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, LogOut, User as UserIcon, ShieldCheck, Building2, Link2, Target, TrendingUp, Scale } from 'lucide-react';
 import { motion } from 'framer-motion';
 import logoShr from '../assets/logo_shr.png';
 
 const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
 
-  // Pestañas por PROCESO
   const menuItems = [
     { id: 'formulario', label: '1. Formulario', icon: Building2, desc: 'Cargar datos empresa y Excel' },
     { id: 'homologacion', label: '2. Homologación', icon: Link2, desc: 'Matching de cargos' },
     { id: 'valoracion', label: '3. Valoración', icon: Target, desc: 'Evaluación 12 factores' },
     { id: 'analisis', label: '4. Análisis', icon: TrendingUp, desc: 'Curvas y reportes' },
+    { id: 'equidad', label: '5. Equidad', icon: Scale, desc: 'Regresion y nivelacion salarial' },
   ];
 
   return (

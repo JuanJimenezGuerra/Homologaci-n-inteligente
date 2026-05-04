@@ -7,6 +7,7 @@ import ValuacionView from './components/ValuacionView';
 import FormularioView from './components/FormularioView';
 import HomologacionView from './components/HomologacionView';
 import AnalisisView from './components/AnalisisView';
+import EquidadView from './components/EquidadView';
 
 const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
 
@@ -54,6 +55,10 @@ function App() {
     setActiveTab('analisis');
   };
 
+  const handleAnalisisCompleta = () => {
+    setActiveTab('equidad');
+  };
+
   // Guard: sin token → login
   if (!token) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
@@ -89,6 +94,13 @@ function App() {
         <AnalisisView
           empresaId={empresaId}
           onBack={() => setActiveTab('valoracion')}
+          onNext={handleAnalisisCompleta}
+        />
+      )}
+      {activeTab === 'equidad' && (
+        <EquidadView
+          uploadData={empresaId}
+          onBack={() => setActiveTab('analisis')}
         />
       )}
     </Layout>

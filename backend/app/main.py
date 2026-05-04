@@ -752,3 +752,46 @@ def _estimar_puntos_totales(v):
     crit = (int(v.criterio_1 or 0) + int(v.criterio_2 or 0) + int(v.criterio_3 or 0))
     raw = f1 + f2 + f3 + f4
     return raw * (1 + crit * 0.05)
+
+# ==========================================
+# MODULO DE EQUIDAD - PIECEWISE LINEAR REGRESSION
+# ==========================================
+
+@app.post("/modelo-equidad/{upload_id}")
+def calcular_modelo_equidad(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Calcula modelo de equidad salarial con regresion lineal segmentada."""
+    from .services.equity_model import calcular_equidad
+    import pandas as pd
+
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    if not cargos:
+        raise HTTPException(status_code=404, detail="No hay cargos en este upload")
+
+    data = []
+    for c in cargos:
+        val = c.valoracion
+        if not val:
+            continue
+
+        pts = _estimar_puntos_totales(val)
+
+        salario_g = val.garantizado or val.basico or None
+        salario_gv = val.garantizado_variable or val.real_pagado or None
+        salario_ct = val.compensacion_total or None
+
+        data.append({
+            "id_cargo": c.id,
+            "nombre_cargo": c.nombre_cargo,
+            "area": c.area or "",
+            "puntos": pts,
+            "salario_g": salario_g,
+            "salario_gv": salario_gv,
+            "salario_ct": salario_ct,
+        })
+
+    if not data:
+        raise HTTPException(status_code=400, detail="No hay cargos con valoracion. Completa la valuacion primero.")
+
+    df = pd.DataFrame(data)
+    resultado = calcular_equidad(df)
+    return resultado
