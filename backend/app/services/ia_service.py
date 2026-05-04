@@ -49,9 +49,12 @@ def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 
             )
             if resp.ok:
                 data = resp.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content")
+                content = data.get("choices", [{}])[0].get("message", {}).get("content") or ""
                 actual_model = data.get("model", model)
-                print(f"OpenRouter: OK con {actual_model}, respuesta {len(content) if content else 0} chars")
+                if len(content.strip()) == 0:
+                    print(f"OpenRouter: {actual_model} devolvio respuesta vacia, intentando otro modelo...")
+                    continue
+                print(f"OpenRouter: OK con {actual_model}, respuesta {len(content)} chars")
                 return content
             elif resp.status_code == 401:
                 print(f"OpenRouter: ERROR 401 - API key invalida.")
@@ -59,7 +62,7 @@ def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 
             else:
                 print(f"OpenRouter: {model} fallo HTTP {resp.status_code} - {resp.text[:200]}")
 
-        print("OpenRouter: TODOS los modelos gratuitos fallaron")
+        print("OpenRouter: TODOS los modelos gratuitos fallaron o devolvieron respuesta vacia")
         return None
     except Exception as e:
         print(f"OpenRouter: excepcion - {e}")
@@ -128,7 +131,7 @@ def extract_json(text: str) -> Optional[dict]:
 
 
 def extract_json_array(text: str) -> Optional[list]:
-    """Extrae array JSON de la respuesta de IA."""
+    """Extrae array JSON de la respuesta de IA, manejando respuestas truncadas/incompletas."""
     if not text:
         return None
     try:
@@ -136,10 +139,89 @@ def extract_json_array(text: str) -> Optional[list]:
             text = text.split("```json")[1].split("```")[0].strip()
         elif "```" in text:
             text = text.split("```")[1].split("```")[0].strip()
-        return json.loads(text)
-    except (json.JSONDecodeError, IndexError) as e:
+        text = text.strip()
+
+        # Intento directo primero
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        # Si fallo, intentar reparar JSON truncado
+        repaired = _repair_truncated_json_array(text)
+        if repaired:
+            return repaired
+
+        # Ultimo intento: extraer objetos JSON individuales del texto
+        return _extract_individual_objects(text)
+
+    except Exception as e:
         logger.error(f"Error extrayendo JSON array: {e}. Texto: {text[:300]}")
+    return None
+
+
+def _repair_truncated_json_array(text: str) -> Optional[list]:
+    """Repara un array JSON truncado quitando el ultimo objeto incompleto."""
+    text = text.strip()
+    if not text.startswith("["):
         return None
+
+    # Agregar cierre si falta
+    if not text.endswith("]"):
+        # Encontrar el ultimo objeto completo
+        # Buscar patrones de } o numeros/cierres antes del corte
+        last_complete = text.rfind("},")
+        if last_complete == -1:
+            # Quizas solo hay un objeto truncado
+            last_complete = text.rfind("}")
+            if last_complete > 0:
+                repaired = text[:last_complete + 1] + "]"
+            else:
+                return None
+        else:
+            repaired = text[:last_complete + 1] + "\n]"
+
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            pass
+
+        # Intentar con mas reparaciones: quitar comas sueltas
+        repaired2 = repaired.rstrip(" ,\n") + "]"
+        try:
+            return json.loads(repaired2)
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+def _extract_individual_objects(text: str) -> Optional[list]:
+    """Extrae objetos JSON individuales de texto con formato JSON."""
+    results = []
+    depth = 0
+    start = -1
+
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                obj_str = text[start:i + 1]
+                try:
+                    obj = json.loads(obj_str)
+                    if isinstance(obj, dict) and "id" in obj:
+                        results.append(obj)
+                except json.JSONDecodeError:
+                    pass
+                start = -1
+
+    return results if results else None
 
 
 # ==========================================
@@ -178,22 +260,21 @@ def load_master_cargos(db) -> list:
 def build_homologacion_prompt(cargos: list, masters: list) -> str:
     """Construye el prompt para homologacion de cargos con IA."""
 
+    # Masters compactos para no exceder tokens de modelos gratuitos
     masters_text = "\n".join([
-        f"- {m['nombre']} (Area: {m['area']})\n  Descripcion: {m['descripcion'][:150] if m['descripcion'] else 'N/A'}"
-        for m in masters[:50]
+        f"- {m['nombre']} | {m['area']}"
+        for m in masters[:80]
     ])
 
     cargos_text = ""
-    for c in cargos[:10]:
-        desc = c.get("descripcion", "") or c.get("descripcion_empresa", "") or "No disponible"
-        jefe = c.get("cargo_jefe", "") or "No especificado"
+    for c in cargos[:5]:
+        desc = c.get("descripcion", "") or c.get("descripcion_empresa", "") or ""
         area = c.get("area", "N/A")
         cargos_text += f"""
 ID: {c['id']}
 Cargo: {c['nombre_cargo']}
 Area: {area}
-Jefe: {jefe}
-Descripcion: {desc[:300]}
+Descripcion: {desc[:200]}
 ---
 """
 
@@ -242,19 +323,20 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
         ia_error = "Sin catalogo maestro en la base de datos"
         return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error} for c in cargos]
 
-    print(f"homologar_con_ia: Procesando {len(cargos)} cargos en lotes de 10")
+    print(f"homologar_con_ia: Procesando {len(cargos)} cargos en lotes de 5")
 
     resultados = []
-    for i in range(0, len(cargos), 10):
-        batch = cargos[i:i + 10]
+    for i in range(0, len(cargos), 5):
+        batch = cargos[i:i + 5]
         prompt = build_homologacion_prompt(batch, masters)
         prompt_len = len(prompt)
-        print(f"homologar_con_ia: Lote {i//10 + 1}, {len(batch)} cargos, prompt {prompt_len} chars")
+        lote_num = i // 10 + 1
+        print(f"homologar_con_ia: Lote {lote_num}, {len(batch)} cargos, prompt {prompt_len} chars")
 
         content = call_ia([{"role": "user", "content": prompt}], max_tokens=1500)
         if not content:
             ia_error = "OpenRouter y OpenAI fallback fallaron. Revisa logs de Render para detalles."
-            print(f"homologar_con_ia: Lote {i//10 + 1} FALLO - sin respuesta de IA")
+            print(f"homologar_con_ia: Lote {lote_num} FALLO - sin respuesta de IA")
             resultados.extend([
                 {"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error}
                 for c in batch
@@ -263,7 +345,11 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
 
         parsed = extract_json_array(content)
         if parsed and isinstance(parsed, list):
-            print(f"homologar_con_ia: Lote {i//10 + 1} OK - {len(parsed)} resultados parseados")
+            parsed_ids = {r.get("id") for r in parsed}
+            batch_ids = {c.get("id") for c in batch}
+            matched_count = len(parsed_ids & batch_ids)
+            print(f"homologar_con_ia: Lote {lote_num} OK - {len(parsed)} objetos parseados, {matched_count} matchean cargos del lote")
+
             for res in parsed:
                 resultados.append({
                     "id": res.get("id"),
@@ -271,8 +357,20 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
                     "justificacion": res.get("justificacion", ""),
                     "confianza": res.get("confianza", 0.5),
                 })
+
+            # Cargos del lote que no tuvieron respuesta
+            for c in batch:
+                if c.get("id") not in parsed_ids:
+                    print(f"homologar_con_ia: Lote {lote_num} - cargo {c.get('id')} ({c.get('nombre_cargo')}) no tuvo resultado, posible JSON truncado")
+                    resultados.append({
+                        "id": c.get("id"),
+                        "cargo_homologado": "SIN_COINCIDENCIA",
+                        "justificacion": "Respuesta IA truncada (modelo gratuito con limite de tokens)",
+                        "confianza": 0.0,
+                        "_ia_error": "JSON truncado por modelo",
+                    })
         else:
-            print(f"homologar_con_ia: Lote {i//10 + 1} FALLO parseo - raw: {content[:200]}")
+            print(f"homologar_con_ia: Lote {lote_num} FALLO parseo total - contenido: {content[:150]}...")
             resultados.extend([
                 {"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Error parseando respuesta IA", "confianza": 0.0, "_ia_error": "Error parseando respuesta IA"}
                 for c in batch
@@ -282,7 +380,8 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
             time.sleep(1.5)
 
     total_ok = len([r for r in resultados if r.get("_ia_error") is None])
-    print(f"homologar_con_ia: Completado - {total_ok}/{len(cargos)} exitosos")
+    total_ia_error = len([r for r in resultados if r.get("_ia_error") is not None])
+    print(f"homologar_con_ia: Completado - {total_ok}/{len(cargos)} exitosos, {total_ia_error} errores IA")
     return resultados
 
 
