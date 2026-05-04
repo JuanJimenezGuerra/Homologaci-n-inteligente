@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Link2, Play, Loader2, AlertCircle, Building2, MapPin, User, Edit2, Check, X, MessageSquare, RefreshCw, ArrowRight } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link2, Play, Loader2, AlertCircle, Building2, MapPin, User, Edit2, Check, X, MessageSquare, RefreshCw, ArrowRight, Calendar, Phone, Mail, Package, TrendingUp, Users, DollarSign, FileText, ChevronDown, ChevronUp, Activity } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const API = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
 
@@ -14,7 +14,7 @@ const STATUS_STYLES = {
 };
 
 const StatusBadge = ({ estado }) => {
-  const key = (estado || 'pendiente').toLowerCase();
+  const key = (estado || 'pendiente').toLowerCase().replace(/ /g, '_');
   return (
     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUS_STYLES[key] || STATUS_STYLES.pendiente}`}>
       {estado || 'PENDIENTE'}
@@ -35,9 +35,18 @@ function HomologacionView({ empresaId, onComplete }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [observaciones, setObservaciones] = useState('');
+  const [selectedCargoIds, setSelectedCargoIds] = useState(new Set());
+  const [showEmpresaExpanded, setShowEmpresaExpanded] = useState(false);
+
+  // Real-time progress state
+  const [progress, setProgress] = useState(null);
+  const [liveCargos, setLiveCargos] = useState([]);
+  const pollIntervalRef = useRef(null);
+  const liveFeedRef = useRef(null);
 
   useEffect(() => {
     if (empresaId) loadData();
+    return () => { if (pollIntervalRef.current) clearInterval(pollIntervalRef.current); };
   }, [empresaId]);
 
   const loadData = async () => {
@@ -62,11 +71,46 @@ function HomologacionView({ empresaId, onComplete }) {
     }
   };
 
+  const startPolling = () => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const [statusRes, resultsRes] = await Promise.all([
+          fetch(`${API}/homologacion/status/${empresaId}`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API}/homologacion/results/${empresaId}`, { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+
+        if (statusRes.ok) {
+          const status = await statusRes.json();
+          setProgress(status);
+
+          if (status.status === 'completado') {
+            clearInterval(pollIntervalRef.current);
+            setProcessing(false);
+            setReprocessing(false);
+            await loadData();
+            setMensaje(`Homologacion completada: ${status.exact_matches || 0} matchs exactos, ${status.ia_suggested || 0} sugeridos IA, ${status.not_matched || 0} sin coincidencia`);
+          }
+        }
+
+        if (resultsRes.ok) {
+          const results = await resultsRes.json();
+          setLiveCargos(results);
+        }
+      } catch (e) {
+        // Silent fail during polling
+      }
+    }, 1500);
+  };
+
   const ejecutarHomologacion = async () => {
     const token = localStorage.getItem('token');
     setProcessing(true);
     setError('');
-    setMensaje('Procesando homologacion...');
+    setMensaje('Iniciando homologacion...');
+    setProgress(null);
 
     try {
       const res = await fetch(`${API}/homologacion/ejecutar?upload_id=${empresaId}&usar_ia=true`, {
@@ -75,16 +119,15 @@ function HomologacionView({ empresaId, onComplete }) {
       });
 
       if (res.ok) {
-        const data = await res.json();
-        setMensaje(`Homologacion completada: ${data.matched_exact} matchs exactos, ${data.suggested_ia} sugeridos IA, ${data.not_matched} sin coincidencia`);
-        await loadData();
+        setMensaje('Homologacion en proceso...');
+        startPolling();
       } else {
         const text = await res.text();
         setError(`Error ${res.status}: ${text.slice(0, 200)}`);
+        setProcessing(false);
       }
     } catch (e) {
       setError('Error: ' + e.message);
-    } finally {
       setProcessing(false);
     }
   };
@@ -98,27 +141,34 @@ function HomologacionView({ empresaId, onComplete }) {
     const token = localStorage.getItem('token');
     setReprocessing(true);
     setError('');
-    setMensaje('Reprocesando homologaciones con observaciones del analista...');
+    setMensaje('Iniciando reproceso...');
+    setProgress(null);
+
+    const body = {
+      observaciones: observaciones.trim(),
+    };
+    if (selectedCargoIds.size > 0) {
+      body.cargo_ids = Array.from(selectedCargoIds);
+    }
 
     try {
       const res = await fetch(`${API}/homologacion/reprocesar?upload_id=${empresaId}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ observaciones: observaciones.trim() }),
+        body: JSON.stringify(body),
       });
 
       if (res.ok) {
         const data = await res.json();
         setMensaje(data.mensaje);
-        setObservaciones('');
-        await loadData();
+        startPolling();
       } else {
         const text = await res.text();
         setError(`Error ${res.status}: ${text.slice(0, 200)}`);
+        setReprocessing(false);
       }
     } catch (e) {
       setError('Error: ' + e.message);
-    } finally {
       setReprocessing(false);
     }
   };
@@ -148,27 +198,55 @@ function HomologacionView({ empresaId, onComplete }) {
     }
   };
 
-  const filteredCargos = cargos.filter(c => {
+  const toggleCargoSelection = (cargoId) => {
+    setSelectedCargoIds(prev => {
+      const next = new Set(prev);
+      if (next.has(cargoId)) next.delete(cargoId);
+      else next.add(cargoId);
+      return next;
+    });
+  };
+
+  const selectAllReprocessable = () => {
+    const reprocessable = displayCargos
+      .filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado')
+      .map(c => c.id);
+    setSelectedCargoIds(new Set(reprocessable));
+  };
+
+  const clearSelection = () => setSelectedCargoIds(new Set());
+
+  const displayCargos = (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => {
     const matchSearch = (c.nombre_cargo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (c.area || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (c.homologacion?.cargo_homologado || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchFilter = filterStatus === 'all' || (c.estado || '').toLowerCase().replace(' ', '_') === filterStatus.toLowerCase();
+    const statusVal = (c.estado || '').toLowerCase().replace(/ /g, '_');
+    const matchFilter = filterStatus === 'all' || statusVal === filterStatus;
     return matchSearch && matchFilter;
   });
 
   const stats = {
-    total: cargos.length,
-    homologados: cargos.filter(c => (c.estado || '').toLowerCase() === 'homologado').length,
-    sugeridos: cargos.filter(c => (c.estado || '').toLowerCase() === 'sugerido').length,
-    pendientes: cargos.filter(c => (c.estado || '').toLowerCase() === 'pendiente').length,
-    sin_coincidencia: cargos.filter(c => (c.estado || '').toLowerCase().includes('sin_coincidencia')).length,
-    no_match: cargos.filter(c => {
-      const h = c.homologacion?.cargo_homologado;
-      return !h || h === 'SIN COINCIDENCIA' || (c.estado || '').toLowerCase() === 'sin_coincidencia';
-    }).length,
+    total: displayCargos.length,
+    homologados: displayCargos.filter(c => (c.estado || '').toLowerCase() === 'homologado').length,
+    sugeridos: displayCargos.filter(c => (c.estado || '').toLowerCase() === 'sugerido').length,
+    pendientes: displayCargos.filter(c => (c.estado || '').toLowerCase() === 'pendiente' || (c.estado || '').toLowerCase() === 'procesando').length,
+    sin_coincidencia: displayCargos.filter(c => (c.estado || '').toLowerCase().includes('sin_coincidencia')).length,
   };
 
-  if (loading && cargos.length === 0) {
+  const formatCurrency = (val) => {
+    if (!val) return null;
+    return `$${Number(val).toLocaleString('es-CO')}`;
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return null;
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+    } catch { return dateStr; }
+  };
+
+  if (loading && displayCargos.length === 0) {
     return (
       <div className="flex items-center justify-center py-20 gap-3 text-primary">
         <Loader2 className="animate-spin" size={24} />
@@ -177,7 +255,7 @@ function HomologacionView({ empresaId, onComplete }) {
     );
   }
 
-  if (cargos.length === 0 && !loading) {
+  if (displayCargos.length === 0 && !loading && !processing) {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
@@ -192,7 +270,7 @@ function HomologacionView({ empresaId, onComplete }) {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* Empresa Data Card */}
+      {/* Empresa Data Card - Compact View */}
       {empresaData && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -200,214 +278,361 @@ function HomologacionView({ empresaId, onComplete }) {
           className="bg-white rounded-2xl shadow-lg overflow-hidden"
         >
           {/* Header */}
-          <div className="bg-gradient-to-r from-forest to-primary px-6 py-4 flex items-center justify-between">
+          <div className="bg-gradient-to-r from-forest to-primary px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Building2 className="text-white w-6 h-6" />
+                <div>
+                  <h2 className="text-lg font-bold text-white">{empresaData.nombre_empresa || 'Empresa'}</h2>
+                  {empresaData.razon_social && (
+                    <p className="text-xs text-white/70">{empresaData.razon_social}</p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setShowEmpresaExpanded(!showEmpresaExpanded)}
+                className="flex items-center gap-1 text-xs text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all"
+              >
+                {showEmpresaExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                {showEmpresaExpanded ? 'Ocultar detalles' : 'Ver todos los datos'}
+              </button>
+            </div>
+          </div>
+
+          {/* Always visible: Basic info row */}
+          <div className="p-5 border-b border-slate-100">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+              {empresaData.nit && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">NIT</p>
+                  <p className="font-bold text-forest text-sm">{empresaData.nit}</p>
+                </div>
+              )}
+              {empresaData.tipo_empresa && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Tipo</p>
+                  <p className="font-bold text-forest text-sm">{empresaData.tipo_empresa}</p>
+                </div>
+              )}
+              {(empresaData.ciudad || empresaData.departamento) && (
+                <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-3">
+                  <MapPin size={14} className="text-slate-400 shrink-0" />
+                  <div>
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Ubicacion</p>
+                    <p className="font-semibold text-forest text-sm">{[empresaData.ciudad, empresaData.departamento].filter(Boolean).join(', ')}</p>
+                  </div>
+                </div>
+              )}
+              {empresaData.sector_economico && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Sector</p>
+                  <p className="font-bold text-forest text-sm">{empresaData.sector_economico}</p>
+                </div>
+              )}
+              {empresaData.persona_contacto && (
+                <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-3">
+                  <User size={14} className="text-slate-400 shrink-0" />
+                  <div>
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Contacto</p>
+                    <p className="font-semibold text-forest text-sm">{empresaData.persona_contacto}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Expanded details */}
+          <AnimatePresence>
+            {showEmpresaExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="p-5 space-y-5">
+                  {/* Fecha y Consultor */}
+                  {(empresaData.fecha_diligenciamiento || empresaData.consultor) && (
+                    <div>
+                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-blue-500"></span> General
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        {empresaData.fecha_diligenciamiento && (
+                          <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-3 border border-blue-100">
+                            <Calendar size={14} className="text-blue-500 shrink-0" />
+                            <div>
+                              <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Fecha diligenciamiento</p>
+                              <p className="font-semibold text-blue-700 text-sm">{formatDate(empresaData.fecha_diligenciamiento)}</p>
+                            </div>
+                          </div>
+                        )}
+                        {empresaData.consultor && (
+                          <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Consultor</p>
+                            <p className="font-semibold text-blue-700 text-sm">{empresaData.consultor}</p>
+                          </div>
+                        )}
+                        {empresaData.actividad_economica && (
+                          <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Actividad Economica</p>
+                            <p className="font-semibold text-blue-700 text-sm">{empresaData.actividad_economica}</p>
+                          </div>
+                        )}
+                        {empresaData.direccion && (
+                          <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Direccion</p>
+                            <p className="font-semibold text-blue-700 text-sm">{empresaData.direccion}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Contacto completo */}
+                  <div>
+                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Contacto Completo
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      {empresaData.persona_contacto && (
+                        <div className="flex items-start gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                          <User size={14} className="text-emerald-500 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Persona que diligencia</p>
+                            <p className="font-semibold text-emerald-700 text-sm">{empresaData.persona_contacto}</p>
+                            {empresaData.cargo_contacto && <p className="text-[10px] text-emerald-400 mt-0.5">{empresaData.cargo_contacto}</p>}
+                          </div>
+                        </div>
+                      )}
+                      {empresaData.email_contacto && (
+                        <div className="flex items-start gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                          <Mail size={14} className="text-emerald-500 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Email</p>
+                            <p className="font-semibold text-emerald-700 text-sm truncate">{empresaData.email_contacto}</p>
+                          </div>
+                        </div>
+                      )}
+                      {empresaData.telefono && (
+                        <div className="flex items-center gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                          <Phone size={14} className="text-emerald-500 shrink-0" />
+                          <div>
+                            <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Telefono empresa</p>
+                            <p className="font-semibold text-emerald-700 text-sm">{empresaData.telefono}</p>
+                          </div>
+                        </div>
+                      )}
+                      {empresaData.telefono_contacto && (
+                        <div className="flex items-center gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                          <Phone size={14} className="text-emerald-500 shrink-0" />
+                          <div>
+                            <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Telefono contacto</p>
+                            <p className="font-semibold text-emerald-700 text-sm">{empresaData.telefono_contacto}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Productos y Motivacion */}
+                  {(empresaData.principales_productos || empresaData.motivacion) && (
+                    <div>
+                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-purple-500"></span> Informacion de la Compania
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        {empresaData.principales_productos && (
+                          <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Package size={14} className="text-purple-500" />
+                              <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Productos/Servicios</p>
+                            </div>
+                            <p className="font-semibold text-purple-700 text-sm">{empresaData.principales_productos}</p>
+                          </div>
+                        )}
+                        {empresaData.motivacion && (
+                          <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                            <div className="flex items-center gap-2 mb-1">
+                              <FileText size={14} className="text-purple-500" />
+                              <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Motivacion para participar</p>
+                            </div>
+                            <p className="font-semibold text-purple-700 text-sm">{empresaData.motivacion}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Datos de Personal */}
+                  {(empresaData.num_personas_contratadas || empresaData.empleados_presenciales || empresaData.empleados_teletrabajo || empresaData.empleados_mixta) && (
+                    <div>
+                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-blue-500"></span> Datos de Personal
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        {empresaData.num_personas_contratadas && (
+                          <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
+                            <div className="flex items-center justify-center gap-1 mb-1">
+                              <Users size={14} className="text-blue-500" />
+                              <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Total contratados</p>
+                            </div>
+                            <p className="font-black text-blue-700 text-2xl">{empresaData.num_personas_contratadas}</p>
+                          </div>
+                        )}
+                        {empresaData.empleados_presenciales && (
+                          <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
+                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Presencial</p>
+                            <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_presenciales}</p>
+                          </div>
+                        )}
+                        {empresaData.empleados_teletrabajo && (
+                          <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
+                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Teletrabajo</p>
+                            <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_teletrabajo}</p>
+                          </div>
+                        )}
+                        {empresaData.empleados_mixta && (
+                          <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
+                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Mixta</p>
+                            <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_mixta}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Datos Financieros */}
+                  {(empresaData.ventas_reales || empresaData.ingresos_reales || empresaData.excedentes_reales) && (
+                    <div>
+                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-amber-500"></span> Datos Financieros
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                        {empresaData.ventas_reales && (
+                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                            <div className="flex items-center justify-center gap-1 mb-1">
+                              <DollarSign size={12} className="text-amber-500" />
+                              <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ventas Reales</p>
+                            </div>
+                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ventas_reales)}</p>
+                          </div>
+                        )}
+                        {empresaData.ventas_presupuestadas && (
+                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                            <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ventas Presup.</p>
+                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ventas_presupuestadas)}</p>
+                          </div>
+                        )}
+                        {empresaData.ingresos_reales && (
+                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                            <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ingresos Reales</p>
+                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ingresos_reales)}</p>
+                          </div>
+                        )}
+                        {empresaData.ingresos_presupuestados && (
+                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                            <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ingresos Presup.</p>
+                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ingresos_presupuestados)}</p>
+                          </div>
+                        )}
+                        {empresaData.excedentes_reales && (
+                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                            <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Excedentes Reales</p>
+                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.excedentes_reales)}</p>
+                          </div>
+                        )}
+                        {empresaData.excedentes_presupuestados && (
+                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                            <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Excedentes Presup.</p>
+                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.excedentes_presupuestados)}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      )}
+
+      {/* Progress Bar (during processing) */}
+      {processing && progress && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-2xl shadow-lg p-4 border-2 border-blue-100"
+        >
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              <Building2 className="text-white w-6 h-6" />
+              <Loader2 className="animate-spin text-blue-600" size={20} />
               <div>
-                <h2 className="text-lg font-bold text-white">{empresaData.nombre_empresa || 'Empresa'}</h2>
-                {empresaData.razon_social && (
-                  <p className="text-xs text-white/70">{empresaData.razon_social}</p>
+                <p className="font-bold text-forest text-sm">{progress.current_batch || 'Procesando...'}</p>
+                {progress.current_cargo && (
+                  <p className="text-xs text-slate-500">Procesando: <span className="font-semibold text-forest">{progress.current_cargo}</span></p>
                 )}
               </div>
             </div>
-            {empresaData.fecha_diligenciamiento && (
-              <span className="text-xs text-white/80 bg-white/10 px-3 py-1 rounded-full font-medium">
-                {empresaData.fecha_diligenciamiento}
+            <div className="text-right">
+              <p className="text-2xl font-black text-blue-700">{progress.processed || 0}<span className="text-sm text-slate-400 font-medium">/{progress.total}</span></p>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="w-full bg-slate-100 rounded-full h-3 mb-3 overflow-hidden">
+            <motion.div
+              className="h-full bg-gradient-to-r from-blue-400 to-emerald-400 rounded-full"
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.min(100, ((progress.processed || 0) / (progress.total || 1)) * 100)}%` }}
+              transition={{ duration: 0.3 }}
+            />
+          </div>
+
+          {/* Quick stats */}
+          <div className="flex gap-4 text-xs">
+            {progress.exact_matches > 0 && (
+              <span className="flex items-center gap-1 text-emerald-600 font-bold">
+                <Check size={12} /> {progress.exact_matches} Match
+              </span>
+            )}
+            {progress.ia_suggested > 0 && (
+              <span className="flex items-center gap-1 text-purple-600 font-bold">
+                <Activity size={12} /> {progress.ia_suggested} Sugeridos IA
+              </span>
+            )}
+            {progress.not_matched > 0 && (
+              <span className="flex items-center gap-1 text-amber-600 font-bold">
+                <AlertCircle size={12} /> {progress.not_matched} Sin coincidencia
               </span>
             )}
           </div>
 
-          <div className="p-6">
-            {/* Row 1: Identificacion */}
-            <div className="mb-5">
-              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-primary"></span> Identificacion
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                {empresaData.nit && (
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">NIT</p>
-                    <p className="font-bold text-forest text-sm">{empresaData.nit}</p>
+          {/* Live feed of recent results */}
+          {progress.recent_results && progress.recent_results.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Ultimos resultados:</p>
+              <div className="flex gap-2 overflow-x-auto pb-1 max-h-16 overflow-y-auto">
+                {progress.recent_results.slice(-10).reverse().map((r, idx) => (
+                  <div
+                    key={`${r.id}-${idx}`}
+                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap ${
+                      r.tipo === 'exacto' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                      r.tipo === 'ia' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                      r.tipo === 'reproceso' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                      'bg-amber-50 text-amber-700 border border-amber-200'
+                    }`}
+                  >
+                    <span className="font-bold">{r.nombre_cargo}</span>
+                    <span className="mx-1">→</span>
+                    <span>{r.cargo_homologado}</span>
                   </div>
-                )}
-                {empresaData.tipo_empresa && (
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Tipo</p>
-                    <p className="font-bold text-forest text-sm">{empresaData.tipo_empresa}</p>
-                  </div>
-                )}
-                {empresaData.sector_economico && (
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Sector</p>
-                    <p className="font-bold text-forest text-sm">{empresaData.sector_economico}</p>
-                  </div>
-                )}
-                {empresaData.actividad_economica && (
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Actividad</p>
-                    <p className="font-bold text-forest text-sm">{empresaData.actividad_economica}</p>
-                  </div>
-                )}
+                ))}
               </div>
             </div>
-
-            {/* Row 2: Ubicacion y Contacto */}
-            <div className="mb-5">
-              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Ubicacion y Contacto
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-                {(empresaData.ciudad || empresaData.departamento) && (
-                  <div className="flex items-start gap-2 bg-slate-50 rounded-lg p-3">
-                    <MapPin size={14} className="text-slate-400 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Ubicacion</p>
-                      <p className="font-semibold text-forest text-sm">{[empresaData.ciudad, empresaData.departamento].filter(Boolean).join(', ')}</p>
-                    </div>
-                  </div>
-                )}
-                {empresaData.direccion && (
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Direccion</p>
-                    <p className="font-semibold text-forest text-sm">{empresaData.direccion}</p>
-                  </div>
-                )}
-                {empresaData.telefono && (
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Telefono</p>
-                    <p className="font-semibold text-forest text-sm">{empresaData.telefono}</p>
-                  </div>
-                )}
-                {empresaData.persona_contacto && (
-                  <div className="flex items-start gap-2 bg-slate-50 rounded-lg p-3">
-                    <User size={14} className="text-slate-400 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Contacto</p>
-                      <p className="font-semibold text-forest text-sm">{empresaData.persona_contacto}</p>
-                      {empresaData.cargo_contacto && <p className="text-[10px] text-slate-400">{empresaData.cargo_contacto}</p>}
-                    </div>
-                  </div>
-                )}
-                {empresaData.email_contacto && (
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Email</p>
-                    <p className="font-semibold text-forest text-sm truncate">{empresaData.email_contacto}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Row 3: Datos de Personal */}
-            {(empresaData.num_personas_contratadas || empresaData.empleados_presenciales || empresaData.empleados_teletrabajo || empresaData.empleados_mixta) && (
-              <div className="mb-5">
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-500"></span> Datos de Personal
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  {empresaData.num_personas_contratadas && (
-                    <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
-                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Total Contratados</p>
-                      <p className="font-black text-blue-700 text-2xl">{empresaData.num_personas_contratadas}</p>
-                    </div>
-                  )}
-                  {empresaData.empleados_presenciales && (
-                    <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
-                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Presencial</p>
-                      <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_presenciales}</p>
-                    </div>
-                  )}
-                  {empresaData.empleados_teletrabajo && (
-                    <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
-                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Teletrabajo</p>
-                      <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_teletrabajo}</p>
-                    </div>
-                  )}
-                  {empresaData.empleados_mixta && (
-                    <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
-                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Mixta</p>
-                      <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_mixta}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Row 4: Datos Financieros */}
-            {(empresaData.ventas_reales || empresaData.ingresos_reales || empresaData.excedentes_reales) && (
-              <div className="mb-5">
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-amber-500"></span> Datos Financieros
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
-                  {empresaData.ventas_reales && (
-                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ventas Reales</p>
-                      <p className="font-black text-amber-700 text-sm">${empresaData.ventas_reales.toLocaleString()}</p>
-                    </div>
-                  )}
-                  {empresaData.ventas_presupuestadas && (
-                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ventas Presup.</p>
-                      <p className="font-black text-amber-700 text-sm">${empresaData.ventas_presupuestadas.toLocaleString()}</p>
-                    </div>
-                  )}
-                  {empresaData.ingresos_reales && (
-                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ingresos Reales</p>
-                      <p className="font-black text-amber-700 text-sm">${empresaData.ingresos_reales.toLocaleString()}</p>
-                    </div>
-                  )}
-                  {empresaData.ingresos_presupuestados && (
-                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ingresos Presup.</p>
-                      <p className="font-black text-amber-700 text-sm">${empresaData.ingresos_presupuestados.toLocaleString()}</p>
-                    </div>
-                  )}
-                  {empresaData.excedentes_reales && (
-                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Excedentes Reales</p>
-                      <p className="font-black text-amber-700 text-sm">${empresaData.excedentes_reales.toLocaleString()}</p>
-                    </div>
-                  )}
-                  {empresaData.excedentes_presupuestados && (
-                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Excedentes Presup.</p>
-                      <p className="font-black text-amber-700 text-sm">${empresaData.excedentes_presupuestados.toLocaleString()}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Row 5: Informacion adicional */}
-            {(empresaData.principales_productos || empresaData.motivacion || empresaData.consultor) && (
-              <div>
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-purple-500"></span> Informacion Adicional
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                  {empresaData.consultor && (
-                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                      <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Consultor</p>
-                      <p className="font-semibold text-purple-700">{empresaData.consultor}</p>
-                    </div>
-                  )}
-                  {empresaData.principales_productos && (
-                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                      <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Productos</p>
-                      <p className="font-semibold text-purple-700 text-sm">{empresaData.principales_productos}</p>
-                    </div>
-                  )}
-                  {empresaData.motivacion && (
-                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                      <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Motivacion</p>
-                      <p className="font-semibold text-purple-700 text-sm">{empresaData.motivacion}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          )}
         </motion.div>
       )}
 
@@ -422,7 +647,7 @@ function HomologacionView({ empresaId, onComplete }) {
               {stats.homologados > 0 && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">{stats.homologados} Match</span>}
               {stats.sugeridos > 0 && <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded-full">{stats.sugeridos} Sugeridos</span>}
               {stats.pendientes > 0 && <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{stats.pendientes} Pend.</span>}
-              {stats.no_match > 0 && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full">{stats.no_match} S/C</span>}
+              {stats.sin_coincidencia > 0 && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full">{stats.sin_coincidencia} S/C</span>}
             </div>
           </div>
           <div className="flex gap-2 items-center flex-wrap">
@@ -477,6 +702,19 @@ function HomologacionView({ empresaId, onComplete }) {
             <thead className="bg-forest text-white text-[10px] font-bold uppercase">
               <tr>
                 <th className="px-3 py-3 w-8">#</th>
+                {(processing || selectedCargoIds.size > 0) && (
+                  <th className="px-3 py-3 w-8">
+                    <input
+                      type="checkbox"
+                      checked={selectedCargoIds.size > 0 && displayCargos.filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado').length === selectedCargoIds.size}
+                      onChange={e => {
+                        if (e.target.checked) selectAllReprocessable();
+                        else clearSelection();
+                      }}
+                      className="rounded border-slate-300 text-primary focus:ring-primary"
+                    />
+                  </th>
+                )}
                 <th className="px-3 py-3 min-w-[200px]">Cargo</th>
                 <th className="px-3 py-3 min-w-[100px]">Area</th>
                 <th className="px-3 py-3 w-28">Estado</th>
@@ -486,16 +724,32 @@ function HomologacionView({ empresaId, onComplete }) {
               </tr>
             </thead>
             <tbody>
-              {filteredCargos.map((c, idx) => {
+              {displayCargos.map((c, idx) => {
                 const h = c.homologacion || {};
                 const isEditing = editingId === c.id;
+                const isSelected = selectedCargoIds.has(c.id);
+                const isReprocessable = c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado';
                 return (
                   <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
+                    isSelected ? 'bg-purple-50/60' :
                     c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' :
-                    c.estado?.toLowerCase() === 'sin_coincidencia' ? 'bg-amber-50/30' :
+                    c.estado?.toLowerCase().includes('sin_coincidencia') ? 'bg-amber-50/30' :
+                    c.estado?.toLowerCase() === 'procesando' ? 'bg-blue-50/50 animate-pulse' :
                     idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
                   }`}>
                     <td className="px-3 py-2.5 text-slate-300 font-mono text-center text-xs">{idx + 1}</td>
+                    {(processing || selectedCargoIds.size > 0) && (
+                      <td className="px-3 py-2.5 text-center">
+                        {isReprocessable && (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleCargoSelection(c.id)}
+                            className="rounded border-slate-300 text-primary focus:ring-primary"
+                          />
+                        )}
+                      </td>
+                    )}
                     <td className="px-3 py-2.5 font-semibold text-forest">{c.nombre_cargo}</td>
                     <td className="px-3 py-2.5 text-slate-500 text-xs">{c.area}</td>
                     <td className="px-3 py-2.5"><StatusBadge estado={c.estado} /></td>
@@ -540,12 +794,12 @@ function HomologacionView({ empresaId, onComplete }) {
             </tbody>
           </table>
         </div>
-        {filteredCargos.length === 0 && (
+        {displayCargos.length === 0 && (
           <div className="p-8 text-center text-slate-400 text-sm">No hay cargos que coincidan con la busqueda</div>
         )}
       </div>
 
-      {/* Observaciones + Reprocesar */}
+      {/* Observaciones + Reprocesar Selectivo */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -584,9 +838,21 @@ function HomologacionView({ empresaId, onComplete }) {
           />
 
           <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-400">
-              {stats.no_match > 0 ? `${stats.no_match} cargos sin coincidencia para reprocesar` : 'Todos los cargos tienen homologacion'}
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-slate-400">
+                {selectedCargoIds.size > 0
+                  ? `${selectedCargoIds.size} cargos seleccionados para reprocesar`
+                  : stats.sin_coincidencia > 0
+                    ? `${stats.sin_coincidencia} cargos sin coincidencia disponibles`
+                    : 'Todos los cargos tienen homologacion'
+                }
+              </p>
+              {selectedCargoIds.size > 0 && (
+                <button onClick={clearSelection} className="text-xs text-purple-500 hover:text-purple-700 font-bold">
+                  Limpiar seleccion
+                </button>
+              )}
+            </div>
             <button
               onClick={reprocesarHomologacion}
               disabled={reprocessing || !observaciones.trim()}
@@ -595,7 +861,7 @@ function HomologacionView({ empresaId, onComplete }) {
               {reprocessing ? (
                 <><Loader2 size={16} className="animate-spin" /> Reprocesando...</>
               ) : (
-                <><RefreshCw size={16} /> Reprocesar con IA</>
+                <><RefreshCw size={16} /> {selectedCargoIds.size > 0 ? `Reprocesar ${selectedCargoIds.size} seleccionados` : 'Reprocesar con IA'}</>
               )}
             </button>
           </div>
@@ -603,7 +869,7 @@ function HomologacionView({ empresaId, onComplete }) {
       </motion.div>
 
       {/* Next Step */}
-      {stats.homologados + stats.sugeridos > 0 && onComplete && (
+      {stats.homologados + stats.sugeridos > 0 && onComplete && !processing && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-end">
           <button
             onClick={onComplete}
