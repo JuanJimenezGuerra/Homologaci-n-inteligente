@@ -44,6 +44,18 @@ class HomologacionUpdate(BaseModel):
     justificacion: str
 
 # ==========================================
+# HEALTH CHECK (para cron-job.org, Render, etc.)
+# ==========================================
+
+@app.get("/ping")
+def ping():
+    return {"status": "ok", "message": "SHR Homologacion API running"}
+
+@app.get("/")
+def root():
+    return {"status": "ok", "docs": "/docs"}
+
+# ==========================================
 # STARTUP
 # ==========================================
 
@@ -104,7 +116,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 @app.post("/uploads/master")
 def upload_master_file(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    temp_path = f"temp_master_{file.filename}"
+    temp_path = os.path.join(os.getenv("TEMP", "/tmp"), f"temp_master_{file.filename}")
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     try:
@@ -116,27 +128,41 @@ def upload_master_file(file: UploadFile = File(...), db: Session = Depends(get_d
 
 @app.post("/uploads/requirements")
 def upload_requirements_file(
-    empresa: str = Form(...),
+    empresa: str = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    upload = Upload(
-        user_id=current_user.id,
-        filename=file.filename,
-        empresa=empresa.upper(),
-        status="pendiente"
-    )
-    db.add(upload)
-    db.commit()
-    db.refresh(upload)
+    temp_path = os.path.join(os.getenv("TEMP", "/tmp"), f"temp_req_{file.filename.replace(' ', '_')}")
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
-    temp_path = os.path.join("/tmp", f"temp_req_{upload.id}_{file.filename.replace(' ', '_')}")
     try:
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        empresa_nombre = empresa.upper() if empresa and empresa.strip() else None
+
+        if not empresa_nombre:
+            from .services.excel_processor import procesar_datos_generales
+            empresa_id = procesar_datos_generales(temp_path, "EMPRESA", db)
+            if empresa_id:
+                emp = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+                if emp:
+                    empresa_nombre = emp.nombre_empresa.upper()
+
+        if not empresa_nombre:
+            empresa_nombre = file.filename.replace(".xlsx", "").replace(".xls", "").upper()
+
+        upload = Upload(
+            user_id=current_user.id,
+            filename=file.filename,
+            empresa=empresa_nombre,
+            status="pendiente"
+        )
+        db.add(upload)
+        db.commit()
+        db.refresh(upload)
+
         count = process_requirements_excel(temp_path, upload.id, db)
-        return {"upload_id": upload.id, "count": count}
+        return {"upload_id": upload.id, "count": count, "empresa": empresa_nombre}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error en el Excel: {str(e)}")
@@ -186,8 +212,8 @@ async def update_homologation(cargo_id: int, data: dict, db: Session = Depends(g
     return {"message": "Actualizado correctamente"}
 
 @app.post("/procesar/{upload_id}")
-def start_processing(upload_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    background_tasks.add_task(start_batch_processing, upload_id, db)
+def start_processing(upload_id: int, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user)):
+    background_tasks.add_task(start_batch_processing, upload_id)
     return {"message": "Procesamiento iniciado en segundo plano"}
 
 @app.post("/procesar/{upload_id}/cancel")
@@ -362,10 +388,10 @@ def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), current_u
     }
 
 @app.post("/procesar-valoracion/{upload_id}")
-def start_valoracion_processing(upload_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def start_valoracion_processing(upload_id: int, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user)):
     """Inicia valoracion de TODOS los cargos de un upload con IA."""
     from .services.valoracion_processor import start_valoracion_batch
-    background_tasks.add_task(start_valoracion_batch, upload_id, db)
+    background_tasks.add_task(start_valoracion_batch, upload_id)
     return {"message": "Valoracion iniciada en segundo plano"}
 
 @app.get("/uploads/{upload_id}/valoraciones")

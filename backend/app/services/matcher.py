@@ -4,13 +4,18 @@ import json
 import logging
 import re
 import difflib
-from sqlalchemy.orm import Session
 from ..models import Cargo, Homologacion, MasterDescription, Upload
 
 logger = logging.getLogger(__name__)
 
 
-def get_master_descriptions(db: Session):
+def _get_db():
+    """Crea una nueva sesion de DB para uso en background tasks."""
+    from ..database import SessionLocal
+    return SessionLocal()
+
+
+def get_master_descriptions(db):
     masters = db.query(MasterDescription).all()
     return [{"nombre": m.nombre_cargo or "", "descripcion": m.descripcion or "", "area": m.area or ""} for m in masters]
 
@@ -62,25 +67,39 @@ def find_exact_match(cargo_nombre: str, masters: list):
     return None
 
 
-def start_batch_processing(upload_id: int, db: Session):
-    """Procesa lote de homologacion: match local -> IA para los que no coinciden."""
-    upload = db.query(Upload).filter(Upload.id == upload_id).first()
-    if not upload:
-        return
+def start_batch_processing(upload_id: int):
+    """Procesa lote de homologacion: match local -> IA para los que no coinciden.
+    Crea su propia sesion de DB para evitar problemas con background tasks."""
+    db = _get_db()
+    try:
+        upload = db.query(Upload).filter(Upload.id == upload_id).first()
+        if not upload:
+            logger.error(f"Upload {upload_id} no encontrado")
+            return
 
-    upload.status = "procesando"
-    db.commit()
+        upload.status = "procesando"
+        db.commit()
 
-    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id, Cargo.estado == "PENDIENTE").all()
-    masters = get_master_descriptions(db)
+        cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id, Cargo.estado == "PENDIENTE").all()
+        masters = get_master_descriptions(db)
 
-    _process_homologacion_batch(upload_id, cargos, masters, db)
+        _process_homologacion_batch(cargos, masters, db)
 
-    upload.status = "completado"
-    db.commit()
+        upload.status = "completado"
+        db.commit()
+        logger.info(f"Homologacion completada para upload {upload_id}")
+    except Exception as e:
+        logger.error(f"Error en start_batch_processing: {e}")
+        try:
+            upload.status = "error"
+            db.commit()
+        except:
+            pass
+    finally:
+        db.close()
 
 
-def _process_homologacion_batch(upload_id: int, cargos: list, masters: list, db: Session):
+def _process_homologacion_batch(cargos: list, masters: list, db):
     cargos_para_ia = []
 
     for cargo in cargos:
@@ -109,13 +128,13 @@ def _process_homologacion_batch(upload_id: int, cargos: list, masters: list, db:
     db.commit()
 
     if cargos_para_ia:
-        from ..services.ia_service import homologar_con_ia
+        from .ia_service import homologar_con_ia
 
         cargos_batch = [{
             "id": c.id,
             "nombre_cargo": c.nombre_cargo,
             "area": c.area,
-            "descripcion": c.descripcion_empresa or "",
+            "descripcion_empresa": c.descripcion_empresa or "",
             "cargo_jefe": "",
         } for c in cargos_para_ia]
 

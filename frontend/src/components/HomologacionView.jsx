@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link2, Play, Loader, Users, AlertCircle, Settings } from 'lucide-react';
 
-const API = 'https://shr-backend-prod.onrender.com';
+const API = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
 
 function HomologacionView({ empresaId, onComplete }) {
   const [criterios, setCriterios] = useState({

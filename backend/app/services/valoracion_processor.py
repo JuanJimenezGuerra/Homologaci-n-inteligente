@@ -1,10 +1,15 @@
 import json
 import time
 import logging
-from sqlalchemy.orm import Session
 from ..models import Cargo, Valoracion, ProcessingLog
 
 logger = logging.getLogger(__name__)
+
+
+def _get_db():
+    """Crea una nueva sesion de DB para uso en background tasks."""
+    from ..database import SessionLocal
+    return SessionLocal()
 
 
 def _valorar_cargo_con_ia(cargo) -> dict:
@@ -23,12 +28,25 @@ def _valorar_cargo_con_ia(cargo) -> dict:
     return resultado
 
 
-def start_valoracion_batch(upload_id: int, db: Session):
-    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
-    _process_with_ia(upload_id, cargos, db)
+def start_valoracion_batch(upload_id: int):
+    """Inicia valoracion de TODOS los cargos de un upload con IA.
+    Crea su propia sesion de DB para evitar problemas con background tasks."""
+    db = _get_db()
+    try:
+        cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+        if not cargos:
+            logger.warning(f"No hay cargos para valorar en upload {upload_id}")
+            return
+
+        _process_with_ia(cargos, db)
+        logger.info(f"Valoracion completada para upload {upload_id}: {len(cargos)} cargos")
+    except Exception as e:
+        logger.error(f"Error en start_valoracion_batch: {e}")
+    finally:
+        db.close()
 
 
-def _process_with_ia(upload_id: int, cargos: list, db: Session):
+def _process_with_ia(cargos: list, db):
     if not cargos:
         return
 
