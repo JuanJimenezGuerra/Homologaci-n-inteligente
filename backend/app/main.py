@@ -772,11 +772,105 @@ def ia_status(db: Session = Depends(get_db), current_user: User = Depends(get_cu
     return status
 
 # ==========================================
+# BUSQUEDA EN INTERNET PARA SIN_COINCIDENCIA
+# ==========================================
+
+@app.post("/homologacion/{cargo_id}/buscar-internet")
+def buscar_internet_homologar(cargo_id: int, db: Session = Depends(get_db)):
+    """Busca funciones del cargo en internet y homologa contra la base maestra."""
+    from .services.ia_service import buscar_en_internet_y_homologar
+
+    cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+    if not cargo:
+        raise HTTPException(status_code=404, detail="Cargo no encontrado")
+
+    hom = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
+    if not hom:
+        hom = Homologacion(cargo_id=cargo.id)
+        db.add(hom)
+
+    cargo_dict = {
+        "id": cargo.id,
+        "nombre_cargo": cargo.nombre_cargo,
+        "area": cargo.area,
+        "descripcion_empresa": cargo.descripcion_empresa or "",
+    }
+
+    resultado = buscar_en_internet_y_homologar(cargo_dict, db)
+
+    hom.cargo_homologado = resultado["cargo_homologado"]
+    hom.justificacion = resultado["justificacion"]
+    hom.busqueda_internet_url = resultado["url_busqueda"]
+    hom.estado_busqueda = "BUSCADO_EN_INTERNET"
+    db.commit()
+
+    # Actualizar el estado del cargo
+    cargo.estado = "BUSCADO_EN_INTERNET"
+    db.commit()
+
+    return {
+        "cargo_id": cargo_id,
+        "cargo_homologado": resultado["cargo_homologado"],
+        "justificacion": resultado["justificacion"],
+        "url_busqueda": resultado["url_busqueda"],
+        "estado": "BUSCADO_EN_INTERNET",
+    }
+
+@app.post("/homologacion/buscar-internet-lote")
+def buscar_internet_lote(body: Body = Body(...), db: Session = Depends(get_db)):
+    """Busqueda en internet para multiple cargos SIN_COINCIDENCIA."""
+    cargo_ids = body.get("cargo_ids", [])
+    from .services.ia_service import buscar_en_internet_y_homologar
+
+    resultados = []
+    for cargo_id in cargo_ids:
+        try:
+            cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+            if not cargo:
+                resultados.append({"cargo_id": cargo_id, "error": "Cargo no encontrado"})
+                continue
+
+            hom = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
+            if not hom:
+                hom = Homologacion(cargo_id=cargo.id)
+                db.add(hom)
+
+            cargo_dict = {
+                "id": cargo.id,
+                "nombre_cargo": cargo.nombre_cargo,
+                "area": cargo.area,
+                "descripcion_empresa": cargo.descripcion_empresa or "",
+            }
+
+            resultado = buscar_en_internet_y_homologar(cargo_dict, db)
+
+            hom.cargo_homologado = resultado["cargo_homologado"]
+            hom.justificacion = resultado["justificacion"]
+            hom.busqueda_internet_url = resultado["url_busqueda"]
+            hom.estado_busqueda = "BUSCADO_EN_INTERNET"
+            cargo.estado = "BUSCADO_EN_INTERNET"
+            db.commit()
+
+            resultados.append({
+                "cargo_id": cargo_id,
+                "cargo_homologado": resultado["cargo_homologado"],
+                "justificacion": resultado["justificacion"],
+                "url_busqueda": resultado["url_busqueda"],
+                "estado": "BUSCADO_EN_INTERNET",
+            })
+            time.sleep(2)
+        except Exception as e:
+            db.rollback()
+            resultados.append({"cargo_id": cargo_id, "error": str(e)})
+
+    return {"resultados": resultados}
+
+# ==========================================
 # VALORACION CON IA
 # ==========================================
 
 @app.post("/valoracion/{cargo_id}/evaluar-ia")
-def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db)):
     """Evalua un cargo con IA y guarda la valoracion."""
     from .services.ia_service import valorar_cargo_con_ia
 
@@ -838,14 +932,14 @@ def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), current_u
     }
 
 @app.post("/procesar-valoracion/{upload_id}")
-def start_valoracion_processing(upload_id: int, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user)):
+def start_valoracion_processing(upload_id: int, background_tasks: BackgroundTasks):
     """Inicia valoracion de TODOS los cargos de un upload con IA."""
     from .services.valoracion_processor import start_valoracion_batch
     background_tasks.add_task(start_valoracion_batch, upload_id)
     return {"message": "Valoracion iniciada en segundo plano"}
 
 @app.get("/uploads/{upload_id}/valoraciones")
-def list_valoraciones(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def list_valoraciones(upload_id: int, db: Session = Depends(get_db)):
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
     result = []
     for c in cargos:

@@ -16,3 +16,4 @@ python-docx
 psycopg2-binary
 scikit-learn
 numpy
+duckduckgo-search

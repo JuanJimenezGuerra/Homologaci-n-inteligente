@@ -13,7 +13,7 @@ def _get_db():
 
 
 def _valorar_cargo_con_ia(cargo) -> dict:
-    """Valora un cargo usando el servicio de IA unificado."""
+    """Valora un cargo usando el servicio de IA unificado con reintentos."""
     from ..services.ia_service import valorar_cargo_con_ia as ia_valorar
 
     cargo_dict = {
@@ -24,8 +24,19 @@ def _valorar_cargo_con_ia(cargo) -> dict:
         "cargo_homologado": cargo.homologacion.cargo_homologado if cargo.homologacion else "",
     }
 
-    resultado = ia_valorar(cargo_dict)
-    return resultado
+    max_retries = 2
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            resultado = ia_valorar(cargo_dict)
+            return resultado
+        except Exception as e:
+            last_error = e
+            logger.warning(f"Intento {attempt + 1} fallido para cargo {cargo.id}: {e}")
+            if attempt < max_retries:
+                time.sleep(2)
+
+    raise ValueError(f"Error despues de {max_retries + 1} intentos: {last_error}")
 
 
 def start_valoracion_batch(upload_id: int):
@@ -73,13 +84,22 @@ def _process_with_ia(cargos: list, db):
             val.impacto = resultado.get("impacto")
             val.autonomia = resultado.get("autonomia")
             val.magnitud = resultado.get("magnitud")
-            val.criterio_1 = resultado.get("criterio1", 0)
-            val.criterio_2 = resultado.get("criterio2", 0)
-            val.criterio_3 = resultado.get("criterio3", 0)
+            val.criterio_1 = int(resultado.get("criterio1", 0))
+            val.criterio_2 = int(resultado.get("criterio2", 0))
+            val.criterio_3 = int(resultado.get("criterio3", 0))
+            val.justificacion_ia = resultado.get("justificacion", "")
+            val.basico = resultado.get("garantizado")
+            val.real_pagado = resultado.get("garantizadoVariable")
+            val.garantizado = resultado.get("garantizado")
+            val.garantizado_variable = resultado.get("garantizadoVariable")
+            val.compensacion_total = resultado.get("compensacionTotal")
+            val.editado_manual = False
 
             db.commit()
+            logger.info(f"Valoracion guardada para cargo {cargo.id}")
             time.sleep(1.5)
 
         except Exception as e:
+            db.rollback()
             logger.error(f"Error valorando cargo {cargo.id}: {e}")
             continue

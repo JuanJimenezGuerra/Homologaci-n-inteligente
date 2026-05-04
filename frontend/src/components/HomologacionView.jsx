@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link2, Play, Loader2, AlertCircle, Building2, MapPin, User, Edit2, Check, X, MessageSquare, RefreshCw, ArrowRight, Calendar, Phone, Mail, Package, Users, DollarSign, FileText, Activity, Briefcase, Target } from 'lucide-react';
+import { Link2, Play, Loader2, AlertCircle, Building2, MapPin, User, Edit2, Check, X, MessageSquare, RefreshCw, ArrowRight, Calendar, Phone, Mail, Package, Users, DollarSign, FileText, Activity, Briefcase, Target, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
@@ -11,6 +11,7 @@ const STATUS_STYLES = {
   sin_coincidencia: 'bg-amber-100 text-amber-700 border border-amber-300',
   pendiente: 'bg-slate-100 text-slate-600 border border-slate-200',
   error: 'bg-red-100 text-red-700 border border-red-300',
+  buscado_en_internet: 'bg-cyan-100 text-cyan-700 border border-cyan-300',
 };
 
 const StatusBadge = ({ estado }) => {
@@ -49,6 +50,8 @@ function HomologacionView({ empresaId, onComplete }) {
   const [filterStatus, setFilterStatus] = useState('all');
   const [observaciones, setObservaciones] = useState('');
   const [selectedCargoIds, setSelectedCargoIds] = useState(new Set());
+  const [searchingInternet, setSearchingInternet] = useState(false);
+  const [searchingIds, setSearchingIds] = useState(new Set());
 
   const [progress, setProgress] = useState(null);
   const [liveCargos, setLiveCargos] = useState([]);
@@ -222,6 +225,55 @@ function HomologacionView({ empresaId, onComplete }) {
 
   const clearSelection = () => setSelectedCargoIds(new Set());
 
+  const buscarInternet = async (cargoId) => {
+    setSearchingIds(prev => new Set(prev).add(cargoId));
+    try {
+      const res = await fetch(`${API}/homologacion/${cargoId}/buscar-internet`, { method: 'POST' });
+      if (res.ok) {
+        await loadData();
+      } else {
+        const text = await res.text();
+        setError(`Error en busqueda: ${text.slice(0, 200)}`);
+      }
+    } catch (e) {
+      setError('Error: ' + e.message);
+    } finally {
+      setSearchingIds(prev => { const next = new Set(prev); next.delete(cargoId); return next; });
+    }
+  };
+
+  const buscarInternetLote = async () => {
+    const sinCoincidenciaIds = cargos.filter(c =>
+      (c.estado || '').toLowerCase().includes('sin_coincidencia')
+    ).map(c => c.id);
+
+    if (sinCoincidenciaIds.length === 0) {
+      setError('No hay cargos SIN_COINCIDENCIA para buscar');
+      return;
+    }
+
+    setSearchingInternet(true);
+    setSearchingIds(new Set(sinCoincidenciaIds));
+    try {
+      const res = await fetch(`${API}/homologacion/buscar-internet-lote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cargo_ids: sinCoincidenciaIds }),
+      });
+      if (res.ok) {
+        await loadData();
+      } else {
+        const text = await res.text();
+        setError(`Error en busqueda masiva: ${text.slice(0, 200)}`);
+      }
+    } catch (e) {
+      setError('Error: ' + e.message);
+    } finally {
+      setSearchingInternet(false);
+      setSearchingIds(new Set());
+    }
+  };
+
   const displayCargos = (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => {
     const matchSearch = (c.nombre_cargo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (c.area || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -239,6 +291,7 @@ function HomologacionView({ empresaId, onComplete }) {
     sugeridos: displayCargos.filter(c => (c.estado || '').toLowerCase() === 'sugerido').length,
     pendientes: displayCargos.filter(c => ['pendiente', 'procesando'].includes((c.estado || '').toLowerCase())).length,
     sin_coincidencia: displayCargos.filter(c => (c.estado || '').toLowerCase().includes('sin_coincidencia')).length,
+    buscados_internet: displayCargos.filter(c => (c.estado || '').toLowerCase().includes('buscado_en_internet')).length,
   };
 
   const formatCurrency = (val) => {
@@ -508,6 +561,7 @@ function HomologacionView({ empresaId, onComplete }) {
               {stats.sugeridos > 0 && <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded-full">{stats.sugeridos} Sugeridos</span>}
               {stats.pendientes > 0 && <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{stats.pendientes} Pend.</span>}
               {stats.sin_coincidencia > 0 && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full">{stats.sin_coincidencia} S/C</span>}
+              {stats.buscados_internet > 0 && <span className="text-[10px] font-bold bg-cyan-100 text-cyan-700 px-2 py-1 rounded-full">{stats.buscados_internet} Internet</span>}
             </div>
           </div>
           <div className="flex gap-2 items-center flex-wrap">
@@ -517,12 +571,19 @@ function HomologacionView({ empresaId, onComplete }) {
               <option value="sugerido">Sugeridos IA</option>
               <option value="pendiente">Pendientes</option>
               <option value="sin_coincidencia">Sin Coincidencia</option>
+              <option value="buscado_en_internet">Buscados en Internet</option>
             </select>
             <input type="text" placeholder="Buscar cargo..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 w-44" />
             <button onClick={ejecutarHomologacion} disabled={processing} className="flex items-center gap-2 bg-forest text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-primary transition-all disabled:opacity-70">
               {processing ? <Loader2 size={16} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
               {processing ? 'PROCESANDO...' : 'EJECUTAR HOMOLOGACION'}
             </button>
+            {stats.sin_coincidencia > 0 && (
+              <button onClick={buscarInternetLote} disabled={searchingInternet} className="flex items-center gap-2 bg-cyan-600 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-cyan-700 transition-all disabled:opacity-70">
+                {searchingInternet ? <Loader2 size={16} className="animate-spin" /> : <Globe size={14} />}
+                {searchingInternet ? 'BUSCANDO...' : `BUSCAR ${stats.sin_coincidencia} S/C EN INTERNET`}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -567,8 +628,11 @@ function HomologacionView({ empresaId, onComplete }) {
                 const isEditing = editingId === c.id;
                 const isSelected = selectedCargoIds.has(c.id);
                 const isReprocessable = c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado';
+                const isBuscadorInternet = (c.estado || '').toLowerCase().includes('buscado_en_internet');
+                const isSinCoincidencia = (c.estado || '').toLowerCase().includes('sin_coincidencia');
+                const isSearching = searchingIds.has(c.id);
                 return (
-                  <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-purple-50/60' : c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' : c.estado?.toLowerCase().includes('sin_coincidencia') ? 'bg-amber-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                  <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-purple-50/60' : isBuscadorInternet ? 'bg-cyan-50/40' : c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' : isSinCoincidencia ? 'bg-amber-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                     <td className="px-3 py-2.5 text-slate-300 font-mono text-center text-xs">{idx + 1}</td>
                     {(processing || selectedCargoIds.size > 0) && (
                       <td className="px-3 py-2.5 text-center">
@@ -587,14 +651,41 @@ function HomologacionView({ empresaId, onComplete }) {
                         </div>
                       ) : (
                         <div className="flex items-center gap-1">
-                          <span className={`text-xs ${h.cargo_homologado && h.cargo_homologado !== 'SIN COINCIDENCIA' ? 'text-forest font-medium' : 'text-slate-300 italic'}`}>{h.cargo_homologado || 'Sin homologar'}</span>
+                          <span className={`text-xs ${isBuscadorInternet ? 'text-cyan-700 font-bold uppercase' : h.cargo_homologado && h.cargo_homologado !== 'SIN COINCIDENCIA' ? 'text-forest font-medium' : 'text-slate-300 italic'}`}>
+                            {h.cargo_homologado || 'Sin homologar'}
+                          </span>
                           <button onClick={() => handleEdit(c.id, h.cargo_homologado || '')} className="p-1 text-slate-300 hover:text-primary hover:bg-emerald-50 rounded" title="Editar"><Edit2 size={12} /></button>
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-slate-400 text-[10px] max-w-[200px] truncate" title={h.justificacion}>{h.justificacion || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-400 text-[10px] max-w-[200px]">
+                      {isBuscadorInternet ? (
+                        <div className="space-y-1">
+                          <p className="text-cyan-600 font-medium truncate" title={h.justificacion}>{h.justificacion || '—'}</p>
+                          {h.busqueda_internet_url && (
+                            <a href={h.busqueda_internet_url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-blue-500 hover:text-blue-700 flex items-center gap-1">
+                              <Globe size={9} /> Ver busqueda
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="truncate" title={h.justificacion}>{h.justificacion || '—'}</p>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5">
-                      {!isEditing && <button onClick={() => handleEdit(c.id, h.cargo_homologado || '')} className="p-1 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded" title="Editar"><Edit2 size={13} /></button>}
+                      <div className="flex items-center gap-1">
+                        {isSinCoincidencia && !isBuscadorInternet && (
+                          <button
+                            onClick={() => buscarInternet(c.id)}
+                            disabled={isSearching}
+                            className="p-1 text-cyan-500 hover:text-cyan-700 hover:bg-cyan-50 rounded"
+                            title="Buscar en internet"
+                          >
+                            {isSearching ? <Loader2 size={13} className="animate-spin" /> : <Globe size={13} />}
+                          </button>
+                        )}
+                        {!isEditing && <button onClick={() => handleEdit(c.id, h.cargo_homologado || '')} className="p-1 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded" title="Editar"><Edit2 size={13} /></button>}
+                      </div>
                     </td>
                   </tr>
                 );

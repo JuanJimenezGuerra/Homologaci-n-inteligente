@@ -229,6 +229,8 @@ def run_migrations():
         ],
         "homologaciones": [
             ("observaciones_analista", "TEXT"),
+            ("busqueda_internet_url", "VARCHAR"),
+            ("estado_busqueda", "VARCHAR"),
         ],
         "valoraciones_cargo": [
             ("nivel_shr", "VARCHAR"),

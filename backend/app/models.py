@@ -593,6 +593,8 @@ class Homologacion(Base):
     observaciones_analista = Column(Text, nullable=True)
     datos_excel = Column(JSON, nullable=True)
     editado_manual = Column(Boolean, default=False)
+    busqueda_internet_url = Column(String, nullable=True)
+    estado_busqueda = Column(String, nullable=True)
 
     cargo = relationship("Cargo", back_populates="homologacion")
 

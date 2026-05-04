@@ -708,3 +708,88 @@ def valorar_lote_con_ia(cargos: list) -> list:
             })
 
     return resultados
+
+
+def buscar_en_internet_y_homologar(cargo: dict, db) -> dict:
+    """Busca funciones del cargo en internet y homologa contra la base maestra."""
+    from duckduckgo_search import DDGS
+
+    nombre_cargo = cargo.get("nombre_cargo", "")
+    area = cargo.get("area", "")
+
+    # 1. Buscar en internet las funciones del cargo
+    search_query = f"funciones y responsabilidades del cargo {nombre_cargo}"
+    search_url = f"https://duckduckgo.com/?q={requests.utils.quote(search_query)}"
+    funciones_encontradas = ""
+
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(search_query, max_results=5))
+            if results:
+                funciones_encontradas = "\n".join([
+                    f"- {r.get('title', '')}: {r.get('body', '')[:300]}"
+                    for r in results[:3]
+                ])
+                search_url = results[0].get("href", search_url)
+    except Exception as e:
+        logger.error(f"Error buscando en DuckDuckGo: {e}")
+        try:
+            resp = requests.get(
+                "https://html.duckduckgo.com/html/",
+                params={"q": search_query},
+                timeout=10,
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            if resp.ok:
+                search_url = f"https://duckduckgo.com/?q={requests.utils.quote(search_query)}"
+        except Exception as e2:
+            logger.error(f"Error en fallback de busqueda: {e2}")
+
+    # 2. Cargar la base maestra completa
+    masters = load_master_cargos(db)
+    masters_text = "\n".join([
+        f"- {m['nombre']} | Area: {m['area']} | Descripcion: {m['descripcion'][:200]}"
+        for m in masters[:200]
+    ])
+
+    # 3. Prompt para que la IA haga el match con el contexto de internet
+    prompt = f"""Eres un especialista en clasificacion de cargos para recursos humanos.
+
+CARGO A HOMOLOGAR:
+Nombre: {nombre_cargo}
+Area: {area}
+
+FUNCIONES ENCONTRADAS EN INTERNET:
+{funciones_encontradas or "No se encontraron funciones especificas en internet. Usa tu conocimiento general sobre este cargo."}
+
+BASE MAESTRA DE CARGOS (1057 cargos de referencia):
+{masters_text}
+
+INSTRUCCIONES:
+1. Analiza las funciones encontradas en internet para el cargo "{nombre_cargo}"
+2. Busca en la base maestra el cargo que MEJOR coincida con estas funciones
+3. Si no encuentras un match exacto, elige el cargo mas cercano en terminos de funciones y nivel
+4. Proporciona una justificacion clara de por que elegiste ese cargo
+
+Responde SOLO con este formato JSON:
+{{
+  "cargo_homologado": "NOMBRE DEL CARGO MAESTRO EN MAYUSCULAS",
+  "justificacion": "Explicacion de 2-3 lineas de por que este es el mejor match basado en las funciones encontradas",
+  "url_busqueda": "{search_url}"
+}}"""
+
+    content = call_ia([{"role": "user", "content": prompt}], max_tokens=500)
+
+    if not content:
+        raise ValueError("La IA no respondio la busqueda en internet")
+
+    result = extract_json(content)
+    if not result:
+        raise ValueError(f"La IA no retorno JSON valido: {content[:200]}")
+
+    return {
+        "cargo_homologado": result.get("cargo_homologado", "").upper(),
+        "justificacion": result.get("justificacion", ""),
+        "url_busqueda": result.get("url_busqueda", search_url),
+        "funciones_encontradas": funciones_encontradas,
+    }
