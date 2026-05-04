@@ -434,9 +434,9 @@ def ejecutar_homologacion(
                 with _progress_lock:
                     _homologacion_progress[upload_id]["current_batch"] = f"Consultando IA ({len(unmatched)} cargos restantes)..."
 
-                # Process unmatched one batch at a time (batch of 10), commit after each
-                for batch_start in range(0, len(unmatched), 10):
-                    batch = unmatched[batch_start:batch_start + 10]
+                # Process unmatched one batch at a time (batch of 8), commit after each
+                for batch_start in range(0, len(unmatched), 8):
+                    batch = unmatched[batch_start:batch_start + 8]
                     cargos_batch = [{
                         "id": c.id,
                         "nombre_cargo": c.nombre_cargo,

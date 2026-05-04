@@ -227,7 +227,9 @@ function HomologacionView({ empresaId, onComplete }) {
       (c.area || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (c.homologacion?.cargo_homologado || '').toLowerCase().includes(searchTerm.toLowerCase());
     const statusVal = (c.estado || '').toLowerCase().replace(/ /g, '_');
-    const matchFilter = filterStatus === 'all' || statusVal === filterStatus;
+    const matchFilter = filterStatus === 'all' ||
+      statusVal === filterStatus ||
+      statusVal.includes(filterStatus.replace('_', ''));
     return matchSearch && matchFilter;
   });
 

@@ -270,32 +270,45 @@ def build_homologacion_prompt(cargos: list, masters: list) -> str:
 
     masters_text = "\n".join([
         f"- {m['nombre']} | {m['area']}"
-        for m in masters[:50]
+        for m in masters[:80]
     ])
 
     cargos_text = ""
     for c in cargos[:10]:
         desc = c.get("descripcion", "") or c.get("descripcion_empresa", "") or ""
         area = c.get("area", "N/A")
-        cargos_text += f"ID:{c['id']} Cargo:{c['nombre_cargo']} Area:{area} Desc:{desc[:120]}\n"
+        cargos_text += f"""
+ID: {c['id']}
+Cargo: {c['nombre_cargo']}
+Area: {area}
+Descripcion: {desc[:150]}
+---
+"""
 
-    prompt = f"""Experto en clasificacion de cargos (metodologia SHR/HAY Colombia).
+    prompt = f"""Eres un experto en clasificacion y homologacion de cargos en Colombia bajo metodologia SHR/HAY.
 
-Catalogo maestro:
+Tu tarea es encontrar el cargo maestro MAS similar para cada cargo de la empresa.
+
+=== CATALOGO MAESTRO DE CARGOS (referencia) ===
 {masters_text}
 
-Cargos a homologar:
+=== CARGOS A HOMOLOGAR ===
 {cargos_text}
 
-Para cada cargo responde con el cargo maestro mas similar. Usa area y descripcion. Si no hay similar responde "SIN COINCIDENCIA".
+INSTRUCCIONES:
+1. Para cada cargo, selecciona el cargo maestro MAS similar del catalogo.
+2. Usa la DESCRIPCION y el AREA del cargo para mejorar la precision.
+3. Considera el nivel jerarquico (jefe, coordinador, analista, auxiliar) para seniority.
+4. Si NO hay ningun cargo similar en el catalogo, responde "SIN COINCIDENCIA".
+5. El nombre del cargo homologado debe ser EXACTAMENTE como aparece en el catalogo.
 
-Responde SOLO con JSON:
+Responde SOLO con un array JSON valido:
 [
   {{
     "id": ID_NUMERICO,
-    "cargo_homologado": "NOMBRE EXACTO DEL CARGO MAESTRO",
-    "justificacion": "Razon (max 60 chars)",
-    "confianza": 0.0-1.0
+    "cargo_homologado": "NOMBRE EXACTO DEL CARGO MAESTRO O SIN COINCIDENCIA",
+    "justificacion": "Razon breve (max 60 chars)",
+    "confianza": 0.0 a 1.0
   }}
 ]"""
 
@@ -318,7 +331,7 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
         ia_error = "Sin catalogo maestro en la base de datos"
         return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error} for c in cargos]
 
-    batch_size = 10
+    batch_size = 8
     print(f"homologar_con_ia: Procesando {len(cargos)} cargos en lotes de {batch_size}")
 
     resultados = []
@@ -329,10 +342,19 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
         lote_num = i // batch_size + 1
         print(f"homologar_con_ia: Lote {lote_num}, {len(batch)} cargos, prompt {prompt_len} chars")
 
-        content = call_ia([{"role": "user", "content": prompt}], max_tokens=2000)
+        # Intentar con retry automatico si falla el primer modelo
+        content = None
+        max_retries = 2
+        for attempt in range(max_retries):
+            content = call_ia([{"role": "user", "content": prompt}], max_tokens=2000)
+            if content:
+                break
+            print(f"homologar_con_ia: Lote {lote_num} intento {attempt + 1} fallo, reintentando...")
+            time.sleep(2)
+
         if not content:
-            ia_error = "Sin respuesta de IA. Revisa logs de Render."
-            print(f"homologar_con_ia: Lote {lote_num} FALLO - sin respuesta de IA")
+            ia_error = "Sin respuesta de IA tras reintentos."
+            print(f"homologar_con_ia: Lote {lote_num} FALLO definitivo - sin respuesta de IA")
             resultados.extend([
                 {"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error}
                 for c in batch
@@ -344,7 +366,7 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
             parsed_ids = {r.get("id") for r in parsed}
             batch_ids = {c.get("id") for c in batch}
             matched_count = len(parsed_ids & batch_ids)
-            print(f"homologar_con_ia: Lote {lote_num} OK - {len(parsed)} objetos parseados, {matched_count}/{len(batch)} matchean")
+            print(f"homologar_con_ia: Lote {lote_num} OK - {len(parsed)} objetos, {matched_count}/{len(batch)} matchean")
 
             for res in parsed:
                 resultados.append({
@@ -365,7 +387,7 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
                         "_ia_error": "JSON truncado por modelo",
                     })
         else:
-            print(f"homologar_con_ia: Lote {lote_num} FALLO parseo - contenido: {content[:150]}...")
+            print(f"homologar_con_ia: Lote {lote_num} FALLO parseo - contenido: {content[:200]}...")
             resultados.extend([
                 {"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Error parseando respuesta IA", "confianza": 0.0, "_ia_error": "Error parseando respuesta IA"}
                 for c in batch
