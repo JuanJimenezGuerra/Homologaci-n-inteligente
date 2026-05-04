@@ -586,6 +586,7 @@ class Homologacion(Base):
     cargo_id = Column(Integer, ForeignKey("cargos.id"))
     cargo_homologado = Column(String)
     justificacion = Column(Text, nullable=True)
+    observaciones_analista = Column(Text, nullable=True)
     datos_excel = Column(JSON, nullable=True)
     editado_manual = Column(Boolean, default=False)
 

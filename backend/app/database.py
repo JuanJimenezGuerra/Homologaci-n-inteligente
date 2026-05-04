@@ -227,6 +227,9 @@ def run_migrations():
         "homologaciones_cargo": [
             ("master_cargo_id", "INTEGER REFERENCES master_cargos(id)"),
         ],
+        "homologaciones": [
+            ("observaciones_analista", "TEXT"),
+        ],
         "valoraciones_cargo": [
             ("nivel_shr", "VARCHAR"),
             ("variable_target", "DOUBLE PRECISION"),

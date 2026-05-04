@@ -385,6 +385,99 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
     return resultados
 
 
+def homologar_con_ia_observaciones(db, cargos: list, masters: list = None, observaciones: str = "") -> list:
+    """Homologa cargos con IA incluyendo observaciones del analista para reprocesamiento."""
+    if not OPENROUTER_API_KEY and not OPENAI_API_KEY:
+        print("homologar_con_ia_observaciones: NO hay API key de IA")
+        return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Sin API key", "confianza": 0.0} for c in cargos]
+
+    if masters is None:
+        from .ia_service import load_master_cargos
+        masters = load_master_cargos(db)
+    if not masters:
+        return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Sin catalogo maestro", "confianza": 0.0} for c in cargos]
+
+    print(f"homologar_con_ia_observaciones: Reprocesando {len(cargos)} cargos con observaciones del analista")
+
+    # Build prompt with observations context
+    obs_text = f"\nOBSERVACIONES DEL ANALISTA:\n{observaciones}\n" if observaciones else ""
+
+    masters_text = "\n".join([
+        f"- {m['nombre']} | {m['area']}"
+        for m in masters[:80]
+    ])
+
+    cargos_text = ""
+    for c in cargos[:5]:
+        desc = c.get("descripcion", "") or c.get("descripcion_empresa", "") or ""
+        area = c.get("area", "N/A")
+        hom_actual = c.get("cargo_homologado_actual", "") or ""
+        hom_note = f" (Homologado actual: {hom_actual})" if hom_actual and hom_actual != "SIN_COINCIDENCIA" else ""
+        cargos_text += f"""
+ID: {c['id']}
+Cargo: {c['nombre_cargo']}{hom_note}
+Area: {area}
+Descripcion: {desc[:200]}
+---
+"""
+
+    prompt = f"""Eres un experto en clasificacion y homologacion de cargos en Colombia bajo metodologia SHR/HAY.
+
+Un analista ya reviso las homologaciones anteriores y tiene observaciones. Usa esas observaciones para mejorar los resultados.
+{obs_text}
+=== CATALOGO MAESTRO DE CARGOS ===
+{masters_text}
+
+=== CARGOS A REPROCESAR ===
+{cargos_text}
+
+INSTRUCCIONES:
+1. Revisa las observaciones del analista y ajustalas a la seleccion del cargo maestro.
+2. Si el analista indico que un cargo pertenece a otra area, busca en esa area del catalogo.
+3. Si el analista menciono que el cargo tiene funciones diferentes, considera eso.
+4. Responde SOLO con un array JSON valido.
+
+[
+  {{
+    "id": ID_NUMERICO,
+    "cargo_homologado": "NOMBRE EXACTO DEL CARGO MAESTRO",
+    "justificacion": "Razon breve incluyendo las observaciones del analista (max 100 chars)",
+    "confianza": 0.0 a 1.0
+  }}
+]"""
+
+    messages = [{"role": "user", "content": prompt}]
+    content = call_ia(messages, max_tokens=2000)
+
+    if not content:
+        print("homologar_con_ia_observaciones: Sin respuesta de IA")
+        return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Error en IA", "confianza": 0.0} for c in cargos]
+
+    parsed = extract_json_array(content)
+    if parsed and isinstance(parsed, list):
+        print(f"homologar_con_ia_observaciones: OK - {len(parsed)} resultados parseados")
+        return [{
+            "id": res.get("id"),
+            "cargo_homologado": res.get("cargo_homologado", "SIN_COINCIDENCIA"),
+            "justificacion": res.get("justificacion", ""),
+            "confianza": res.get("confianza", 0.5),
+        } for res in parsed]
+
+    # Fallback: extract individual objects
+    objects = _extract_individual_objects(content)
+    if objects:
+        print(f"homologar_con_ia_observaciones: OK - {len(objects)} objetos extraidos individualmente")
+        return [{
+            "id": res.get("id"),
+            "cargo_homologado": res.get("cargo_homologado", "SIN_COINCIDENCIA"),
+            "justificacion": res.get("justificacion", ""),
+            "confianza": res.get("confianza", 0.5),
+        } for res in objects]
+
+    print(f"homologar_con_ia_observaciones: FALLO parseo - raw: {content[:150]}")
+    return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Error parseando IA", "confianza": 0.0} for c in cargos]
+
+
 # ==========================================
 # VALORACION CON IA (12 criterios SHR/HAY)
 # ==========================================

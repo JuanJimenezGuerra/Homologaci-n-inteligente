@@ -394,6 +394,79 @@ def ejecutar_homologacion(
         "upload_id": upload_id,
     }
 
+@app.post("/homologacion/reprocesar")
+def reprocesar_homologacion(
+    upload_id: int = Query(..., description="Upload ID"),
+    observaciones: str = Body("", embed=True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Reprocesa homologaciones usando IA con las observaciones del analista."""
+    from .services.ia_service import homologar_con_ia
+
+    # Save observaciones on ALL homologaciones that have them edited
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    if not cargos:
+        raise HTTPException(status_code=404, detail="No hay cargos en este upload")
+
+    # Get all cargos that are not exact matches (SUGERIDO, SIN_COINCIDENCIA, PENDIENTE, or manually edited)
+    cargos_to_reprocess = [c for c in cargos if c.estado not in ["HOMOLOGADO"]]
+    if not cargos_to_reprocess:
+        return {"mensaje": "No hay cargos pendientes para reprocesar"}
+
+    # Build prompt with existing context + analyst observations
+    masters = []
+    from .services.matcher import load_all_masters
+    masters = load_all_masters(db)
+
+    cargos_batch = [{
+        "id": c.id,
+        "nombre_cargo": c.nombre_cargo,
+        "area": c.area,
+        "descripcion": c.descripcion_empresa or "",
+        "descripcion_empresa": c.descripcion_empresa or "",
+        "cargo_homologado_actual": c.homologacion.cargo_homologado if c.homologacion else "",
+    } for c in cargos_to_reprocess]
+
+    results_count = 0
+    # Call IA with observations injected into the batch
+    from .services.ia_service import homologar_con_ia_observaciones
+    resultados = homologar_con_ia_observaciones(db, cargos_batch, masters, observaciones)
+
+    for res in resultados:
+        cargo_id = res.get("id")
+        cargo = next((c for c in cargos_to_reprocess if c.id == cargo_id), None)
+        if not cargo:
+            continue
+
+        homo = cargo.homologacion
+        if not homo:
+            homo = Homologacion(cargo_id=cargo.id)
+            db.add(homo)
+
+        cargo_homologado = res.get("cargo_homologado", "SIN_COINCIDENCIA")
+        justificacion = res.get("justificacion", "")
+
+        if cargo_homologado and cargo_homologado != "SIN_COINCIDENCIA":
+            homo.cargo_homologado = cargo_homologado
+            homo.justificacion = f"Reproceso IA (obs. analista): {justificacion}"
+            homo.editado_manual = False
+            cargo.estado = "SUGERIDO"
+            results_count += 1
+        else:
+            homo.cargo_homologado = "SIN_COINCIDENCIA"
+            homo.justificacion = f"Reproceso IA: {justificacion}" if justificacion else "Sin coincidencia tras reproceso"
+            cargo.estado = "SIN_COINCIDENCIA"
+
+    db.commit()
+
+    return {
+        "mensaje": f"Reproceso completado: {results_count}/{len(cargos_to_reprocess)} cargos reprocesados",
+        "reprocesados": results_count,
+        "total_pendientes": len(cargos_to_reprocess),
+        "upload_id": upload_id,
+    }
+
 @app.get("/ia/status")
 def ia_status(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Diagnostico del servicio de IA."""
