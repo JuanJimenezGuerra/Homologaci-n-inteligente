@@ -43,7 +43,10 @@ def run_migrations():
     SQLAlchemy create_all() NO agrega columnas a tablas ya creadas.
     """
     if not DATABASE_URL.startswith("postgresql"):
-        return  # SQLite no necesita migraciones
+        print("Migraciones: No es PostgreSQL, saltando.")
+        return
+
+    print("Migraciones: Verificando esquema de base de datos...")
 
     migrations = {
         "uploads": [
@@ -277,23 +280,31 @@ def run_migrations():
     try:
         inspector = inspect(engine)
         existing_tables = inspector.get_table_names()
+        print(f"Migraciones: Tablas existentes: {existing_tables}")
 
-        with engine.connect() as conn:
-            for table, columns in migrations.items():
-                if table not in existing_tables:
-                    continue
+        total_added = 0
+        for table, columns in migrations.items():
+            if table not in existing_tables:
+                print(f"Migraciones: Tabla '{table}' no existe, se creara con create_all()")
+                continue
 
-                existing_cols = {c["name"] for c in inspector.get_columns(table)}
+            existing_cols = {c["name"] for c in inspector.get_columns(table)}
+            print(f"Migraciones: '{table}' tiene {len(existing_cols)} columnas actuales")
 
-                for col_name, col_type in columns:
-                    if col_name not in existing_cols:
-                        sql = f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"
-                        try:
+            for col_name, col_type in columns:
+                if col_name not in existing_cols:
+                    sql = f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"
+                    try:
+                        with engine.begin() as conn:
                             conn.execute(text(sql))
-                            conn.commit()
-                            logger.info(f"Migracion: agregada columna '{col_name}' a '{table}'")
-                        except Exception as e:
-                            logger.warning(f"Migracion '{table}.{col_name}': {e}")
-                            conn.rollback()
+                        print(f"Migraciones: OK - agregada '{col_name}' ({col_type}) a '{table}'")
+                        total_added += 1
+                    except Exception as e:
+                        print(f"Migraciones: WARNING - '{table}.{col_name}': {e}")
+                        existing_cols.add(col_name)
+
+        print(f"Migraciones: Completadas. {total_added} columnas agregadas.")
     except Exception as e:
-        logger.error(f"Error en migraciones: {e}")
+        print(f"Migraciones: ERROR CRITICO - {e}")
+        import traceback
+        traceback.print_exc()
