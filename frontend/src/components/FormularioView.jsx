@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload as UploadIcon, FileCheck, Loader2, ArrowRight, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload as UploadIcon, FileCheck, Loader2, ArrowRight, CheckCircle, AlertCircle, Files } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const API = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
