@@ -26,7 +26,12 @@ def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 
         print("OpenRouter: API key no configurada")
         return None
     try:
-        models_to_try = [OPENROUTER_MODEL, "google/gemma-3-27b:free", "mistralai/mistral-small-3.1-24b-instruct:free", "meta-llama/llama-3.3-70b-instruct:free"]
+        models_to_try = [
+            OPENROUTER_MODEL,
+            "google/gemini-2.0-flash-exp:free",
+            "qwen/qwen-2.5-72b-instruct:free",
+            "meta-llama/llama-3.1-8b-instruct:free",
+        ]
         unique_models = list(dict.fromkeys(models_to_try))
 
         for model in unique_models:
@@ -45,7 +50,7 @@ def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 
                     "max_tokens": max_tokens,
                     "temperature": temperature,
                 },
-                timeout=60,
+                timeout=45,
             )
             if resp.ok:
                 data = resp.json()
@@ -59,8 +64,11 @@ def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 
             elif resp.status_code == 401:
                 print(f"OpenRouter: ERROR 401 - API key invalida.")
                 return None
+            elif resp.status_code in [400, 404]:
+                print(f"OpenRouter: {model} no disponible (HTTP {resp.status_code}), saltando...")
+                continue
             else:
-                print(f"OpenRouter: {model} fallo HTTP {resp.status_code} - {resp.text[:200]}")
+                print(f"OpenRouter: {model} fallo HTTP {resp.status_code} - {resp.text[:150]}")
 
         print("OpenRouter: TODOS los modelos gratuitos fallaron o devolvieron respuesta vacia")
         return None
@@ -260,47 +268,34 @@ def load_master_cargos(db) -> list:
 def build_homologacion_prompt(cargos: list, masters: list) -> str:
     """Construye el prompt para homologacion de cargos con IA."""
 
-    # Masters compactos para no exceder tokens de modelos gratuitos
     masters_text = "\n".join([
         f"- {m['nombre']} | {m['area']}"
-        for m in masters[:80]
+        for m in masters[:50]
     ])
 
     cargos_text = ""
-    for c in cargos[:5]:
+    for c in cargos[:10]:
         desc = c.get("descripcion", "") or c.get("descripcion_empresa", "") or ""
         area = c.get("area", "N/A")
-        cargos_text += f"""
-ID: {c['id']}
-Cargo: {c['nombre_cargo']}
-Area: {area}
-Descripcion: {desc[:200]}
----
-"""
+        cargos_text += f"ID:{c['id']} Cargo:{c['nombre_cargo']} Area:{area} Desc:{desc[:120]}\n"
 
-    prompt = f"""Eres un experto en clasificacion y homologacion de cargos en Colombia bajo metodologia SHR/HAY.
+    prompt = f"""Experto en clasificacion de cargos (metodologia SHR/HAY Colombia).
 
-Tu tarea es encontrar el cargo maestro mas similar para cada cargo de la empresa.
-
-=== CATALOGO MAESTRO DE CARGOS (referencia) ===
+Catalogo maestro:
 {masters_text}
 
-=== CARGOS A HOMOLOGAR ===
+Cargos a homologar:
 {cargos_text}
 
-INSTRUCCIONES:
-1. Para cada cargo, selecciona el cargo maestro MAS similar del catalogo.
-2. Usa la DESCRIPCION del cargo para mejorar la precision, no solo el nombre.
-3. Considera el nivel jerarquico (jefe inmediato, area) para determinar la seniority.
-4. Si no hay ningun cargo similar en el catalogo, responde "SIN COINCIDENCIA".
+Para cada cargo responde con el cargo maestro mas similar. Usa area y descripcion. Si no hay similar responde "SIN COINCIDENCIA".
 
-Responde SOLO con un array JSON valido, sin texto adicional:
+Responde SOLO con JSON:
 [
   {{
     "id": ID_NUMERICO,
     "cargo_homologado": "NOMBRE EXACTO DEL CARGO MAESTRO",
-    "justificacion": "Razon breve de la coincidencia (max 80 caracteres)",
-    "confianza": 0.0 a 1.0
+    "justificacion": "Razon (max 60 chars)",
+    "confianza": 0.0-1.0
   }}
 ]"""
 
@@ -323,19 +318,20 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
         ia_error = "Sin catalogo maestro en la base de datos"
         return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error} for c in cargos]
 
-    print(f"homologar_con_ia: Procesando {len(cargos)} cargos en lotes de 5")
+    batch_size = 10
+    print(f"homologar_con_ia: Procesando {len(cargos)} cargos en lotes de {batch_size}")
 
     resultados = []
-    for i in range(0, len(cargos), 5):
-        batch = cargos[i:i + 5]
+    for i in range(0, len(cargos), batch_size):
+        batch = cargos[i:i + batch_size]
         prompt = build_homologacion_prompt(batch, masters)
         prompt_len = len(prompt)
-        lote_num = i // 10 + 1
+        lote_num = i // batch_size + 1
         print(f"homologar_con_ia: Lote {lote_num}, {len(batch)} cargos, prompt {prompt_len} chars")
 
-        content = call_ia([{"role": "user", "content": prompt}], max_tokens=1500)
+        content = call_ia([{"role": "user", "content": prompt}], max_tokens=2000)
         if not content:
-            ia_error = "OpenRouter y OpenAI fallback fallaron. Revisa logs de Render para detalles."
+            ia_error = "Sin respuesta de IA. Revisa logs de Render."
             print(f"homologar_con_ia: Lote {lote_num} FALLO - sin respuesta de IA")
             resultados.extend([
                 {"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error}
@@ -348,7 +344,7 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
             parsed_ids = {r.get("id") for r in parsed}
             batch_ids = {c.get("id") for c in batch}
             matched_count = len(parsed_ids & batch_ids)
-            print(f"homologar_con_ia: Lote {lote_num} OK - {len(parsed)} objetos parseados, {matched_count} matchean cargos del lote")
+            print(f"homologar_con_ia: Lote {lote_num} OK - {len(parsed)} objetos parseados, {matched_count}/{len(batch)} matchean")
 
             for res in parsed:
                 resultados.append({
@@ -358,10 +354,9 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
                     "confianza": res.get("confianza", 0.5),
                 })
 
-            # Cargos del lote que no tuvieron respuesta
             for c in batch:
                 if c.get("id") not in parsed_ids:
-                    print(f"homologar_con_ia: Lote {lote_num} - cargo {c.get('id')} ({c.get('nombre_cargo')}) no tuvo resultado, posible JSON truncado")
+                    print(f"homologar_con_ia: Lote {lote_num} - cargo {c.get('id')} ({c.get('nombre_cargo')}) sin resultado")
                     resultados.append({
                         "id": c.get("id"),
                         "cargo_homologado": "SIN_COINCIDENCIA",
@@ -370,14 +365,11 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
                         "_ia_error": "JSON truncado por modelo",
                     })
         else:
-            print(f"homologar_con_ia: Lote {lote_num} FALLO parseo total - contenido: {content[:150]}...")
+            print(f"homologar_con_ia: Lote {lote_num} FALLO parseo - contenido: {content[:150]}...")
             resultados.extend([
                 {"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Error parseando respuesta IA", "confianza": 0.0, "_ia_error": "Error parseando respuesta IA"}
                 for c in batch
             ])
-
-        if i + 10 < len(cargos):
-            time.sleep(1.5)
 
     total_ok = len([r for r in resultados if r.get("_ia_error") is None])
     total_ia_error = len([r for r in resultados if r.get("_ia_error") is not None])
