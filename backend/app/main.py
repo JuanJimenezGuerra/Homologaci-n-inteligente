@@ -818,7 +818,7 @@ def buscar_internet_homologar(cargo_id: int, db: Session = Depends(get_db)):
     }
 
 @app.post("/homologacion/buscar-internet-lote")
-def buscar_internet_lote(body: Body = Body(...), db: Session = Depends(get_db)):
+def buscar_internet_lote(body: dict = Body(...), db: Session = Depends(get_db)):
     """Busqueda en internet para multiple cargos SIN_COINCIDENCIA."""
     cargo_ids = body.get("cargo_ids", [])
     from .services.ia_service import buscar_en_internet_y_homologar
