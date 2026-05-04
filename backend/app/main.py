@@ -2,21 +2,22 @@ from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, B
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from .database import get_db, engine, Base
-from .models import User, Upload, Cargo, Homologacion, JobStatus, ProcessingLog, Empresa, CargoEmpresa, ValoracionCargo, MasterDescription
+from .models import (
+    User, Upload, Cargo, Homologacion, JobStatus, ProcessingLog,
+    Empresa, CargoEmpresa, ValoracionCargo, MasterDescription, Valoracion,
+    Regional, Sede, Area, MuestraPeriodo,
+)
 from .auth import get_password_hash, create_access_token, verify_password, get_current_user
 from .services.excel_processor import process_requirements_excel
 from .services.master_data import process_master_excel
 from .services.matcher import start_batch_processing
 from .services.excel_formulario_service import procesar_excel_formulario, guardar_en_db
-from .services.homologacion_service import homologar_cargo, homologar_lote, obtener_criterios, guardar_criterios
-from .services.valoracion_service import valorar_cargo, valorar_lote, resumen_valoracion
 from .services.analisis_service import calcular_curvas_equidad, analizar_equidad, calcular_nivelacion, reporte_consolidado
 import os
 import shutil
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 
-# Create tables
 try:
     print("Iniciando creacion de tablas...")
     Base.metadata.create_all(bind=engine)
@@ -34,7 +35,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Schemas ---
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -43,14 +43,14 @@ class HomologacionUpdate(BaseModel):
     cargo_homologado: str
     justificacion: str
 
-# --- Seed Data ---
-from .models import MasterDescription
+# ==========================================
+# STARTUP
+# ==========================================
 
 @app.on_event("startup")
 def startup_event():
     db = next(get_db())
 
-    # Usuarios obligatorios con contraseña fija
     seed_users = [
         ("admin@shr.com", "admin123"),
         ("analista1@shr.com", "admin123"),
@@ -67,7 +67,6 @@ def startup_event():
     db.commit()
     print("Usuarios seed verificados/creados")
 
-    # Verificar si la base maestra esta vacia o incompleta y cargarla automaticamente
     master_count = db.query(MasterDescription).count()
     if master_count < 100:
         master_path = os.path.join(os.path.dirname(__file__), "..", "data", "master_cargos.xlsx")
@@ -80,7 +79,9 @@ def startup_event():
         else:
             print(f"No se encontro el archivo maestro en {master_path}")
 
-# --- Endpoints ---
+# ==========================================
+# AUTH
+# ==========================================
 
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -91,19 +92,21 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Correo o contraseña incorrectos",
+            detail="Correo o contrasena incorrectos",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
     access_token = create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
+
+# ==========================================
+# UPLOADS & CARGOS
+# ==========================================
 
 @app.post("/uploads/master")
 def upload_master_file(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     temp_path = f"temp_master_{file.filename}"
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-
     try:
         count = process_master_excel(temp_path, db)
         return {"message": f"Se cargaron {count} descripciones maestras", "count": count}
@@ -112,12 +115,12 @@ def upload_master_file(file: UploadFile = File(...), db: Session = Depends(get_d
             os.remove(temp_path)
 
 @app.post("/uploads/requirements")
-def upload_requirements_file(empresa: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    print(f"=== Upload request ===")
-    print(f"empresa param: {empresa}")
-    print(f"file: {file.filename}")
-    print(f"user_id: {current_user.id}")
-
+def upload_requirements_file(
+    empresa: str = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     upload = Upload(
         user_id=current_user.id,
         filename=file.filename,
@@ -127,22 +130,16 @@ def upload_requirements_file(empresa: str = Form(...), file: UploadFile = File(.
     db.add(upload)
     db.commit()
     db.refresh(upload)
-    print(f"Upload created with id: {upload.id}")
 
     temp_path = os.path.join("/tmp", f"temp_req_{upload.id}_{file.filename.replace(' ', '_')}")
     try:
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-
         count = process_requirements_excel(temp_path, upload.id, db)
-        print(f"=== Excel processed: {count} cargos created ===")
         return {"upload_id": upload.id, "count": count}
     except Exception as e:
-        print(f"Error procesando excel: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error en el Excel: {str(e)}"
-        )
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error en el Excel: {str(e)}")
     finally:
         if os.path.exists(temp_path):
             try:
@@ -150,22 +147,13 @@ def upload_requirements_file(empresa: str = Form(...), file: UploadFile = File(.
             except:
                 pass
 
-from .services.file_extractor import process_extra_descriptions
-
-@app.post("/uploads/{upload_id}/manuales")
-async def upload_manuales(upload_id: int, files: List[UploadFile] = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    count = process_extra_descriptions(upload_id, files, db)
-    return {"message": f"Se procesaron {len(files)} archivos y se mapearon {count} descripciones de cargo", "count": count}
-
 @app.get("/uploads")
 def list_uploads(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(Upload).all()
 
 @app.get("/uploads/{upload_id}/cargos")
 def list_cargos(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    print(f"=== list_cargos called with upload_id: {upload_id} ===")
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
-    print(f"Found {len(cargos)} cargos for upload_id {upload_id}")
     result = []
     for c in cargos:
         homo = c.homologacion
@@ -182,7 +170,6 @@ def list_cargos(upload_id: int, db: Session = Depends(get_db), current_user: Use
                 "datos_excel": homo.datos_excel if homo else {},
             } if homo else None
         })
-    print(f"Returning {len(result)} cargos")
     return result
 
 @app.put("/homologacion/{cargo_id}")
@@ -190,14 +177,11 @@ async def update_homologation(cargo_id: int, data: dict, db: Session = Depends(g
     homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo_id).first()
     if not homo:
         raise HTTPException(status_code=404, detail="Homologacion no encontrada")
-
     homo.cargo_homologado = data.get("cargo_homologado")
     homo.editado_manual = True
-
     cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
     if cargo:
         cargo.estado = "HOMOLOGADO"
-
     db.commit()
     return {"message": "Actualizado correctamente"}
 
@@ -211,59 +195,163 @@ def cancel_processing(upload_id: int, db: Session = Depends(get_db), current_use
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
     if not upload:
         raise HTTPException(status_code=404, detail="Upload no encontrado")
-
     upload.status = "cancelado"
-
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id, Cargo.estado.in_(["PROCESANDO", "PENDIENTE"])).all()
     for c in cargos:
         c.estado = "PENDIENTE"
-
     db.commit()
     return {"message": "Procesamiento cancelado"}
 
 @app.patch("/cargos/{cargo_id}")
 def update_cargo_manual(cargo_id: int, req: HomologacionUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    cargo = db.query(Cargo).get(cargo_id)
+    cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
     if not cargo:
         raise HTTPException(status_code=404, detail="Cargo no encontrado")
-
     homo = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
     if not homo:
         homo = Homologacion(cargo_id=cargo.id)
         db.add(homo)
-
     homo.cargo_homologado = req.cargo_homologado
     homo.justificacion = req.justificacion
     homo.editado_manual = True
-
     cargo.estado = JobStatus.HOMOLOGADO
     db.commit()
     return {"message": "Actualizado manualmente"}
 
-from .services.excel_exporter import export_to_excel
+# ==========================================
+# HOMOLOGACION CON IA (endpoint principal)
+# ==========================================
 
-from .models import Valoracion
+@app.post("/homologacion/ejecutar")
+def ejecutar_homologacion(
+    upload_id: int = Query(..., description="Upload ID"),
+    usar_ia: bool = Query(True, description="Usar IA para los no encontrados"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Ejecuta homologacion: match local + IA para los restantes."""
+    from .services.matcher import find_exact_match
+    from .services.ia_service import homologar_con_ia
+
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    masters = db.query(MasterDescription).all()
+    masters_list = [{"nombre": m.nombre_cargo or "", "descripcion": m.descripcion or "", "area": m.area or ""} for m in masters]
+
+    matched = 0
+    not_matched = 0
+    cargos_sin_match = []
+
+    for cargo in cargos:
+        master = find_exact_match(cargo.nombre_cargo, masters_list)
+        if master:
+            homo = cargo.homologacion
+            if homo:
+                homo.cargo_homologado = master["nombre"]
+                homo.justificacion = f"DB: {master.get('area', '')}"
+            else:
+                homo = Homologacion(
+                    cargo_id=cargo.id,
+                    cargo_homologado=master["nombre"],
+                    justificacion=f"Coincidencia DB (area: {master.get('area', '')})"
+                )
+                db.add(homo)
+            cargo.estado = "HOMOLOGADO"
+            matched += 1
+        else:
+            cargo.estado = "SIN_COINCIDENCIA"
+            not_matched += 1
+            cargos_sin_match.append(cargo)
+
+    db.commit()
+
+    ia_count = 0
+    if usar_ia and cargos_sin_match:
+        cargos_batch = [{
+            "id": c.id,
+            "nombre_cargo": c.nombre_cargo,
+            "area": c.area,
+            "descripcion_empresa": c.descripcion_empresa or "",
+            "cargo_jefe": "",
+        } for c in cargos_sin_match]
+
+        try:
+            resultados = homologar_con_ia(db, cargos_batch)
+            for res in resultados:
+                cargo_id = res.get("id")
+                if cargo_id:
+                    cargo = next((c for c in cargos_sin_match if c.id == cargo_id), None)
+                    if cargo:
+                        homo = cargo.homologacion
+                        if homo:
+                            homo.cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
+                            homo.justificacion = f"IA: {res.get('justificacion', '')} (confianza: {res.get('confianza', 0)})"
+                        else:
+                            homo = Homologacion(
+                                cargo_id=cargo.id,
+                                cargo_homologado=res.get("cargo_homologado", "SIN COINCIDENCIA"),
+                                justificacion=f"IA: {res.get('justificacion', '')}"
+                            )
+                            db.add(homo)
+                        cargo.estado = "HOMOLOGADO"
+                        ia_count += 1
+            db.commit()
+        except Exception as e:
+            print(f"Error homologacion IA: {e}")
+
+    return {
+        "mensaje": f"Se procesaron {len(cargos)} cargos",
+        "matched": matched,
+        "matched_ia": ia_count,
+        "not_matched": not_matched - ia_count,
+        "total": len(cargos),
+        "upload_id": upload_id,
+    }
+
+# ==========================================
+# VALORACION CON IA
+# ==========================================
 
 @app.post("/valoracion/{cargo_id}/evaluar-ia")
 def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Evalua un cargo con IA y guarda la valoracion"""
-    from .services.valoracion_processor import _valorar_cargo_con_ia
+    """Evalua un cargo con IA y guarda la valoracion."""
+    from .services.ia_service import valorar_cargo_con_ia
 
     cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
     if not cargo:
         raise HTTPException(status_code=404, detail="Cargo no encontrado")
 
-    resultado = _valorar_cargo_con_ia(cargo)
+    cargo_dict = {
+        "id": cargo.id,
+        "nombre_cargo": cargo.nombre_cargo,
+        "area": cargo.area,
+        "descripcion_empresa": cargo.descripcion_empresa,
+        "cargo_homologado": cargo.homologacion.cargo_homologado if cargo.homologacion else "",
+    }
+
+    resultado = valorar_cargo_con_ia(cargo_dict)
 
     val = db.query(Valoracion).filter(Valoracion.cargo_id == cargo.id).first()
     if not val:
         val = Valoracion(cargo_id=cargo.id)
         db.add(val)
 
-    for key, value in resultado.items():
-        if hasattr(val, key):
-            setattr(val, key, value)
-
+    val.conocimientos = resultado.get("conocimientos")
+    val.experiencia = resultado.get("experiencia")
+    val.habilidad_gerencial = resultado.get("habilidadGerencial")
+    val.rol_cargo = resultado.get("rolCargo")
+    val.contacto = resultado.get("contacto")
+    val.frecuencia = resultado.get("frecuenciaContacto")
+    val.contenido_relaciones = resultado.get("contenidoRelaciones")
+    val.complejidad_conceptual = resultado.get("complejidadConceptual")
+    val.tendencia_cc = resultado.get("tendenciaCC")
+    val.guias_apoyo = resultado.get("guiasApoyo")
+    val.tendencia_ga = resultado.get("tendenciaGA")
+    val.impacto = resultado.get("impacto")
+    val.autonomia = resultado.get("autonomia")
+    val.magnitud = resultado.get("magnitud")
+    val.criterio_1 = int(resultado.get("criterio1", 0))
+    val.criterio_2 = int(resultado.get("criterio2", 0))
+    val.criterio_3 = int(resultado.get("criterio3", 0))
     val.editado_manual = False
     db.commit()
 
@@ -275,14 +363,13 @@ def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), current_u
 
 @app.post("/procesar-valoracion/{upload_id}")
 def start_valoracion_processing(upload_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Inicia el proceso de valoracion de cargos con IA"""
+    """Inicia valoracion de TODOS los cargos de un upload con IA."""
     from .services.valoracion_processor import start_valoracion_batch
     background_tasks.add_task(start_valoracion_batch, upload_id, db)
     return {"message": "Valoracion iniciada en segundo plano"}
 
 @app.get("/uploads/{upload_id}/valoraciones")
 def list_valoraciones(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Obtiene las valoraciones de un upload"""
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
     result = []
     for c in cargos:
@@ -291,7 +378,9 @@ def list_valoraciones(upload_id: int, db: Session = Depends(get_db), current_use
             "id": c.id,
             "nombre_cargo": c.nombre_cargo,
             "area": c.area,
+            "estado": c.estado,
             "cargo_homologado": c.homologacion.cargo_homologado if c.homologacion else None,
+            "descripcion_empresa": c.descripcion_empresa,
             "valoracion": {
                 "conocimientos": val.conocimientos if val else None,
                 "experiencia": val.experiencia if val else None,
@@ -317,124 +406,109 @@ def list_valoraciones(upload_id: int, db: Session = Depends(get_db), current_use
 
 @app.patch("/valoracion/{cargo_id}")
 def update_valoracion_manual(cargo_id: int, req: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Actualiza manualmente una valoracion"""
-    cargo = db.query(Cargo).get(cargo_id)
+    cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
     if not cargo:
         raise HTTPException(status_code=404, detail="Cargo no encontrado")
-
     val = db.query(Valoracion).filter(Valoracion.cargo_id == cargo.id).first()
     if not val:
         val = Valoracion(cargo_id=cargo.id)
         db.add(val)
-
     for key, value in req.items():
         if hasattr(val, key):
             setattr(val, key, value)
-
     val.editado_manual = True
     db.commit()
     return {"message": "Valoracion actualizada"}
 
-@app.get("/descargar/{upload_id}")
-def download_excel(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return export_to_excel(upload_id, db)
-
-
 # ==========================================
-# NUEVOS ENDPOINTS PARA PROCESO COMPLETO
+# ENTIDADES ORGANIZACIONALES
 # ==========================================
 
-# Endpoint para cargar Excel de Requerimientos
-@app.post("/procesar/formulario")
-async def procesar_formulario(
-    empresa: str = Form(...),
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Cargar archivo Excel de Requerimientos y procesar"""
+@app.get("/regionales")
+def list_regionales(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Regional).all()
 
-    # Crear empresa
-    empresa_obj = Empresa(
-        user_id=current_user.id,
-        nombre_empresa=empresa.upper()
-    )
-    db.add(empresa_obj)
+@app.post("/regionales")
+def create_regional(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    regional = Regional(nombre=data["nombre"], descripcion=data.get("descripcion"))
+    db.add(regional)
     db.commit()
-    db.refresh(empresa_obj)
+    db.refresh(regional)
+    return {"id": regional.id, "nombre": regional.nombre}
 
-    # Guardar archivo temporal
-    temp_path = os.path.join("/tmp", f"formulario_{empresa_obj.id}_{file.filename}")
-    try:
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+@app.get("/sedes")
+def list_sedes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Sede).all()
 
-        # Procesar Excel
-        datos = procesar_excel_formulario(temp_path)
+@app.post("/sedes")
+def create_sede(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    sede = Sede(
+        regional_id=data.get("regional_id"),
+        nombre=data["nombre"],
+        direccion=data.get("direccion"),
+        ciudad=data.get("ciudad"),
+        departamento=data.get("departamento"),
+        tipo_sede=data.get("tipo_sede"),
+    )
+    db.add(sede)
+    db.commit()
+    db.refresh(sede)
+    return {"id": sede.id, "nombre": sede.nombre}
 
-        # Guardar en DB
-        resultados = guardar_en_db(db, empresa_obj.id, datos)
+@app.get("/areas")
+def list_areas(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Area).all()
 
-        return {
-            "empresa_id": empresa_obj.id,
-            "mensaje": "Archivo procesado exitosamente",
-            "datos": resultados
+@app.post("/areas")
+def create_area(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    area = Area(
+        sede_id=data.get("sede_id"),
+        nombre=data["nombre"],
+        nombre_corto=data.get("nombre_corto"),
+        tipo_area=data.get("tipo_area"),
+        area_padre_id=data.get("area_padre_id"),
+    )
+    db.add(area)
+    db.commit()
+    db.refresh(area)
+    return {"id": area.id, "nombre": area.nombre}
+
+@app.get("/empresas/{empresa_id}/muestras")
+def list_muestras_empresa(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    muestras = db.query(MuestraPeriodo).filter(MuestraPeriodo.empresa_id == empresa_id).all()
+    return [
+        {
+            "id": m.id,
+            "ano": m.ano,
+            "periodo": m.periodo,
+            "estado": m.estado,
+            "fecha_inicio": str(m.fecha_inicio) if m.fecha_inicio else None,
+            "fecha_completado": str(m.fecha_completado) if m.fecha_completado else None,
+            "consultor": m.consultor,
         }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except:
-                pass
+        for m in muestras
+    ]
 
-
-# Obtener empresa con todos sus datos
-@app.get("/empresas/{empresa_id}")
-def get_empresa(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Obtener empresa con todos sus datos"""
-
+@app.post("/empresas/{empresa_id}/muestras")
+def create_muestra(empresa_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
     if not empresa:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
 
-    # Obtener cargos
-    cargos = db.query(CargoEmpresa).filter(CargoEmpresa.empresa_id == empresa_id).all()
+    muestra = MuestraPeriodo(
+        empresa_id=empresa_id,
+        ano=data.get("ano", 2026),
+        periodo=data.get("periodo", f"{data.get('ano', 2026)}-1"),
+        estado="EN_PROCESO",
+        consultor=data.get("consultor"),
+    )
+    db.add(muestra)
+    db.commit()
+    db.refresh(muestra)
+    return {"id": muestra.id, "ano": muestra.ano, "estado": muestra.estado}
 
-    return {
-        "id": empresa.id,
-        "nombre_empresa": empresa.nombre_empresa,
-        "nit": empresa.nit,
-        "razon_social": empresa.razon_social,
-        "direccion": empresa.direccion,
-        "telefono": empresa.telefono,
-        "departamento": empresa.departamento,
-        "ciudad": empresa.ciudad,
-        "sector_economico": empresa.sector_economico,
-        "tipo_empresa": empresa.tipo_empresa,
-        "num_personas_contratadas": empresa.num_personas_contratadas,
-        "cargos": [
-            {
-                "id": c.id,
-                "nombre_cargo": c.nombre_cargo,
-                "area": c.area,
-                "num_personas": c.num_personas,
-                "basico": c.basico,
-                "modalidad": c.modalidad,
-                "estado": c.estado,
-                "homologado": c.homologado,
-            }
-            for c in cargos
-        ]
-    }
-
-
-# Obtener lista de empresas
 @app.get("/empresas")
 def list_empresas(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Listar todas las empresas"""
     empresas = db.query(Empresa).all()
     return [
         {
@@ -442,138 +516,126 @@ def list_empresas(db: Session = Depends(get_db), current_user: User = Depends(ge
             "nombre_empresa": e.nombre_empresa,
             "nit": e.nit,
             "ciudad": e.ciudad,
+            "departamento": e.departamento,
+            "sector_economico": e.sector_economico,
         }
         for e in empresas
     ]
 
+# ==========================================
+# ANALISIS Y REPORTES
+# ==========================================
 
-from .services.matcher import find_exact_match
-
-@app.post("/homologacion/ejecutar")
-def ejecutar_homologacion(
-    upload_id: int = Query(..., description="Upload ID"),
-    usar_ia: bool = Query(False, description="Usar IA para los no encontrados"),
-    criterios: dict = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Ejecutar homologacion para todos los cargos de un upload"""
-    print(f"=== /homologacion/ejecutar called with upload_id={upload_id}, usar_ia={usar_ia} ===")
-
-    try:
-        criterios = criterios or {}
-
-        # Obtener todos los cargos del upload
-        cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
-        print(f"=== Ejecutando homologacion para {len(cargos)} cargos (upload {upload_id}) ===")
-
-        # Obtener master_descriptions para busqueda
-        masters = db.query(MasterDescription).all()
-        masters_list = [{"nombre": m.nombre_cargo or "", "descripcion": m.descripcion or "", "area": m.area or ""} for m in masters]
-        print(f"=== Master descriptions disponibles: {len(masters_list)} ===")
-
-        # Importar el servicio de IA
-        from .services.matcher import find_exact_match, homologar_lote_con_ia
-
-        matched = 0
-        not_matched = 0
-
-        for cargo in cargos:
-            nombre_cargo = cargo.nombre_cargo
-
-            # Buscar con logica mejorada (exacta + fuzzy + substring)
-            master = find_exact_match(nombre_cargo, masters_list)
-
-            if master:
-                homo = cargo.homologacion
-                if homo:
-                    cargo_original = cargo.nombre_cargo
-                    homo.cargo_homologado = master["nombre"]
-                    homo.justificacion = f"DB: {master['area']} | Original: {cargo_original}"
-                else:
-                    homo = Homologacion(
-                        cargo_id=cargo.id,
-                        cargo_homologado=master["nombre"],
-                        justificacion=f"Coincidencia DB (area: {master['area']})"
-                    )
-                    db.add(homo)
-
-                cargo.estado = "HOMOLOGADO"
-                matched += 1
-            else:
-                cargo.estado = "SIN_COINCIDENCIA"
-                not_matched += 1
-
-        db.commit()
-        print(f"=== Homologacion (sin IA): {matched} coincidencia(s), {not_matched} sin coincidir ===")
-
-        # Si hay muchos sin encontrar y usar_ia=True, intentar con IA
-        ia_resultados = []
-        if usar_ia and not_matched > 0:
-            print(f"=== Intentando homologacion con IA para {not_matched} cargos ===")
-            sin_match = [c for c in cargos if c.estado == "SIN_COINCIDENCIA"]
-
-            if sin_match:
-                cargos_batch = [{"id": c.id, "nombre": c.nombre_cargo, "area": c.area} for c in sin_match]
-                try:
-                    ia_resultados = homologar_lote_con_ia(cargos_batch, masters_list)
-                    print(f"=== IA resultados: {len(ia_resultados)} ===")
-
-                    for res in ia_resultados:
-                        cargo_id = res.get("id")
-                        if cargo_id:
-                            cargo = next((c for c in sin_match if c.id == cargo_id), None)
-                            if cargo:
-                                cargo_original = cargo.nombre_cargo
-                                cargo.cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
-                                cargo.justificacion = f"IA sugerencia | Original: {cargo_original} | Razon: {res.get('justificacion', '')}"
-                                cargo.estado = "HOMOLOGADO"
-
-                    db.commit()
-                    print(f"=== Homologacion con IA completada ===")
-                except Exception as e:
-                    print(f"=== Error con IA: {e} ===")
-
-        return {
-            "mensaje": f"Se procesaron {len(cargos)} cargos",
-            "matched": matched + len(ia_resultados),
-            "not_matched": not_matched - len(ia_resultados),
-            "upload_id": upload_id
-        }
-    except Exception as e:
-        print(f"=== ERROR en homologacion: {str(e)} ===")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Ejecutar evaluacion
-@app.post("/valoracion/ejecutar")
-def ejecutar_valoracion(
-    empresa_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Ejecutar evaluacion de 12 factores para todos los cargos"""
-
-    resultados = valorar_lote(db, empresa_id)
-
-    return {
-        "mensaje": f"Se valoraron {len(resultados)} cargos",
-        "resultados": len(resultados)
-    }
-
-
-# Analisis - Curvas (para upload_id)
 @app.post("/analisis/curvas/upload/{upload_id}")
 def generar_curvas_upload(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Generar curvas de equidad para un upload"""
-    from .services.analisis_service import calcular_curvas_equidad
     curvas = calcular_curvas_equidad(db, upload_id=upload_id)
     return {"curvas_generadas": len(curvas)}
 
-
-# Analisis - Reporte consolidado (para upload_id)
 @app.get("/analisis/reporte/upload/{upload_id}")
 def get_reporte_upload(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Obtener reporte consolidado para un upload"""
-    from .services.analisis_service import reporte_consolidado
-    return reporte_consolidado(db, upload_id=upload_id)
+    from .services.ia_service import call_ia
+    from .models import Valoracion, Cargo
+
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    valoraciones = db.query(Valoracion).join(Cargo).filter(Cargo.upload_id == upload_id).all()
+
+    subpago = 0
+    competitivo = 0
+    sobrepago = 0
+    detalles = []
+
+    for v in valoraciones:
+        cargo = next((c for c in cargos if c.id == v.cargo_id), None)
+        if not cargo:
+            continue
+
+        puntos_est = _estimar_puntos_totales(v)
+        salario_ref = puntos_est * 25000
+        salario_actual = float(v.magnitud or 0) * 100000 if v.magnitud else 0
+
+        if salario_actual > 0 and salario_ref > 0:
+            posicion = (salario_actual / salario_ref) * 100
+        else:
+            posicion = 100
+
+        if posicion < 80:
+            subpago += 1
+        elif posicion <= 120:
+            competitivo += 1
+        else:
+            sobrepago += 1
+
+        detalles.append({
+            "cargo": cargo.nombre_cargo,
+            "actual": salario_actual,
+            "referencia": salario_ref,
+            "posicion": round(posicion, 1),
+        })
+
+    total = len(detalles) if detalles else 1
+
+    puntos_data = []
+    for v in valoraciones:
+        cargo = next((c for c in cargos if c.id == v.cargo_id), None)
+        if cargo:
+            pts = _estimar_puntos_totales(v)
+            salario_est = pts * 25000
+            puntos_data.append({"cargo": cargo.nombre_cargo, "puntos": pts, "valor": salario_est})
+
+    puntos_data.sort(key=lambda x: x["puntos"])
+
+    return {
+        "equidad": {
+            "total": total,
+            "subpago": subpago,
+            "competitivo": competitivo,
+            "sobrepago": sobrepago,
+            "pct_subpago": round(subpago / total * 100, 1) if total > 0 else 0,
+            "pct_competitivo": round(competitivo / total * 100, 1) if total > 0 else 0,
+            "pct_sobrepago": round(sobrepago / total * 100, 1) if total > 0 else 0,
+            "detalles": detalles[:10],
+        },
+        "curvas": {
+            "min": [{"puntos": d["puntos"], "valor": d["valor"] * 0.85} for d in puntos_data],
+            "mid": [{"puntos": d["puntos"], "valor": d["valor"]} for d in puntos_data],
+            "max": [{"puntos": d["puntos"], "valor": d["valor"] * 1.3} for d in puntos_data],
+        },
+        "nivelacion": {
+            f"target_{int(t * 100)}": {
+                "costo_anual": sum(max(0, d["referencia"] * t - d["actual"]) for d in detalles) * 12,
+            }
+            for t in [0.7, 0.8, 0.9, 1.0]
+        },
+        "competitividad": {
+            "promedio": round(sum(d["posicion"] for d in detalles) / len(detalles), 1) if detalles else 0,
+            "cargos": detalles[:10],
+        },
+    }
+
+def _estimar_puntos_totales(v):
+    pts_c = {"A": 20, "B": 40, "C": 60, "D": 80, "E": 100, "F": 120, "G": 140, "H": 160}
+    mult_e = {"-": 0.8, "o": 1.0, "+": 1.2}
+    pts_h = {"I": 10, "II": 20, "III": 30, "IV": 40, "V": 50, "VI": 60, "VII": 70}
+    pts_r = {"1": 10, "2": 15, "3": 25, "4": 35}
+    pts_contacto = {"A": 5, "B": 10, "C": 15}
+    pts_freq = {"1": 2, "2": 4, "3": 6, "4": 8}
+    pts_cont = {"I": 5, "II": 10, "III": 15, "IV": 20, "V": 25}
+    pts_cc = {"1": 10, "2": 20, "3": 30, "4": 40, "5": 50}
+    mult_t = {"-": 0.85, "o": 1.0, "+": 1.15}
+    pts_g = {"A": 10, "B": 20, "C": 30, "D": 40, "E": 50, "F": 60, "G": 70, "H": 80}
+    pts_imp = {"I": 10, "II": 20, "III": 30, "IV": 40}
+    pts_aut = {"A": 10, "B": 20, "C": 30, "D": 40, "E": 50, "F": 60, "G": 70}
+    pts_mag = {str(i): i * 5 for i in range(15)}
+
+    f1 = (pts_c.get(v.conocimientos, 60) * mult_e.get(v.experiencia, 1.0) +
+          pts_h.get(v.habilidad_gerencial, 30) + pts_r.get(str(v.rol_cargo or ""), 15))
+    f2 = (pts_contacto.get(v.contacto, 10) + pts_freq.get(str(v.frecuencia or ""), 4) +
+          pts_cont.get(v.contenido_relaciones, 10))
+    f3 = (pts_cc.get(str(v.complejidad_conceptual or ""), 20) * mult_t.get(v.tendencia_cc, 1.0) +
+          pts_g.get(v.guias_apoyo, 30) * mult_t.get(v.tendencia_ga, 1.0))
+    f4 = (pts_imp.get(v.impacto, 20) + pts_aut.get(v.autonomia, 30) +
+          pts_mag.get(str(v.magnitud or ""), 0))
+
+    crit = (int(v.criterio_1 or 0) + int(v.criterio_2 or 0) + int(v.criterio_3 or 0))
+    raw = f1 + f2 + f3 + f4
+    return raw * (1 + crit * 0.05)

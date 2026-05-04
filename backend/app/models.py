@@ -19,20 +19,92 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 # ==========================================
+# ENTIDADES ORGANIZACIONALES
+# ==========================================
+
+class Regional(Base):
+    """Region geografica de la empresa (ej: Antioquia, Bogota, Costa)"""
+    __tablename__ = "regionales"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String, nullable=False, unique=True)
+    descripcion = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    sedes = relationship("Sede", back_populates="regional")
+    empresas = relationship("Empresa", back_populates="regional")
+
+
+class Sede(Base):
+    """Sede fisica de la empresa (ej: Planta Itagui, Oficina Medellin)"""
+    __tablename__ = "sedes"
+    id = Column(Integer, primary_key=True, index=True)
+    regional_id = Column(Integer, ForeignKey("regionales.id"), nullable=True)
+    nombre = Column(String, nullable=False)
+    direccion = Column(String, nullable=True)
+    ciudad = Column(String, nullable=True)
+    departamento = Column(String, nullable=True)
+    tipo_sede = Column(String, nullable=True)  # Planta, Oficina, Almacen, etc.
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    regional = relationship("Regional", back_populates="sedes")
+    areas = relationship("Area", back_populates="sede")
+
+
+class Area(Base):
+    """Area funcional/gerencia de la empresa (ej: Gestion Humana, Financiero, Produccion)"""
+    __tablename__ = "areas"
+    id = Column(Integer, primary_key=True, index=True)
+    sede_id = Column(Integer, ForeignKey("sedes.id"), nullable=True)
+    nombre = Column(String, nullable=False)
+    nombre_corto = Column(String, nullable=True)  # GH, FIN, PROD
+    tipo_area = Column(String, nullable=True)  # Gerencia, Direccion, Coordinacion, etc.
+    area_padre_id = Column(Integer, ForeignKey("areas.id"), nullable=True)  # Jerarquia
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    sede = relationship("Sede", back_populates="areas")
+    area_padre = relationship("Area", remote_side=[id], backref="sub_areas")
+
+
+# ==========================================
+# MUESTRA/PERIODO: Tracking de empresas que vuelven cada ano
+# ==========================================
+
+class MuestraPeriodo(Base):
+    """Cada vez que una empresa participa en el estudio (un ano/periodo).
+    Permite comparar datos historicos de la misma empresa entre periodos."""
+    __tablename__ = "muestras_periodo"
+    id = Column(Integer, primary_key=True, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False)
+    ano = Column(Integer, nullable=False)  # 2024, 2025, 2026
+    periodo = Column(String, nullable=True)  # "2025-1", "2025-H1", etc.
+    estado = Column(String, default="EN_PROCESO")  # EN_PROCESO, COMPLETADO, ARCHIVADO
+    fecha_inicio = Column(Date, nullable=True)
+    fecha_completado = Column(Date, nullable=True)
+    observaciones = Column(Text, nullable=True)
+    consultor = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    empresa = relationship("Empresa", back_populates="muestras")
+    uploads = relationship("Upload", back_populates="muestra")
+
+
+# ==========================================
 # BLOQUE A: FORMULARIO DE REQUERIMIENTOS
 # ==========================================
 
 class Empresa(Base):
     __tablename__ = "empresas"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    regional_id = Column(Integer, ForeignKey("regionales.id"), nullable=True)
+    sede_principal_id = Column(Integer, ForeignKey("sedes.id"), nullable=True)
+    nit = Column(String, nullable=True, index=True)
+
     # Datos Generales
     fecha_diligenciamiento = Column(Date, nullable=True)
     consultor = Column(String, nullable=True)
-    nombre_empresa = Column(String)
+    nombre_empresa = Column(String, nullable=False)
     razon_social = Column(String, nullable=True)
-    nit = Column(String, nullable=True)
     direccion = Column(String, nullable=True)
     telefono = Column(String, nullable=True)
     departamento = Column(String, nullable=True)
@@ -43,25 +115,39 @@ class Empresa(Base):
     email_contacto = Column(String, nullable=True)
     sector_economico = Column(String, nullable=True)
     actividad_economica = Column(String, nullable=True)
-    tipo_empresa = Column(String, nullable=True)  # Privada, Pública, Mixta
+    tipo_empresa = Column(String, nullable=True)  # Privada, Publica, Mixta
     principales_productos = Column(Text, nullable=True)
     motivacion = Column(Text, nullable=True)
     num_personas_contratadas = Column(Integer, nullable=True)
     empleados_presenciales = Column(Integer, nullable=True)
-    
+    empleados_teletrabajo = Column(Integer, nullable=True)
+    empleados_mixta = Column(Integer, nullable=True)
+
+    # Datos financieros
+    ventas_reales = Column(Float, nullable=True)
+    ventas_presupuestadas = Column(Float, nullable=True)
+    ingresos_reales = Column(Float, nullable=True)
+    ingresos_presupuestados = Column(Float, nullable=True)
+    excedentes_reales = Column(Float, nullable=True)
+    excedentes_presupuestados = Column(Float, nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
+    regional = relationship("Regional", back_populates="empresas")
+    sede_principal = relationship("Sede")
     practicas = relationship("PracticaCompensacion", back_populates="empresa")
     cargos_empresa = relationship("CargoEmpresa", back_populates="empresa")
+    muestras = relationship("MuestraPeriodo", back_populates="empresa")
 
 
 class PracticaCompensacion(Base):
     __tablename__ = "practicas_compensacion"
     id = Column(Integer, primary_key=True, index=True)
     empresa_id = Column(Integer, ForeignKey("empresas.id"))
-    
+    muestra_id = Column(Integer, ForeignKey("muestras_periodo.id"), nullable=True)
+
     # Preguntas Si/No
-    tiene_estructura_salarial = Column(String, nullable=True)  # SI/NO
+    tiene_estructura_salarial = Column(String, nullable=True)
     ultima_actualizacion = Column(Integer, nullable=True)
     metodologia_valoracion = Column(String, nullable=True)
     tiene_bonos_resultados = Column(String, nullable=True)
@@ -70,8 +156,9 @@ class PracticaCompensacion(Base):
     comisiones_cargos = Column(Text, nullable=True)
     tiene_compensacion_flexible = Column(String, nullable=True)
     compensacion_flexible_cargos = Column(Text, nullable=True)
-    
+
     empresa = relationship("Empresa", back_populates="practicas")
+    muestra = relationship("MuestraPeriodo")
     primas_extralegales = relationship("PrimaExtralegal", back_populates="practica")
 
 
@@ -79,13 +166,12 @@ class PrimaExtralegal(Base):
     __tablename__ = "primas_extralegales"
     id = Column(Integer, primary_key=True, index=True)
     practica_id = Column(Integer, ForeignKey("practicas_compensacion.id"))
-    
+
     nombre_prima = Column(String)
-    tipo = Column(String, nullable=True)  # Seleccione
+    tipo = Column(String, nullable=True)
     dias_salario = Column(Integer, nullable=True)
-    es_constitutivo = Column(String, nullable=True)  # SI/NO
-    
-    # Meses (Ene-Dic) - pagos mensuales
+    es_constitutivo = Column(String, nullable=True)
+
     ene = Column(String, nullable=True)
     feb = Column(String, nullable=True)
     mar = Column(String, nullable=True)
@@ -98,7 +184,7 @@ class PrimaExtralegal(Base):
     oct = Column(String, nullable=True)
     nov = Column(String, nullable=True)
     dic = Column(String, nullable=True)
-    
+
     practica = relationship("PracticaCompensacion", back_populates="primas_extralegales")
 
 
@@ -106,25 +192,27 @@ class CargoEmpresa(Base):
     __tablename__ = "cargos_empresa"
     id = Column(Integer, primary_key=True, index=True)
     empresa_id = Column(Integer, ForeignKey("empresas.id"))
-    
-    # Información básica
-    numero = Column(Integer, nullable=True)  # #
-    nombre_cargo = Column(String)
+    muestra_id = Column(Integer, ForeignKey("muestras_periodo.id"), nullable=True)
+    area_id = Column(Integer, ForeignKey("areas.id"), nullable=True)
+
+    # Informacion basica
+    numero = Column(Integer, nullable=True)
+    nombre_cargo = Column(String, nullable=False)
     num_personas = Column(Integer, nullable=True)
-    impacto_directo = Column(String, nullable=True)  # SI/NO
-    tipo_impacto = Column(String, nullable=True)  # INGRESOS/EGRESOS
+    impacto_directo = Column(String, nullable=True)
+    tipo_impacto = Column(String, nullable=True)
     monto_anual = Column(Float, nullable=True)
-    tipo_contrato = Column(String, nullable=True)  # Término/Indefinido/Temporal
-    modalidad = Column(String, nullable=True)  # Presencial/Híbrido/Remoto
+    tipo_contrato = Column(String, nullable=True)
+    modalidad = Column(String, nullable=True)
     cargo_jefe = Column(String, nullable=True)
-    area = Column(String, nullable=True)
+    area = Column(String, nullable=True)  # Texto libre para compatibilidad
     descripcion = Column(Text, nullable=True)
     pacto = Column(String, nullable=True)
-    tipo_salario = Column(String, nullable=True)  # Integral/Ordinario
+    tipo_salario = Column(String, nullable=True)
     horas_mes = Column(Integer, nullable=True)
     pct_arl = Column(Float, nullable=True)
-    
-    # Compensación
+
+    # Compensacion
     basico = Column(Float, nullable=True)
     cumplimiento_100 = Column(Float, nullable=True)
     real_pagado = Column(Float, nullable=True)
@@ -151,27 +239,29 @@ class CargoEmpresa(Base):
     prima_navidad_2 = Column(Float, nullable=True)
     prima_vacaciones_2 = Column(Float, nullable=True)
     columna124 = Column(Float, nullable=True)
-    
+
     # Estado
     estado = Column(String, default="PENDIENTE")
     homologado = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     empresa = relationship("Empresa", back_populates="cargos_empresa")
+    muestra = relationship("MuestraPeriodo")
+    area_obj = relationship("Area")
     homologacion = relationship("HomologacionCargo", back_populates="cargo_empresa", uselist=False)
     valoracion = relationship("ValoracionCargo", back_populates="cargo_empresa", uselist=False)
 
 
 # ==========================================
-# BLOQUE B: HOMOLOGACIÓN - Catálogo Maestro
+# BLOQUE B: HOMOLOGACION - Catalogo Maestro
 # ==========================================
 
 class MasterCargo(Base):
     __tablename__ = "master_cargos"
     id = Column(Integer, primary_key=True, index=True)
-    
+
     codigo_2017 = Column(String, nullable=True)
-    nombre = Column(String)
+    nombre = Column(String, nullable=False)
     codigo_area = Column(Integer, nullable=True)
     area_general = Column(String, nullable=True)
     subarea = Column(String, nullable=True)
@@ -188,8 +278,7 @@ class MasterCargo(Base):
 class Categoria(Base):
     __tablename__ = "categorias"
     id = Column(Integer, primary_key=True, index=True)
-    
-    categoria = Column(Integer)  # 1-25
+    categoria = Column(Integer)
     ruta_carrera_gerencial = Column(String, nullable=True)
     ruta_carrera_individual = Column(String, nullable=True)
     pista = Column(String, nullable=True)
@@ -198,14 +287,13 @@ class Categoria(Base):
 class Nivel(Base):
     __tablename__ = "niveles"
     id = Column(Integer, primary_key=True, index=True)
-    
     categoria = Column(Integer)
     nivel = Column(String, nullable=True)
     propuesta = Column(String, nullable=True)
 
 
 # ==========================================
-# BLOQUE B: HOMOLOGACIÓN - Resultados
+# BLOQUE B: HOMOLOGACION - Resultados
 # ==========================================
 
 class HomologacionCargo(Base):
@@ -213,97 +301,87 @@ class HomologacionCargo(Base):
     id = Column(Integer, primary_key=True, index=True)
     cargo_empresa_id = Column(Integer, ForeignKey("cargos_empresa.id"))
     master_cargo_id = Column(Integer, ForeignKey("master_cargos.id"), nullable=True)
-    
+
     cargo_valorado = Column(String, nullable=True)
     cargo_homologado_1 = Column(String, nullable=True)
     descripcion_1 = Column(Text, nullable=True)
     cargo_homologado_2 = Column(String, nullable=True)
     descripcion_2 = Column(Text, nullable=True)
     observaciones = Column(Text, nullable=True)
-    
+
     editado_manual = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     cargo_empresa = relationship("CargoEmpresa", back_populates="homologacion")
 
 
 # ==========================================
-# BLOQUE C: ESTRUCTURA SALARIAL - Valoración
+# BLOQUE C: ESTRUCTURA SALARIAL - Valoracion
 # ==========================================
 
 class ValoracionCargo(Base):
     __tablename__ = "valoraciones_cargo"
     id = Column(Integer, primary_key=True, index=True)
     cargo_empresa_id = Column(Integer, ForeignKey("cargos_empresa.id"))
-    
-    # Identificación
+
     cargo = Column(String, nullable=True)
     taller = Column(String, nullable=True)
     area_especifica = Column(String, nullable=True)
     area = Column(String, nullable=True)
     cargo_homologado = Column(String, nullable=True)
-    
-    # Factor 1: Conocimiento & Habilidad
+
     puntos = Column(Integer, nullable=True)
-    conocimientos = Column(String, nullable=True)  # A-H
-    experiencia = Column(String, nullable=True)    # -/o/+
-    habilidad_gerencial = Column(String, nullable=True)  # I-VII
-    rol_cargo = Column(Integer, nullable=True)  # 1-4
+    conocimientos = Column(String, nullable=True)
+    experiencia = Column(String, nullable=True)
+    habilidad_gerencial = Column(String, nullable=True)
+    rol_cargo = Column(Integer, nullable=True)
     puntos_c_h = Column(Integer, nullable=True)
-    
-    # Factor 2: Contacto
-    contacto = Column(String, nullable=True)  # A/B/C
-    frecuencia = Column(Integer, nullable=True)  # 1-4
-    contenido_relaciones = Column(String, nullable=True)  # I-V
+
+    contacto = Column(String, nullable=True)
+    frecuencia = Column(Integer, nullable=True)
+    contenido_relaciones = Column(String, nullable=True)
     puntos_hc = Column(Integer, nullable=True)
     total_puntos_1 = Column(Integer, nullable=True)
-    
-    # Factor 3: Complejidad Conceptual
-    complejidad_conceptual = Column(Integer, nullable=True)  # 1-6
+
+    complejidad_conceptual = Column(Integer, nullable=True)
     tendencia_cc = Column(String, nullable=True)
-    guias_apoyo = Column(String, nullable=True)  # A-F
+    guias_apoyo = Column(String, nullable=True)
     tendencia_ga = Column(String, nullable=True)
     porcentaje = Column(Float, nullable=True)
     total_puntos_2 = Column(Integer, nullable=True)
-    
-    # Factor 4: Responsabilidad
-    impacto = Column(String, nullable=True)  # I-IV
-    autonomia = Column(String, nullable=True)  # A-F
-    magnitud = Column(Integer, nullable=True)  # 1-10
+
+    impacto = Column(String, nullable=True)
+    autonomia = Column(String, nullable=True)
+    magnitud = Column(Integer, nullable=True)
     puntos_rr = Column(Integer, nullable=True)
-    
-    # Criterios
-    criterio_1 = Column(Integer, default=0)  # 0 o 1
+
+    criterio_1 = Column(Integer, default=0)
     criterio_2 = Column(Integer, default=0)
     criterio_3 = Column(Integer, default=0)
-    
-    # Resultados
+
     categoria = Column(Integer, nullable=True)
     criticidad = Column(String, nullable=True)
     nivel = Column(String, nullable=True)
     frecuencia_val = Column(Integer, nullable=True)
-    
-    # Compensaciones
-    g = Column(Float, nullable=True)  # Garantizado
-    g_v = Column(Float, nullable=True)  # Garantizado + Variable
-    ct = Column(Float, nullable=True)  # Compensación Total
-    
-    # Forzados
+
+    g = Column(Float, nullable=True)
+    g_v = Column(Float, nullable=True)
+    ct = Column(Float, nullable=True)
+
     nivel_forzado = Column(String, nullable=True)
     puntos_f = Column(Integer, nullable=True)
     categoria_f = Column(Integer, nullable=True)
     nivel_f = Column(String, nullable=True)
     criticidad_f = Column(String, nullable=True)
-    
-    # Nivel SHR
+
     nivel_shr = Column(String, nullable=True)
     variable_target = Column(Float, nullable=True)
     variable_target_nc = Column(Float, nullable=True)
     observacion = Column(Text, nullable=True)
-    
+
     editado_manual = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     cargo_empresa = relationship("CargoEmpresa", back_populates="valoracion")
 
 
@@ -315,44 +393,39 @@ class Colaborador(Base):
     __tablename__ = "colaboradores"
     id = Column(Integer, primary_key=True, index=True)
     empresa_id = Column(Integer, ForeignKey("empresas.id"))
-    
-    # Identificación
+    muestra_id = Column(Integer, ForeignKey("muestras_periodo.id"), nullable=True)
+
     renglon = Column(Integer, nullable=True)
     cedula = Column(String, nullable=True)
     nombres = Column(String, nullable=True)
     fecha_ingreso = Column(Date, nullable=True)
     fecha_nacimiento = Column(Date, nullable=True)
-    
-    # Cargo
+
     cargo_nomina = Column(String, nullable=True)
     pacto = Column(String, nullable=True)
     cargo_valorado = Column(String, nullable=True)
-    
-    # Área
+
     area = Column(String, nullable=True)
     area_funcional = Column(String, nullable=True)
     area_especifica = Column(String, nullable=True)
     ciudad = Column(String, nullable=True)
     segmentacion_individual = Column(String, nullable=True)
     segmentacion = Column(String, nullable=True)
-    
-    # Homologación y Valoración
+
     cargo_homologacion = Column(String, nullable=True)
     puntos_valoracion = Column(Integer, nullable=True)
     categoria = Column(Integer, nullable=True)
     nivel = Column(String, nullable=True)
     criticidad = Column(String, nullable=True)
     punto_medio = Column(Float, nullable=True)
-    
-    # Compensación Actual
+
     garantizado = Column(Float, nullable=True)
     variable = Column(Float, nullable=True)
     beneficios = Column(Float, nullable=True)
     base_prestaciones = Column(Float, nullable=True)
     basico = Column(Float, nullable=True)
     basico_actual = Column(Float, nullable=True)
-    
-    # Primas
+
     prima_1_ncs = Column(Float, nullable=True)
     prima_extralegal_1 = Column(Float, nullable=True)
     prima_2_ncs = Column(Float, nullable=True)
@@ -361,14 +434,12 @@ class Colaborador(Base):
     prima_extralegal_3 = Column(Float, nullable=True)
     prima_4_ncs = Column(Float, nullable=True)
     prima_extralegal_4 = Column(Float, nullable=True)
-    
-    # Comisiones y Bonificaciones
+
     promedio_comisiones = Column(Float, nullable=True)
     bonificacion_anual = Column(Float, nullable=True)
     bonificacion_anual_2 = Column(Float, nullable=True)
     bonificacion_anual_3 = Column(Float, nullable=True)
-    
-    # Otros beneficios
+
     auxilio_gasolina = Column(Float, nullable=True)
     auxilio_educacion = Column(Float, nullable=True)
     otros_1 = Column(Float, nullable=True)
@@ -381,27 +452,24 @@ class Colaborador(Base):
     otros_8 = Column(Float, nullable=True)
     otros_9 = Column(Float, nullable=True)
     otros_10 = Column(Float, nullable=True)
-    
+
     pct_variable = Column(Float, nullable=True)
     pct_beneficios = Column(Float, nullable=True)
-    
-    # Equidad
+
     geq = Column(Float, nullable=True)
     geqp = Column(Float, nullable=True)
     g_veq = Column(Float, nullable=True)
     g_veqp = Column(Float, nullable=True)
     cteq = Column(Float, nullable=True)
     cteqp = Column(Float, nullable=True)
-    
-    # Mercado Q1
+
     gq1 = Column(Float, nullable=True)
     gq1p = Column(Float, nullable=True)
     g_vq1 = Column(Float, nullable=True)
     g_vq1p = Column(Float, nullable=True)
     ctq1 = Column(Float, nullable=True)
     ctq1p = Column(Float, nullable=True)
-    
-    # Mercado Md
+
     gmd = Column(Float, nullable=True)
     gmdp = Column(Float, nullable=True)
     g_vmd = Column(Float, nullable=True)
@@ -410,16 +478,14 @@ class Colaborador(Base):
     ctmdp = Column(Float, nullable=True)
     basico_md = Column(Float, nullable=True)
     pos_md = Column(Float, nullable=True)
-    
-    # Mercado Q3
+
     gq3 = Column(Float, nullable=True)
     gq3p = Column(Float, nullable=True)
     g_vq3 = Column(Float, nullable=True)
     g_vq3p = Column(Float, nullable=True)
     ctq3 = Column(Float, nullable=True)
     ctq3p = Column(Float, nullable=True)
-    
-    # Política
+
     salario_ordinario_min = Column(Float, nullable=True)
     salario_ordinario = Column(Float, nullable=True)
     salario_ordinario_p = Column(Float, nullable=True)
@@ -428,15 +494,14 @@ class Colaborador(Base):
     salario_integral = Column(Float, nullable=True)
     salario_integral_p = Column(Float, nullable=True)
     salario_integral_max = Column(Float, nullable=True)
-    
+
     gpol = Column(Float, nullable=True)
     gpolp = Column(Float, nullable=True)
     g_vpol = Column(Float, nullable=True)
     g_vpolp = Column(Float, nullable=True)
     ctpol = Column(Float, nullable=True)
     ctpolp = Column(Float, nullable=True)
-    
-    # Prestaciones
+
     base_seguridad_actual = Column(Float, nullable=True)
     salud = Column(Float, nullable=True)
     pension = Column(Float, nullable=True)
@@ -446,8 +511,7 @@ class Colaborador(Base):
     costo_total_actual = Column(Float, nullable=True)
     costo_laboral_nuevo = Column(Float, nullable=True)
     costo_total_nuevo = Column(Float, nullable=True)
-    
-    # Nivelación
+
     costo_mensual_nivelacion = Column(Float, nullable=True)
     nivelacion_ct = Column(Float, nullable=True)
     nivelacion_cl = Column(Float, nullable=True)
@@ -455,7 +519,7 @@ class Colaborador(Base):
     equidad_80 = Column(Float, nullable=True)
     equidad_120 = Column(Float, nullable=True)
     costo_sobrepago = Column(Float, nullable=True)
-    
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -466,7 +530,9 @@ class Colaborador(Base):
 class Curva(Base):
     __tablename__ = "curvas"
     id = Column(Integer, primary_key=True, index=True)
-    
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=True)
+    muestra_id = Column(Integer, ForeignKey("muestras_periodo.id"), nullable=True)
+
     categoria = Column(Integer)
     qi_garantizado = Column(Float, nullable=True)
     qi_g_v = Column(Float, nullable=True)
@@ -477,33 +543,29 @@ class Curva(Base):
     qiii_garantizado = Column(Float, nullable=True)
     qiii_g_v = Column(Float, nullable=True)
     qiii_ct = Column(Float, nullable=True)
-    
-    # Parámetros de curva
+
     pendiente = Column(Float, nullable=True)
     intercepto = Column(Float, nullable=True)
     punto_medio = Column(Float, nullable=True)
 
 
 # ==========================================
-# MODELOS ORIGINALES (mantener)
+# MODELOS ORIGINALES (backwards compatibility)
 # ==========================================
 
 class Upload(Base):
     __tablename__ = "uploads"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    muestra_id = Column(Integer, ForeignKey("muestras_periodo.id"), nullable=True)
     filename = Column(String, nullable=False)
     empresa = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String, default="pendiente", nullable=False)
-    
-    # Relación simple sin empresa_id
+
+    muestra = relationship("MuestraPeriodo", back_populates="uploads")
     cargos = relationship("Cargo", back_populates="upload")
 
-
-# ==========================================
-# CLASES DE BACKWARDS COMPATIBILITY
-# ==========================================
 
 class Cargo(Base):
     __tablename__ = "cargos"
@@ -513,9 +575,10 @@ class Cargo(Base):
     area = Column(String)
     descripcion_empresa = Column(Text, nullable=True)
     estado = Column(String, default="PENDIENTE")
-    
+
     upload = relationship("Upload", back_populates="cargos")
     homologacion = relationship("Homologacion", back_populates="cargo", uselist=False)
+
 
 class Homologacion(Base):
     __tablename__ = "homologaciones"
@@ -525,8 +588,9 @@ class Homologacion(Base):
     justificacion = Column(Text, nullable=True)
     datos_excel = Column(JSON, nullable=True)
     editado_manual = Column(Boolean, default=False)
-    
+
     cargo = relationship("Cargo", back_populates="homologacion")
+
 
 class MasterDescription(Base):
     __tablename__ = "master_descriptions"
@@ -534,6 +598,7 @@ class MasterDescription(Base):
     nombre_cargo = Column(String, index=True)
     descripcion = Column(Text)
     area = Column(String)
+
 
 class Valoracion(Base):
     __tablename__ = "valoraciones"
@@ -558,10 +623,11 @@ class Valoracion(Base):
     criterio_3 = Column(Integer, default=0)
     creado_manual = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     cargo = relationship("Cargo", back_populates="valoracion")
 
 Cargo.valoracion = relationship("Valoracion", back_populates="cargo", uselist=False)
+
 
 class ProcessingLog(Base):
     __tablename__ = "processing_logs"
