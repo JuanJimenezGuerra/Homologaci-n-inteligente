@@ -8,7 +8,7 @@ from typing import Optional, List, Dict
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-flash-1.5:free")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
@@ -26,7 +26,7 @@ def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 
         print("OpenRouter: API key no configurada")
         return None
     try:
-        print(f"OpenRouter: llamando con modelo {OPENROUTER_MODEL}, {len(messages)} mensajes")
+        print(f"OpenRouter: llamando con modelo {OPENROUTER_MODEL}, {len(messages)} mensajes, {max_tokens} max_tokens")
         resp = requests.post(
             OPENROUTER_URL,
             headers={
@@ -48,6 +48,10 @@ def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 
             content = data.get("choices", [{}])[0].get("message", {}).get("content")
             print(f"OpenRouter: OK, respuesta {len(content) if content else 0} chars")
             return content
+        elif resp.status_code == 401:
+            print(f"OpenRouter: ERROR 401 - API key invalida. Ve a openrouter.ai/settings/keys y genera una nueva.")
+            print(f"OpenRouter: key usada: ...{OPENROUTER_API_KEY[-4:]}")
+            return None
         else:
             print(f"OpenRouter: HTTP {resp.status_code} - {resp.text[:300]}")
             logger.error(f"OpenRouter HTTP {resp.status_code}: {resp.text[:200]}")
