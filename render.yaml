@@ -12,5 +12,3 @@ services:
         value: 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
       - key: BACKEND_URL
         value: https://shr-backend-prod.onrender.com
-      - key: N8N_WEBHOOK_URL
-        value: https://shr-n8n-prod.onrender.com/webhook-test/homologar

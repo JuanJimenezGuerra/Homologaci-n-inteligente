@@ -3,7 +3,7 @@ import axios from 'axios';
 import {
   BarChart2, ChevronDown, ChevronUp, Download, Loader2, Play,
   CheckCircle, AlertCircle, RefreshCw, Sparkles, ClipboardList,
-  ArrowRight, Building, FileSpreadsheet, Info, X
+  ArrowRight, Building, FileSpreadsheet, Info, X, HelpCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -177,15 +177,54 @@ const CRITERIA_DEFS = {
   criterio3: { label: 'Criterio Criticidad 3', options: ['0','1'], descriptions: { '0': 'No aplica', '1': 'Oferta escasa en mercado laboral para este cargo' } },
 };
 
+// ─── Point calculation tables (SHR/HAY methodology) ─────────────────────────
+
+const POINTS_CONOCIMIENTOS = { A: 20, B: 40, C: 60, D: 80, E: 100, F: 120, G: 140, H: 160 };
+const POINTS_EXPERIENCIA = { '-': 0.8, 'o': 1.0, '+': 1.2 };
+const POINTS_HABILIDAD = { I: 10, II: 20, III: 30, IV: 40, V: 50, VI: 60, VII: 70 };
+const POINTS_ROL = { '1': 10, '2': 15, '3': 25, '4': 35 };
+const POINTS_CONTACTO = { A: 5, B: 10, C: 15 };
+const POINTS_FRECUENCIA = { '1': 2, '2': 4, '3': 6, '4': 8 };
+const POINTS_CONTENIDO = { I: 5, II: 10, III: 15, IV: 20, V: 25 };
+const POINTS_COMPLEJIDAD = { '1': 10, '2': 20, '3': 30, '4': 40, '5': 50 };
+const POINTS_TENDENCIA = { '-': 0.85, 'o': 1.0, '+': 1.15 };
+const POINTS_GUIAS = { A: 10, B: 20, C: 30, D: 40, E: 50, F: 60, G: 70, H: 80 };
+const POINTS_IMPACTO = { I: 10, II: 20, III: 30, IV: 40 };
+const POINTS_AUTONOMIA = { A: 10, B: 20, C: 30, D: 40, E: 50, F: 60, G: 70 };
+const POINTS_MAGNITUD = { '1': 0, '2': 5, '3': 10, '4': 15, '5': 20, '6': 25, '7': 30, '8': 35, '9': 40, '10': 45, '11': 50, '12': 55, '13': 60, '14': 65 };
+
+function calcTotalPoints(v) {
+  const baseConoc = POINTS_CONOCIMIENTOS[v.conocimientos] || 0;
+  const multExp = POINTS_EXPERIENCIA[v.experiencia] || 1;
+  const f1 = baseConoc * multExp + (POINTS_HABILIDAD[v.habilidadGerencial] || 0) + (POINTS_ROL[v.rolCargo] || 0);
+
+  const f2 = (POINTS_CONTACTO[v.contacto] || 0) + (POINTS_FRECUENCIA[v.frecuenciaContacto] || 0) + (POINTS_CONTENIDO[v.contenidoRelaciones] || 0);
+
+  const baseCC = POINTS_COMPLEJIDAD[v.complejidadConceptual] || 0;
+  const multCC = POINTS_TENDENCIA[v.tendenciaCC] || 1;
+  const baseGA = POINTS_GUIAS[v.guiasApoyo] || 0;
+  const multGA = POINTS_TENDENCIA[v.tendenciaGA] || 1;
+  const f3 = baseCC * multCC + baseGA * multGA;
+
+  const f4 = (POINTS_IMPACTO[v.impacto] || 0) + (POINTS_AUTONOMIA[v.autonomia] || 0) + (POINTS_MAGNITUD[v.magnitud] || 0);
+
+  const criticidad = ((v.criterio1 === '1' ? 1 : 0) + (v.criterio2 === '1' ? 1 : 0) + (v.criterio3 === '1' ? 1 : 0));
+
+  const raw = f1 + f2 + f3 + f4;
+  const total = raw * (1 + criticidad * 0.05);
+  return { f1, f2, f3, f4, criticidad, raw, total: Math.round(total) };
+}
+
 // ─── AI prompt builder ───────────────────────────────────────────────────────
 
-const buildPrompt = (cargo, area, homologado) => `
+const buildPrompt = (cargo, area, homologado, descripcion) => `
 Eres un analista experto en valoración de cargos y compensación con la metodología HAY/SHR.
 Debes evaluar el siguiente cargo y seleccionar el nivel correcto para CADA UNO de los 13 criterios.
 
 CARGO: ${cargo}
 ÁREA: ${area}
 CARGO HOMOLOGADO: ${homologado || cargo}
+DESCRIPCIÓN DEL CARGO: ${descripcion || 'No disponible'}
 
 Responde EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional, con esta estructura:
 {
@@ -221,6 +260,30 @@ REGLAS DE VALORACIÓN:
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
+const HelpTooltip = ({ text, label }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative inline-flex">
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-slate-400 hover:text-primary transition-colors"
+        title={`Ayuda: ${label}`}
+      >
+        <HelpCircle size={12}/>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)}/>
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-64 bg-white border border-emerald-200 rounded-xl shadow-xl p-3 text-[11px] text-slate-600 leading-relaxed">
+            <p className="font-bold text-forest mb-1">{label}</p>
+            <p>{text}</p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const CriterioChip = ({ name, value, onChange, editing }) => {
   const def = CRITERIA_DEFS[name];
   if (!def) return null;
@@ -229,7 +292,10 @@ const CriterioChip = ({ name, value, onChange, editing }) => {
   if (!editing) {
     return (
       <div className="flex flex-col gap-0.5">
-        <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 truncate">{def.label}</span>
+        <div className="flex items-center gap-1">
+          <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 truncate">{def.label}</span>
+          <HelpTooltip text="Selecciona el nivel que mejor describe este criterio para el cargo." label={def.label}/>
+        </div>
         <span className="font-bold text-forest text-sm bg-emerald-50 rounded-lg px-2 py-1 inline-block text-center min-w-[2rem]">
           {value || '—'}
         </span>
@@ -239,7 +305,10 @@ const CriterioChip = ({ name, value, onChange, editing }) => {
 
   return (
     <div className="relative flex flex-col gap-0.5">
-      <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 truncate">{def.label}</span>
+      <div className="flex items-center gap-1">
+        <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 truncate">{def.label}</span>
+        <HelpTooltip text="Haz clic para ver las opciones disponibles y seleccionar el nivel adecuado." label={def.label}/>
+      </div>
       <button
         onClick={() => setOpen(!open)}
         className="font-bold text-forest text-sm bg-white border-2 border-primary/30 hover:border-primary rounded-lg px-2 py-1 inline-flex items-center gap-1 min-w-[3rem] justify-between"
@@ -273,7 +342,7 @@ const StatusIcon = ({ estado }) => {
 };
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
 
 const getToken = () => localStorage.getItem('token') || '';
 
@@ -288,7 +357,6 @@ const fetchCargosFromUpload = async (uploadId) => {
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 const ValuacionView = ({ uploadData }) => {
-  // uploadData puede ser: uploadId (number) o array de cargos
   const [cargos, setCargos] = useState([]);
   const [valoraciones, setValoraciones] = useState({});
   const [loading, setLoading] = useState(false);
@@ -300,17 +368,14 @@ const ValuacionView = ({ uploadData }) => {
   const [error, setError] = useState(null);
   const abortRef = useRef(false);
 
-  // Load cargos from uploadId or props
   useEffect(() => {
     const loadCargos = async () => {
-      // Si ya es un array, usar directamente
       if (Array.isArray(uploadData) && uploadData.length > 0) {
         setCargos(uploadData);
         try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(uploadData)); } catch {}
         return;
       }
       
-      // Si es un uploadId (number/string), fetch del backend
       const uploadId = Number(uploadData);
       if (uploadId && !isNaN(uploadId)) {
         setLoading(true);
@@ -328,7 +393,6 @@ const ValuacionView = ({ uploadData }) => {
         return;
       }
       
-      // Intentar localStorage como fallback
       try {
         const saved = localStorage.getItem('shr_valoracion_cargos');
         if (saved) setCargos(JSON.parse(saved));
@@ -343,21 +407,19 @@ const ValuacionView = ({ uploadData }) => {
     try { localStorage.setItem('shr_valoraciones', JSON.stringify(updated)); } catch {}
   };
 
-  const callClaude = async (cargo, area, homologado) => {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const callIA = async (cargoId) => {
+    const response = await fetch(`${API_BASE}/valoracion/${cargoId}/evaluar-ia`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: buildPrompt(cargo, area, homologado) }]
-      })
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getToken()}`
+      }
     });
-    const data = await response.json();
-    const text = data.content?.map(b => b.text || '').join('') || '';
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('Invalid JSON response');
-    return JSON.parse(match[0]);
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(err || 'Error al evaluar con IA');
+    }
+    return response.json();
   };
 
   const processCargo = async (cargo) => {
@@ -365,9 +427,8 @@ const ValuacionView = ({ uploadData }) => {
     setProcessingIds(prev => new Set([...prev, id]));
 
     try {
-      const homologado = cargo.homologacion?.cargo_homologado || '';
-      const result = await callClaude(cargo.nombre_cargo, cargo.area, homologado);
-      const updated = { ...valoraciones, [id]: { ...result, estado: 'valorado' } };
+      const result = await callIA(cargo.id);
+      const updated = { ...valoraciones, [id]: { ...result.valoracion, estado: 'valorado' } };
       saveValoraciones(updated);
     } catch (err) {
       const updated = { ...valoraciones, [id]: { estado: 'error', error: String(err) } };
@@ -407,9 +468,8 @@ const ValuacionView = ({ uploadData }) => {
   };
 
   const downloadExcel = () => {
-    // Build CSV-style content for download
     const headers = [
-      'Cargo', 'Área', 'Cargo Homologado',
+      'Cargo', 'Área', 'Cargo Homologado', 'Puntos Totales',
       'Conocimientos', 'Experiencia', 'Habilidad Gerencial', 'Rol del Cargo',
       'Contacto', 'Frecuencia Contacto', 'Contenido Relaciones',
       'Complejidad Conceptual', 'Tendencia CC', 'Guías de Apoyo', 'Tendencia GA',
@@ -421,8 +481,9 @@ const ValuacionView = ({ uploadData }) => {
     const rows = cargos.map(c => {
       const id = c.id || c.nombre_cargo;
       const v = valoraciones[id] || {};
+      const pts = calcTotalPoints(v);
       return [
-        c.nombre_cargo, c.area, c.homologacion?.cargo_homologado || '',
+        c.nombre_cargo, c.area, c.homologacion?.cargo_homologado || '', pts.total,
         v.conocimientos || '', v.experiencia || '', v.habilidadGerencial || '', v.rolCargo || '',
         v.contacto || '', v.frecuenciaContacto || '', v.contenidoRelaciones || '',
         v.complejidadConceptual || '', v.tendenciaCC || '', v.guiasApoyo || '', v.tendenciaGA || '',
@@ -445,13 +506,6 @@ const ValuacionView = ({ uploadData }) => {
   const valorados = Object.values(valoraciones).filter(v => v.estado === 'valorado').length;
   const total = cargos.length;
   const pct = total > 0 ? Math.round((valorados / total) * 100) : 0;
-
-  const CRITERIA_KEYS = [
-    'conocimientos','experiencia','habilidadGerencial','rolCargo',
-    'contacto','frecuenciaContacto','contenidoRelaciones',
-    'complejidadConceptual','tendenciaCC','guiasApoyo','tendenciaGA',
-    'impacto','autonomia','magnitud','criterio1','criterio2','criterio3'
-  ];
 
   if (loading) {
     return (
@@ -498,7 +552,6 @@ const ValuacionView = ({ uploadData }) => {
 
   return (
     <div className="space-y-6 pb-20">
-      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-forest">📊 Paso 2 · Valoración de Cargos</h1>
@@ -537,7 +590,6 @@ const ValuacionView = ({ uploadData }) => {
         </div>
       </div>
 
-      {/* Progress bar */}
       <div className="glass-card rounded-2xl p-4 border border-emerald-100">
         <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
           <span>Progreso de valoración</span>
@@ -561,7 +613,6 @@ const ValuacionView = ({ uploadData }) => {
         )}
       </div>
 
-      {/* Cargo list */}
       <div className="space-y-3">
         {cargos.map((cargo, idx) => {
           const id = cargo.id || cargo.nombre_cargo;
@@ -570,6 +621,7 @@ const ValuacionView = ({ uploadData }) => {
           const isExpanded = expandedId === id;
           const isEditing = editingId === id;
           const estado = isProcessing ? 'procesando' : (v.estado || 'pendiente');
+          const pts = estado === 'valorado' ? calcTotalPoints(v) : null;
 
           return (
             <motion.div
@@ -584,7 +636,6 @@ const ValuacionView = ({ uploadData }) => {
                 'border-white/60'
               }`}
             >
-              {/* Row header */}
               <div className="flex items-center gap-3 p-4">
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-[10px] font-bold text-slate-300 w-5 text-right">{idx + 1}</span>
@@ -598,6 +649,11 @@ const ValuacionView = ({ uploadData }) => {
                     {cargo.homologacion?.cargo_homologado && (
                       <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">
                         → {cargo.homologacion.cargo_homologado}
+                      </span>
+                    )}
+                    {pts && (
+                      <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-bold">
+                        {pts.total} pts
                       </span>
                     )}
                   </div>
@@ -632,19 +688,26 @@ const ValuacionView = ({ uploadData }) => {
                 </div>
               </div>
 
-              {/* Quick preview of key values when valorado */}
-              {estado === 'valorado' && !isExpanded && (
-                <div className="px-4 pb-3 flex flex-wrap gap-2">
-                  {['conocimientos','habilidadGerencial','impacto','autonomia'].map(k => (
-                    <div key={k} className="flex items-center gap-1 text-[10px]">
-                      <span className="text-slate-400">{CRITERIA_DEFS[k]?.label}:</span>
-                      <span className="font-bold text-primary">{v[k] || '—'}</span>
+              {estado === 'valorado' && !isExpanded && pts && (
+                <div className="px-4 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-[10px]">
+                  {[
+                    { label: 'F1 Conocimiento', val: pts.f1 },
+                    { label: 'F2 Comunicación', val: pts.f2 },
+                    { label: 'F3 Solución Prob.', val: pts.f3 },
+                    { label: 'F4 Responsabilidad', val: pts.f4 },
+                  ].map(f => (
+                    <div key={f.label} className="flex justify-between">
+                      <span className="text-slate-400">{f.label}:</span>
+                      <span className="font-bold text-primary">{f.val}</span>
                     </div>
                   ))}
+                  <div className="flex justify-between col-span-2 sm:col-span-4 mt-1 pt-1 border-t border-emerald-100">
+                    <span className="font-bold text-forest">Total:</span>
+                    <span className="font-bold text-forest text-xs">{pts.total} puntos</span>
+                  </div>
                 </div>
               )}
 
-              {/* Expanded criteria grid */}
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
@@ -654,7 +717,6 @@ const ValuacionView = ({ uploadData }) => {
                     className="overflow-hidden"
                   >
                     <div className="border-t border-emerald-100 px-4 py-4 space-y-4">
-                      {/* Justificación */}
                       {v.justificacion && (
                         <div className="bg-emerald-50/50 rounded-xl p-3 border border-emerald-100">
                           <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">🤖 Análisis IA</p>
@@ -662,7 +724,23 @@ const ValuacionView = ({ uploadData }) => {
                         </div>
                       )}
 
-                      {/* Factor 1: C&H */}
+                      {pts && (
+                        <div className="bg-amber-50/50 rounded-xl p-3 border border-amber-100 grid grid-cols-2 sm:grid-cols-5 gap-3">
+                          {[
+                            { label: 'F1 Conocimiento', val: pts.f1 },
+                            { label: 'F2 Comunicación', val: pts.f2 },
+                            { label: 'F3 Solución Prob.', val: pts.f3 },
+                            { label: 'F4 Responsabilidad', val: pts.f4 },
+                            { label: 'Total', val: pts.total },
+                          ].map(f => (
+                            <div key={f.label} className="text-center">
+                              <p className="text-[9px] font-bold uppercase text-amber-600">{f.label}</p>
+                              <p className={`font-bold text-lg ${f.label === 'Total' ? 'text-forest' : 'text-amber-700'}`}>{f.val}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       <div>
                         <p className="text-[9px] font-black uppercase tracking-[0.15em] text-emerald-600 mb-2 pb-1 border-b border-emerald-100">
                           Factor 1 · Conocimiento &amp; Habilidad Gerencial
@@ -678,7 +756,6 @@ const ValuacionView = ({ uploadData }) => {
                         </div>
                       </div>
 
-                      {/* Factor 2: Comunicación */}
                       <div>
                         <p className="text-[9px] font-black uppercase tracking-[0.15em] text-blue-600 mb-2 pb-1 border-b border-blue-100">
                           Factor 2 · Habilidades de Comunicación
@@ -694,7 +771,6 @@ const ValuacionView = ({ uploadData }) => {
                         </div>
                       </div>
 
-                      {/* Factor 3: Solución de problemas */}
                       <div>
                         <p className="text-[9px] font-black uppercase tracking-[0.15em] text-purple-600 mb-2 pb-1 border-b border-purple-100">
                           Factor 3 · Solución de Problemas
@@ -710,7 +786,6 @@ const ValuacionView = ({ uploadData }) => {
                         </div>
                       </div>
 
-                      {/* Factor 4: Responsabilidad */}
                       <div>
                         <p className="text-[9px] font-black uppercase tracking-[0.15em] text-amber-600 mb-2 pb-1 border-b border-amber-100">
                           Factor 4 · Responsabilidad sobre los Resultados
@@ -726,7 +801,6 @@ const ValuacionView = ({ uploadData }) => {
                         </div>
                       </div>
 
-                      {/* Criticidad */}
                       <div>
                         <p className="text-[9px] font-black uppercase tracking-[0.15em] text-red-500 mb-2 pb-1 border-b border-red-100">
                           Criticidad (1 = Sí aplica / 0 = No aplica)
@@ -742,7 +816,6 @@ const ValuacionView = ({ uploadData }) => {
                         </div>
                       </div>
 
-                      {/* Re-process button */}
                       <div className="flex justify-end">
                         <button
                           onClick={() => processCargo(cargo)}

@@ -15,6 +15,11 @@ if DATABASE_URL.startswith("postgres://"):
 engine_args = {}
 if DATABASE_URL.startswith("sqlite"):
     engine_args["connect_args"] = {"check_same_thread": False}
+else:
+    # PostgreSQL (Supabase) - pool de conexiones para produccion
+    engine_args["pool_size"] = 5
+    engine_args["max_overflow"] = 10
+    engine_args["pool_pre_ping"] = True
 
 engine = create_engine(DATABASE_URL, **engine_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

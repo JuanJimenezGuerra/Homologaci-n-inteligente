@@ -11,29 +11,27 @@ from ..models import (
 
 logger = logging.getLogger(__name__)
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-
 # ==========================================
-# CONFIGURACIÓN DE CRITERIOS DE HOMOLOGACIÓN
+# CONFIGURACION DE CRITERIOS DE HOMOLOGACION
 # ==========================================
 
 class CriteriosHomologacion:
-    """Criterios configurables para personalizar la homologación"""
-    
+    """Criterios configurables para personalizar la homologacion"""
+
     DEFAULT = {
         "priorizar_funciones": True,
         "priorizar_nivel": True,
         "considerar_tamano": True,
-        "nivel_agresividad": "medio",  # conservador, medio, agresivo
+        "nivel_agresividad": "medio",
         "exigir_coincidencia_fuerte": False,
         "permitir_agrupaciones": True,
         "segundo_idioma_required": False,
     }
-    
+
     @classmethod
     def get_default(cls) -> dict:
         return cls.DEFAULT.copy()
-    
+
     @classmethod
     def validar(cls, criterios: dict) -> bool:
         validos = set(cls.DEFAULT.keys())
@@ -45,8 +43,7 @@ class CriteriosHomologacion:
 # ==========================================
 
 def crear_empresa(db: Session, user_id: int, data: dict) -> Empresa:
-    """Crear empresa con datos del formulario"""
-    
+
     empresa = Empresa(
         user_id=user_id,
         nombre_empresa=data.get("nombre_empresa", ""),
@@ -68,21 +65,20 @@ def crear_empresa(db: Session, user_id: int, data: dict) -> Empresa:
         num_personas_contratadas=data.get("num_personas_contratadas"),
         empleados_presenciales=data.get("empleados_presenciales"),
     )
-    
+
     if data.get("fecha_diligenciamiento"):
         empresa.fecha_diligenciamiento = date.fromisoformat(data["fecha_diligenciamiento"])
-    
+
     db.add(empresa)
     db.commit()
     db.refresh(empresa)
-    
+
     logger.info(f"Empresa creada: {empresa.id} - {empresa.nombre_empresa}")
     return empresa
 
 
 def guardar_practicas_compensacion(db: Session, empresa_id: int, data: dict) -> PracticaCompensacion:
-    """Guardar prácticas de compensación"""
-    
+
     practica = PracticaCompensacion(
         empresa_id=empresa_id,
         tiene_estructura_salarial=data.get("tiene_estructura_salarial"),
@@ -95,23 +91,21 @@ def guardar_practicas_compensacion(db: Session, empresa_id: int, data: dict) -> 
         tiene_compensacion_flexible=data.get("tiene_compensacion_flexible"),
         compensacion_flexible_cargos=data.get("compensacion_flexible_cargos"),
     )
-    
+
     db.add(practica)
     db.commit()
     db.refresh(practica)
-    
-    # Guardar primas extralegales
+
     if data.get("primas"):
         for prima_data in data["primas"]:
             guardar_prima_extralegal(db, practica.id, prima_data)
-    
-    logger.info(f"Prácticas guardadas para empresa {empresa_id}")
+
+    logger.info(f"Practicas guardadas para empresa {empresa_id}")
     return practica
 
 
 def guardar_prima_extralegal(db: Session, practica_id: int, data: dict) -> PrimaExtralegal:
-    """Guardar una prima extralegal"""
-    
+
     prima = PrimaExtralegal(
         practica_id=practica_id,
         nombre_prima=data.get("nombre_prima", ""),
@@ -131,17 +125,16 @@ def guardar_prima_extralegal(db: Session, practica_id: int, data: dict) -> Prima
         nov=data.get("nov"),
         dic=data.get("dic"),
     )
-    
+
     db.add(prima)
     db.commit()
     db.refresh(prima)
-    
+
     return prima
 
 
 def guardar_cargo_empresa(db: Session, empresa_id: int, data: dict) -> CargoEmpresa:
-    """Guardar información de un cargo de la empresa"""
-    
+
     cargo = CargoEmpresa(
         empresa_id=empresa_id,
         numero=data.get("numero"),
@@ -186,17 +179,16 @@ def guardar_cargo_empresa(db: Session, empresa_id: int, data: dict) -> CargoEmpr
         prima_vacaciones_2=data.get("prima_vacaciones_2"),
         columna124=data.get("columna124"),
     )
-    
+
     db.add(cargo)
     db.commit()
     db.refresh(cargo)
-    
+
     return cargo
 
 
-def importar_cargosDesdeExcel(db: Session, empresa_id: int, rows: List[dict]) -> int:
-    """Importar múltiples cargos desde Excel"""
-    
+def importar_cargos_desde_excel(db: Session, empresa_id: int, rows: List[dict]) -> int:
+
     count = 0
     for row in rows:
         try:
@@ -204,31 +196,28 @@ def importar_cargosDesdeExcel(db: Session, empresa_id: int, rows: List[dict]) ->
             count += 1
         except Exception as e:
             logger.error(f"Error importando cargo {row.get('nombre_cargo')}: {e}")
-    
+
     logger.info(f"Importados {count} cargos para empresa {empresa_id}")
     return count
 
 
 def obtener_empresa(db: Session, empresa_id: int) -> Optional[Empresa]:
-    """Obtener empresa con todos sus datos"""
-    
+
     empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
     return empresa
 
 
 def listar_cargos_empresa(db: Session, empresa_id: int) -> List[CargoEmpresa]:
-    """Listar todos los cargos de una empresa"""
-    
+
     return db.query(CargoEmpresa).filter(CargoEmpresa.empresa_id == empresa_id).all()
 
 
 # ==========================================
-# CARGA DEL CATÁLOGO MAESTRO
+# CARGA DEL CATALOGO MAESTRO
 # ==========================================
 
 def cargar_master_cargos(db: Session, rows: List[dict]) -> int:
-    """Cargar catálogo maestro de cargos"""
-    
+
     count = 0
     for row in rows:
         cargo = MasterCargo(
@@ -248,28 +237,26 @@ def cargar_master_cargos(db: Session, rows: List[dict]) -> int:
         )
         db.add(cargo)
         count += 1
-    
+
     db.commit()
-    logger.info(f"Cargados {count}-master_cargos")
+    logger.info(f"Cargados {count} master_cargos")
     return count
 
 
 def buscar_cargo_master(db: Session, nombre: str, area: str = None) -> Optional[MasterCargo]:
-    """Buscar cargo en el catálogo maestro"""
-    
+
     query = db.query(MasterCargo).filter(
         MasterCargo.nombre.ilike(f"%{nombre}%")
     )
-    
+
     if area:
         query = query.filter(MasterCargo.area_general.ilike(f"%{area}%"))
-    
+
     return query.first()
 
 
 def cargar_categorias(db: Session, rows: List[dict]) -> int:
-    """Cargar categorías y niveles"""
-    
+
     count = 0
     for row in rows:
         cat = Categoria(
@@ -280,35 +267,33 @@ def cargar_categorias(db: Session, rows: List[dict]) -> int:
         )
         db.add(cat)
         count += 1
-    
-    # Agregar niveles
+
     for row_nivel in [
         {"categoria": 25, "nivel": "Presidente Global", "propuesta": "Ejecutivo"},
         {"categoria": 20, "nivel": "Vicepresidente", "propuesta": "Ejecutivo"},
         {"categoria": 15, "nivel": "Gerente Senior", "propuesta": "Gerencia Media"},
-        {"categoria": 12, "nivel": "Coordinador", "propuesta": "Táctico"},
+        {"categoria": 12, "nivel": "Coordinador", "propuesta": "Tactico"},
         {"categoria": 8, "nivel": "Supervisor", "propuesta": "Soporte"},
         {"categoria": 4, "nivel": "Auxiliar", "propuesta": "Operativo"},
     ]:
         nivel = Nivel(**row_nivel)
         db.add(nivel)
-    
+
     db.commit()
-    logger.info(f"Cargadas {count} categorías y niveles")
+    logger.info(f"Cargadas {count} categorias y niveles")
     return count
 
 
 # ==========================================
-# EXPORTACIÓN A EXCEL
+# EXPORTACION A EXCEL
 # ==========================================
 
 def exportar_formulario_empresa(db: Session, empresa_id: int) -> dict:
-    """Exportar datos completos del formulario"""
-    
+
     empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
     if not empresa:
         return {}
-    
+
     return {
         "empresa": {
             "nombre": empresa.nombre_empresa,
