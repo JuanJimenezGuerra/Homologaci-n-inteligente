@@ -16,11 +16,17 @@ BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
+print(f"IA Service: OPENROUTER_API_KEY={'CONFIGURADA' if OPENROUTER_API_KEY else 'NO CONFIGURADA'}")
+print(f"IA Service: OPENROUTER_MODEL={OPENROUTER_MODEL}")
+print(f"IA Service: OPENAI_API_KEY={'CONFIGURADA' if OPENAI_API_KEY else 'NO CONFIGURADA'}")
+
 
 def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
     if not OPENROUTER_API_KEY:
+        print("OpenRouter: API key no configurada")
         return None
     try:
+        print(f"OpenRouter: llamando con modelo {OPENROUTER_MODEL}, {len(messages)} mensajes")
         resp = requests.post(
             OPENROUTER_URL,
             headers={
@@ -35,22 +41,28 @@ def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 
                 "max_tokens": max_tokens,
                 "temperature": temperature,
             },
-            timeout=45,
+            timeout=60,
         )
         if resp.ok:
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            content = data.get("choices", [{}])[0].get("message", {}).get("content")
+            print(f"OpenRouter: OK, respuesta {len(content) if content else 0} chars")
+            return content
         else:
+            print(f"OpenRouter: HTTP {resp.status_code} - {resp.text[:300]}")
             logger.error(f"OpenRouter HTTP {resp.status_code}: {resp.text[:200]}")
     except Exception as e:
+        print(f"OpenRouter: excepcion - {e}")
         logger.error(f"OpenRouter error: {e}")
     return None
 
 
 def call_openai(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
     if not OPENAI_API_KEY:
+        print("OpenAI: API key no configurada")
         return None
     try:
+        print(f"OpenAI fallback: llamando con modelo {OPENAI_MODEL}")
         resp = requests.post(
             OPENAI_URL,
             headers={
@@ -63,14 +75,18 @@ def call_openai(messages: list, max_tokens: int = 800, temperature: float = 0.1)
                 "max_tokens": max_tokens,
                 "temperature": temperature,
             },
-            timeout=45,
+            timeout=60,
         )
         if resp.ok:
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            content = data.get("choices", [{}])[0].get("message", {}).get("content")
+            print(f"OpenAI fallback: OK, respuesta {len(content) if content else 0} chars")
+            return content
         else:
+            print(f"OpenAI fallback: HTTP {resp.status_code} - {resp.text[:300]}")
             logger.error(f"OpenAI HTTP {resp.status_code}: {resp.text[:200]}")
     except Exception as e:
+        print(f"OpenAI fallback: excepcion - {e}")
         logger.error(f"OpenAI error: {e}")
     return None
 
@@ -80,6 +96,7 @@ def call_ia(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> 
     content = call_openrouter(messages, max_tokens, temperature)
     if content:
         return content
+    print("OpenRouter fallo, intentando OpenAI fallback...")
     logger.info("OpenRouter fallo, intentando OpenAI fallback...")
     content = call_openai(messages, max_tokens, temperature)
     return content
@@ -201,48 +218,61 @@ Responde SOLO con un array JSON valido, sin texto adicional:
 
 def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
     """Homologa un lote de cargos usando IA. Retorna lista de resultados."""
+    ia_error = "sin_error"
+
     if not OPENROUTER_API_KEY and not OPENAI_API_KEY:
-        logger.warning("No hay API key de IA configurada")
-        return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key de IA", "confianza": 0.0} for c in cargos]
+        print("homologar_con_ia: NO hay API key de IA configurada (ni OpenRouter ni OpenAI)")
+        ia_error = "Sin API key de IA configurada. Verifica OPENROUTER_API_KEY en Render."
+        return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error} for c in cargos]
 
     if masters is None:
         masters = load_master_cargos(db)
     if not masters:
-        logger.warning("No hay cargos maestros en la base de datos")
-        return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin catalogo maestro", "confianza": 0.0} for c in cargos]
+        print("homologar_con_ia: NO hay cargos maestros en la base de datos")
+        ia_error = "Sin catalogo maestro en la base de datos"
+        return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error} for c in cargos]
 
-    # Procesar en lotes de maximo 10 cargos
+    print(f"homologar_con_ia: Procesando {len(cargos)} cargos en lotes de 10")
+
     resultados = []
     for i in range(0, len(cargos), 10):
         batch = cargos[i:i + 10]
         prompt = build_homologacion_prompt(batch, masters)
+        prompt_len = len(prompt)
+        print(f"homologar_con_ia: Lote {i//10 + 1}, {len(batch)} cargos, prompt {prompt_len} chars")
 
         content = call_ia([{"role": "user", "content": prompt}], max_tokens=1500)
         if not content:
+            ia_error = "OpenRouter y OpenAI fallback fallaron. Revisa logs de Render para detalles."
+            print(f"homologar_con_ia: Lote {i//10 + 1} FALLO - sin respuesta de IA")
             resultados.extend([
-                {"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Error en IA", "confianza": 0.0}
+                {"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error}
                 for c in batch
             ])
             continue
 
         parsed = extract_json_array(content)
         if parsed and isinstance(parsed, list):
+            print(f"homologar_con_ia: Lote {i//10 + 1} OK - {len(parsed)} resultados parseados")
             for res in parsed:
                 resultados.append({
                     "id": res.get("id"),
-                    "cargo_homologado": res.get("cargo_homologado", "SIN COINCIDENCIA"),
+                    "cargo_homologado": res.get("cargo_homologado", "SIN_COINCIDENCIA"),
                     "justificacion": res.get("justificacion", ""),
                     "confianza": res.get("confianza", 0.5),
                 })
         else:
+            print(f"homologar_con_ia: Lote {i//10 + 1} FALLO parseo - raw: {content[:200]}")
             resultados.extend([
-                {"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Error parseando IA", "confianza": 0.0}
+                {"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Error parseando respuesta IA", "confianza": 0.0, "_ia_error": "Error parseando respuesta IA"}
                 for c in batch
             ])
 
         if i + 10 < len(cargos):
             time.sleep(1.5)
 
+    total_ok = len([r for r in resultados if r.get("_ia_error") is None])
+    print(f"homologar_con_ia: Completado - {total_ok}/{len(cargos)} exitosos")
     return resultados
 
 
