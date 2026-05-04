@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link2, Play, Loader2, AlertCircle, Building2, MapPin, User, Edit2, Check, X, MessageSquare, RefreshCw, ArrowRight, Calendar, Phone, Mail, Package, Users, DollarSign, FileText, Activity, Globe, Briefcase, Target } from 'lucide-react';
+import { Link2, Play, Loader2, AlertCircle, Building2, MapPin, User, Edit2, Check, X, MessageSquare, RefreshCw, ArrowRight, Calendar, Phone, Mail, Package, Users, DollarSign, FileText, Activity, Briefcase, Target } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
@@ -19,6 +19,19 @@ const StatusBadge = ({ estado }) => {
     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUS_STYLES[key] || STATUS_STYLES.pendiente}`}>
       {estado || 'PENDIENTE'}
     </span>
+  );
+};
+
+const DataField = ({ label, value, icon: Icon }) => {
+  if (!value) return null;
+  return (
+    <div className="bg-slate-50 rounded-lg p-3">
+      <div className="flex items-center gap-2 mb-1">
+        {Icon && <Icon size={13} className="text-slate-400 shrink-0" />}
+        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">{label}</p>
+      </div>
+      <p className="font-semibold text-forest text-sm">{value}</p>
+    </div>
   );
 };
 
@@ -259,10 +272,13 @@ function HomologacionView({ empresaId, onComplete }) {
     );
   }
 
+  // Helper to check if empresa has any data to display
+  const hasEmpresaData = empresaData && Object.values(empresaData).some(v => v != null && v !== '' && v !== 'id');
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* ============ EMPRESA: TODOS LOS DATOS VISIBLES ============ */}
-      {empresaData && (
+      {/* ============ EMPRESA: TODOS LOS DATOS BASICOS ============ */}
+      {hasEmpresaData && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-lg overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-r from-forest to-primary px-6 py-4">
@@ -276,158 +292,85 @@ function HomologacionView({ empresaId, onComplete }) {
           </div>
 
           <div className="p-5 space-y-5">
-            {/* SECCION 1: General */}
-            <div>
-              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500"></span> Informacion General
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                {empresaData.fecha_diligenciamiento && (
-                  <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <Calendar size={14} className="text-blue-500 shrink-0" />
-                    <div>
-                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Fecha diligenciamiento</p>
-                      <p className="font-semibold text-blue-700 text-sm">{formatDate(empresaData.fecha_diligenciamiento)}</p>
-                    </div>
-                  </div>
-                )}
-                {empresaData.consultor && (
-                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Consultor</p>
-                    <p className="font-semibold text-blue-700 text-sm">{empresaData.consultor}</p>
-                  </div>
-                )}
-                {empresaData.nit && (
-                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">NIT</p>
-                    <p className="font-bold text-blue-700 text-sm">{empresaData.nit}</p>
-                  </div>
-                )}
-                {empresaData.tipo_empresa && (
-                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Tipo de Empresa</p>
-                    <p className="font-semibold text-blue-700 text-sm">{empresaData.tipo_empresa}</p>
-                  </div>
-                )}
-                {empresaData.sector_economico && (
-                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Sector Economico</p>
-                    <p className="font-semibold text-blue-700 text-sm">{empresaData.sector_economico}</p>
-                  </div>
-                )}
-                {empresaData.actividad_economica && (
-                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Actividad Economica</p>
-                    <p className="font-semibold text-blue-700 text-sm">{empresaData.actividad_economica}</p>
-                  </div>
-                )}
-                {empresaData.direccion && (
-                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Direccion</p>
-                    <p className="font-semibold text-blue-700 text-sm">{empresaData.direccion}</p>
-                  </div>
-                )}
-                {(empresaData.ciudad || empresaData.departamento) && (
-                  <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <MapPin size={14} className="text-blue-500 shrink-0" />
-                    <div>
-                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Ubicacion</p>
-                      <p className="font-semibold text-blue-700 text-sm">{[empresaData.ciudad, empresaData.departamento].filter(Boolean).join(', ')}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+            {/* Fila 1: Datos principales */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <DataField label="NIT" value={empresaData.nit} />
+              <DataField label="Tipo de Empresa" value={empresaData.tipo_empresa} />
+              <DataField label="Sector Economico" value={empresaData.sector_economico} />
+              <DataField label="Actividad Economica" value={empresaData.actividad_economica} />
+              <DataField label="Direccion" value={empresaData.direccion} />
             </div>
 
-            {/* SECCION 2: Contacto */}
-            {(empresaData.persona_contacto || empresaData.email_contacto || empresaData.telefono || empresaData.telefono_contacto) && (
-              <div>
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Contacto
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                  {empresaData.persona_contacto && (
-                    <div className="flex items-start gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-                      <User size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Persona que diligencia</p>
-                        <p className="font-semibold text-emerald-700 text-sm">{empresaData.persona_contacto}</p>
-                        {empresaData.cargo_contacto && <p className="text-[10px] text-emerald-400 mt-0.5">{empresaData.cargo_contacto}</p>}
-                      </div>
-                    </div>
-                  )}
-                  {empresaData.email_contacto && (
-                    <div className="flex items-start gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-                      <Mail size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Email</p>
-                        <p className="font-semibold text-emerald-700 text-sm truncate">{empresaData.email_contacto}</p>
-                      </div>
-                    </div>
-                  )}
-                  {empresaData.telefono && (
-                    <div className="flex items-center gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-                      <Phone size={14} className="text-emerald-500 shrink-0" />
-                      <div>
-                        <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Telefono empresa</p>
-                        <p className="font-semibold text-emerald-700 text-sm">{empresaData.telefono}</p>
-                      </div>
-                    </div>
-                  )}
-                  {empresaData.telefono_contacto && (
-                    <div className="flex items-center gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-                      <Phone size={14} className="text-emerald-500 shrink-0" />
-                      <div>
-                        <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Telefono contacto</p>
-                        <p className="font-semibold text-emerald-700 text-sm">{empresaData.telefono_contacto}</p>
-                      </div>
-                    </div>
-                  )}
+            {/* Fila 2: Ubicacion y contacto */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              {(empresaData.ciudad || empresaData.departamento) && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <MapPin size={13} className="text-slate-400 shrink-0" />
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Ubicacion</p>
+                  </div>
+                  <p className="font-semibold text-forest text-sm">{[empresaData.ciudad, empresaData.departamento].filter(Boolean).join(', ')}</p>
                 </div>
-              </div>
-            )}
-
-            {/* SECCION 3: Compania */}
-            {(empresaData.principales_productos || empresaData.motivacion) && (
-              <div>
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-purple-500"></span> Informacion de la Compania
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                  {empresaData.principales_productos && (
-                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Package size={14} className="text-purple-500" />
-                        <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Productos/Servicios</p>
-                      </div>
-                      <p className="font-semibold text-purple-700 text-sm">{empresaData.principales_productos}</p>
-                    </div>
-                  )}
-                  {empresaData.motivacion && (
-                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Target size={14} className="text-purple-500" />
-                        <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Motivacion para participar</p>
-                      </div>
-                      <p className="font-semibold text-purple-700 text-sm">{empresaData.motivacion}</p>
-                    </div>
-                  )}
+              )}
+              {empresaData.persona_contacto && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <User size={13} className="text-slate-400 shrink-0" />
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Persona que diligencia</p>
+                  </div>
+                  <p className="font-semibold text-forest text-sm">{empresaData.persona_contacto}</p>
+                  {empresaData.cargo_contacto && <p className="text-[10px] text-slate-400 mt-0.5">{empresaData.cargo_contacto}</p>}
                 </div>
-              </div>
-            )}
+              )}
+              {empresaData.email_contacto && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Mail size={13} className="text-slate-400 shrink-0" />
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Email</p>
+                  </div>
+                  <p className="font-semibold text-forest text-sm truncate">{empresaData.email_contacto}</p>
+                </div>
+              )}
+              {empresaData.telefono && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Phone size={13} className="text-slate-400 shrink-0" />
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Telefono</p>
+                  </div>
+                  <p className="font-semibold text-forest text-sm">{empresaData.telefono}</p>
+                </div>
+              )}
+              {empresaData.telefono_contacto && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Phone size={13} className="text-slate-400 shrink-0" />
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Tel. Contacto</p>
+                  </div>
+                  <p className="font-semibold text-forest text-sm">{empresaData.telefono_contacto}</p>
+                </div>
+              )}
+            </div>
 
-            {/* SECCION 4: Personal */}
+            {/* Fila 3: General adicional */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <DataField label="Fecha diligenciamiento" value={formatDate(empresaData.fecha_diligenciamiento)} icon={Calendar} />
+              <DataField label="Consultor" value={empresaData.consultor} />
+              <DataField label="Productos/Servicios" value={empresaData.principales_productos} icon={Package} />
+              <DataField label="Motivacion" value={empresaData.motivacion} icon={Target} />
+            </div>
+
+            {/* Fila 4: Personal */}
             {(empresaData.num_personas_contratadas || empresaData.empleados_presenciales || empresaData.empleados_teletrabajo || empresaData.empleados_mixta || empresaData.tipos_contratos || empresaData.distribucion_contratos) && (
               <div>
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-cyan-500"></span> Datos de Personal
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-500"></span> Personal
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
                   {empresaData.num_personas_contratadas && (
                     <div className="bg-cyan-50 rounded-lg p-3 text-center border border-cyan-100">
                       <div className="flex items-center justify-center gap-1 mb-1">
                         <Users size={14} className="text-cyan-500" />
-                        <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wide">Total contratados</p>
+                        <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wide">Total</p>
                       </div>
                       <p className="font-black text-cyan-700 text-2xl">{empresaData.num_personas_contratadas}</p>
                     </div>
@@ -451,36 +394,18 @@ function HomologacionView({ empresaId, onComplete }) {
                     </div>
                   )}
                 </div>
-                {(empresaData.tipos_contratos || empresaData.distribucion_contratos) && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                    {empresaData.tipos_contratos && (
-                      <div className="bg-cyan-50 rounded-lg p-3 border border-cyan-100">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Briefcase size={14} className="text-cyan-500" />
-                          <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wide">Tipos de contratos</p>
-                        </div>
-                        <p className="font-semibold text-cyan-700 text-sm">{empresaData.tipos_contratos}</p>
-                      </div>
-                    )}
-                    {empresaData.distribucion_contratos && (
-                      <div className="bg-cyan-50 rounded-lg p-3 border border-cyan-100">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Globe size={14} className="text-cyan-500" />
-                          <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wide">Distribucion de contratos</p>
-                        </div>
-                        <p className="font-semibold text-cyan-700 text-sm">{empresaData.distribucion_contratos}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <DataField label="Tipos de contratos" value={empresaData.tipos_contratos} icon={Briefcase} />
+                  <DataField label="Distribucion de contratos" value={empresaData.distribucion_contratos} icon={FileText} />
+                </div>
               </div>
             )}
 
-            {/* SECCION 5: Financieros */}
+            {/* Fila 5: Financieros */}
             {(empresaData.ventas_reales || empresaData.ingresos_reales || empresaData.excedentes_reales || empresaData.ventas_presupuestadas || empresaData.ingresos_presupuestados || empresaData.excedentes_presupuestados) && (
               <div>
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-amber-500"></span> Datos Financieros
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span> Financieros
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
                   {empresaData.ventas_reales && (
@@ -529,33 +454,33 @@ function HomologacionView({ empresaId, onComplete }) {
         </motion.div>
       )}
 
-      {/* ============ BARRA DE PROGRESO (durante procesamiento) ============ */}
+      {/* ============ BARRA DE PROGRESO (solo una) ============ */}
       {processing && progress && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-lg p-4 border-2 border-blue-100">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
               <Loader2 className="animate-spin text-blue-600" size={20} />
               <div>
                 <p className="font-bold text-forest text-sm">{progress.current_batch || 'Procesando...'}</p>
-                {progress.current_cargo && <p className="text-xs text-slate-500">Procesando: <span className="font-semibold text-forest">{progress.current_cargo}</span></p>}
+                {progress.current_cargo && <p className="text-xs text-slate-500">Actual: <span className="font-semibold text-forest">{progress.current_cargo}</span></p>}
               </div>
             </div>
             <div className="text-right">
               <p className="text-2xl font-black text-blue-700">{progress.processed || 0}<span className="text-sm text-slate-400 font-medium">/{progress.total}</span></p>
             </div>
           </div>
-          <div className="w-full bg-slate-100 rounded-full h-3 mb-3 overflow-hidden">
+          <div className="w-full bg-slate-100 rounded-full h-2.5 mb-3 overflow-hidden">
             <motion.div className="h-full bg-gradient-to-r from-blue-400 to-emerald-400 rounded-full" initial={{ width: 0 }} animate={{ width: `${Math.min(100, ((progress.processed || 0) / (progress.total || 1)) * 100)}%` }} transition={{ duration: 0.3 }} />
           </div>
           <div className="flex gap-4 text-xs">
             {progress.exact_matches > 0 && <span className="flex items-center gap-1 text-emerald-600 font-bold"><Check size={12} /> {progress.exact_matches} Match</span>}
-            {progress.ia_suggested > 0 && <span className="flex items-center gap-1 text-purple-600 font-bold"><Activity size={12} /> {progress.ia_suggested} Sugeridos IA</span>}
-            {progress.not_matched > 0 && <span className="flex items-center gap-1 text-amber-600 font-bold"><AlertCircle size={12} /> {progress.not_matched} Sin coincidencia</span>}
+            {progress.ia_suggested > 0 && <span className="flex items-center gap-1 text-purple-600 font-bold"><Activity size={12} /> {progress.ia_suggested} Sugeridos</span>}
+            {progress.not_matched > 0 && <span className="flex items-center gap-1 text-amber-600 font-bold"><AlertCircle size={12} /> {progress.not_matched} Sin coinc.</span>}
           </div>
           {progress.recent_results && progress.recent_results.length > 0 && (
             <div className="mt-3 pt-3 border-t border-slate-100">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Ultimos resultados:</p>
-              <div className="flex gap-2 overflow-x-auto pb-1 max-h-16 overflow-y-auto">
+              <div className="flex gap-2 overflow-x-auto pb-1 max-h-14 overflow-y-auto">
                 {progress.recent_results.slice(-10).reverse().map((r, idx) => (
                   <div key={`${r.id}-${idx}`} className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap ${r.tipo === 'exacto' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : r.tipo === 'ia' || r.tipo === 'reproceso' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
                     <span className="font-bold">{r.nombre_cargo}</span>
@@ -601,16 +526,18 @@ function HomologacionView({ empresaId, onComplete }) {
       </div>
 
       {/* ============ MENSAJES ============ */}
-      {mensaje && (
-        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 rounded-xl text-sm font-medium flex items-center gap-2">
-          <Check size={14} /> {mensaje}
-        </motion.div>
-      )}
-      {error && (
-        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm font-medium flex items-center gap-2">
-          <AlertCircle size={14} /> {error}
-        </motion.div>
-      )}
+      <AnimatePresence>
+        {mensaje && (
+          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 rounded-xl text-sm font-medium flex items-center gap-2">
+            <Check size={14} /> {mensaje}
+          </motion.div>
+        )}
+        {error && (
+          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm font-medium flex items-center gap-2">
+            <AlertCircle size={14} /> {error}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ============ TABLA DE CARGOS ============ */}
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
@@ -639,7 +566,7 @@ function HomologacionView({ empresaId, onComplete }) {
                 const isSelected = selectedCargoIds.has(c.id);
                 const isReprocessable = c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado';
                 return (
-                  <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-purple-50/60' : c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' : c.estado?.toLowerCase().includes('sin_coincidencia') ? 'bg-amber-50/30' : c.estado?.toLowerCase() === 'procesando' ? 'bg-blue-50/50 animate-pulse' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                  <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-purple-50/60' : c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' : c.estado?.toLowerCase().includes('sin_coincidencia') ? 'bg-amber-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                     <td className="px-3 py-2.5 text-slate-300 font-mono text-center text-xs">{idx + 1}</td>
                     {(processing || selectedCargoIds.size > 0) && (
                       <td className="px-3 py-2.5 text-center">
@@ -699,7 +626,7 @@ function HomologacionView({ empresaId, onComplete }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <p className="text-xs text-slate-400">
-                {selectedCargoIds.size > 0 ? `${selectedCargoIds.size} cargos seleccionados para reprocesar` : `${stats.sin_coincidencia + stats.sugeridos} cargos disponibles para reprocesar`}
+                {selectedCargoIds.size > 0 ? `${selectedCargoIds.size} cargos seleccionados` : `${stats.sin_coincidencia + stats.sugeridos} cargos disponibles`}
               </p>
               {selectedCargoIds.size > 0 && <button onClick={clearSelection} className="text-xs text-purple-500 hover:text-purple-700 font-bold">Limpiar seleccion</button>}
             </div>

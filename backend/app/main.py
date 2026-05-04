@@ -355,13 +355,13 @@ def ejecutar_homologacion(
     if not cargos:
         raise HTTPException(status_code=404, detail="No hay cargos en este upload")
 
-    cargo_ids = [c.id for c in cargos]
+    total_cargos = len(cargos)
 
     # Inicializar estado de progreso
     with _progress_lock:
         _homologacion_progress[upload_id] = {
             "status": "procesando",
-            "total": len(cargos),
+            "total": total_cargos,
             "processed": 0,
             "exact_matches": 0,
             "ia_suggested": 0,
@@ -387,6 +387,7 @@ def ejecutar_homologacion(
             with _progress_lock:
                 _homologacion_progress[upload_id]["current_batch"] = "Procesando matchs exactos..."
 
+            # Phase 1: Exact matches
             exact_count = 0
             for cargo, master in matched_exact:
                 homo = cargo.homologacion
@@ -424,26 +425,36 @@ def ejecutar_homologacion(
             with _progress_lock:
                 _homologacion_progress[upload_id]["exact_matches"] = exact_count
 
-            # IA for unmatched
+            # Phase 2: IA for unmatched - process in small batches with commit per batch
             ia_suggested = 0
+            total_processed = exact_count
             if usar_ia and unmatched:
                 from .services.ia_service import homologar_con_ia
 
-                cargos_batch = [{
-                    "id": c.id,
-                    "nombre_cargo": c.nombre_cargo,
-                    "area": c.area,
-                    "descripcion": c.descripcion_empresa or "",
-                    "descripcion_empresa": c.descripcion_empresa or "",
-                    "cargo_jefe": "",
-                } for c in unmatched]
+                with _progress_lock:
+                    _homologacion_progress[upload_id]["current_batch"] = f"Consultando IA ({len(unmatched)} cargos restantes)..."
 
-                try:
-                    with _progress_lock:
-                        _homologacion_progress[upload_id]["current_batch"] = f"Consultando IA ({len(unmatched)} cargos restantes)..."
+                # Process unmatched one batch at a time (batch of 5), commit after each
+                for batch_start in range(0, len(unmatched), 5):
+                    batch = unmatched[batch_start:batch_start + 5]
+                    cargos_batch = [{
+                        "id": c.id,
+                        "nombre_cargo": c.nombre_cargo,
+                        "area": c.area,
+                        "descripcion": c.descripcion_empresa or "",
+                        "descripcion_empresa": c.descripcion_empresa or "",
+                        "cargo_jefe": "",
+                    } for c in batch]
 
-                    resultados = homologar_con_ia(thread_db, cargos_batch, masters)
-                    batch_processed = exact_count
+                    try:
+                        resultados = homologar_con_ia(thread_db, cargos_batch, masters)
+                    except Exception as e:
+                        print(f"Error en lote IA batch {batch_start}: {e}")
+                        # Mark all in this batch as error
+                        resultados = [
+                            {"id": c["id"], "cargo_homologado": "SIN COINCIDENCIA", "justificacion": f"Error IA: {str(e)[:80]}", "confianza": 0.0}
+                            for c in cargos_batch
+                        ]
 
                     for res in resultados:
                         cargo_id = res.get("id")
@@ -462,11 +473,11 @@ def ejecutar_homologacion(
                         justificacion = res.get("justificacion", "")
                         confianza = res.get("confianza", 0)
 
-                        batch_processed += 1
+                        total_processed += 1
 
                         with _progress_lock:
                             prog = _homologacion_progress.get(upload_id, {})
-                            prog["processed"] = batch_processed
+                            prog["processed"] = total_processed
                             prog["current_cargo"] = cargo.nombre_cargo
 
                         if cargo_homologado and cargo_homologado != "SIN COINCIDENCIA":
@@ -490,6 +501,7 @@ def ejecutar_homologacion(
                             homo.justificacion = f"IA: {justificacion}" if justificacion else "Sin coincidencia"
                             cargo.estado = "SIN_COINCIDENCIA"
                             with _progress_lock:
+                                prog = _homologacion_progress.get(upload_id, {})
                                 prog["not_matched"] = prog.get("not_matched", 0) + 1
                                 prog["recent_results"].append({
                                     "id": cargo.id,
@@ -505,26 +517,26 @@ def ejecutar_homologacion(
                             if len(prog.get("recent_results", [])) > 50:
                                 prog["recent_results"] = prog["recent_results"][-50:]
 
-                    thread_db.commit()
-                    print(f"Homologacion IA: {ia_suggested} sugeridos, {len(unmatched) - ia_suggested} sin coincidencia")
-                except Exception as e:
-                    print(f"Error homologacion IA: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    with _progress_lock:
-                        _homologacion_progress[upload_id]["current_batch"] = f"Error IA: {str(e)[:100]}"
+                    # Commit after each batch so progress is saved even if next batch fails
+                    try:
+                        thread_db.commit()
+                    except Exception as e:
+                        thread_db.rollback()
+                        print(f"Error commit batch {batch_start}: {e}")
+
+                    print(f"Batch {batch_start//5 + 1} completado, total procesados: {total_processed}/{total_cargos}")
 
             with _progress_lock:
                 prog = _homologacion_progress.get(upload_id, {})
                 prog["status"] = "completado"
-                prog["processed"] = len(cargos_thread)
-                prog["exact_matches"] = len(matched_exact)
+                prog["processed"] = total_processed
+                prog["exact_matches"] = exact_count
                 prog["ia_suggested"] = ia_suggested
                 prog["not_matched"] = len(unmatched) - ia_suggested
                 prog["current_batch"] = "Completado"
                 prog["current_cargo"] = None
 
-            print(f"Homologacion completada: {len(cargos_thread)} cargos procesados")
+            print(f"Homologacion completada: {total_processed} cargos procesados ({exact_count} exactos, {ia_suggested} IA, {len(unmatched) - ia_suggested} sin coinc.)")
         except Exception as e:
             print(f"Error CRITICO en thread homologacion: {e}")
             import traceback
@@ -541,7 +553,7 @@ def ejecutar_homologacion(
 
     return {
         "mensaje": "Homologacion iniciada en segundo plano",
-        "total": len(cargos),
+        "total": total_cargos,
         "upload_id": upload_id,
     }
 
