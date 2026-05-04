@@ -173,16 +173,33 @@ def upload_requirements_file(
                 empresa_data = {
                     "id": emp.id,
                     "nombre_empresa": emp.nombre_empresa,
+                    "razon_social": emp.razon_social,
                     "nit": emp.nit,
                     "direccion": emp.direccion,
                     "telefono": emp.telefono,
                     "departamento": emp.departamento,
                     "ciudad": emp.ciudad,
                     "sector_economico": emp.sector_economico,
+                    "actividad_economica": emp.actividad_economica,
                     "tipo_empresa": emp.tipo_empresa,
+                    "principales_productos": emp.principales_productos,
                     "consultor": emp.consultor,
                     "persona_contacto": emp.persona_contacto,
+                    "cargo_contacto": emp.cargo_contacto,
+                    "telefono_contacto": emp.telefono_contacto,
                     "email_contacto": emp.email_contacto,
+                    "motivacion": emp.motivacion,
+                    "num_personas_contratadas": emp.num_personas_contratadas,
+                    "empleados_presenciales": emp.empleados_presenciales,
+                    "empleados_teletrabajo": emp.empleados_teletrabajo,
+                    "empleados_mixta": emp.empleados_mixta,
+                    "ventas_reales": emp.ventas_reales,
+                    "ventas_presupuestadas": emp.ventas_presupuestadas,
+                    "ingresos_reales": emp.ingresos_reales,
+                    "ingresos_presupuestados": emp.ingresos_presupuestados,
+                    "excedentes_reales": emp.excedentes_reales,
+                    "excedentes_presupuestados": emp.excedentes_presupuestados,
+                    "fecha_diligenciamiento": emp.fecha_diligenciamiento.isoformat() if emp.fecha_diligenciamiento else None,
                 }
 
         return {"upload_id": upload.id, "count": count, "empresa": empresa_nombre, "empresa_data": empresa_data}
@@ -223,7 +240,7 @@ def list_cargos(upload_id: int, db: Session = Depends(get_db), current_user: Use
 
 @app.get("/uploads/{upload_id}/empresa")
 def get_empresa_from_upload(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Obtiene los datos de la empresa asociados a un upload."""
+    """Obtiene TODOS los datos de la empresa asociados a un upload."""
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
     if not upload or not upload.empresa:
         raise HTTPException(status_code=404, detail="Upload no encontrado")
@@ -235,22 +252,33 @@ def get_empresa_from_upload(upload_id: int, db: Session = Depends(get_db), curre
     return {
         "id": emp.id,
         "nombre_empresa": emp.nombre_empresa,
+        "razon_social": emp.razon_social,
         "nit": emp.nit,
         "direccion": emp.direccion,
         "telefono": emp.telefono,
         "departamento": emp.departamento,
         "ciudad": emp.ciudad,
         "sector_economico": emp.sector_economico,
+        "actividad_economica": emp.actividad_economica,
         "tipo_empresa": emp.tipo_empresa,
+        "principales_productos": emp.principales_productos,
         "consultor": emp.consultor,
         "persona_contacto": emp.persona_contacto,
+        "cargo_contacto": emp.cargo_contacto,
+        "telefono_contacto": emp.telefono_contacto,
         "email_contacto": emp.email_contacto,
-        "actividad_economica": emp.actividad_economica,
-        "principales_productos": emp.principales_productos,
         "motivacion": emp.motivacion,
+        "num_personas_contratadas": emp.num_personas_contratadas,
         "empleados_presenciales": emp.empleados_presenciales,
         "empleados_teletrabajo": emp.empleados_teletrabajo,
         "empleados_mixta": emp.empleados_mixta,
+        "ventas_reales": emp.ventas_reales,
+        "ventas_presupuestadas": emp.ventas_presupuestadas,
+        "ingresos_reales": emp.ingresos_reales,
+        "ingresos_presupuestados": emp.ingresos_presupuestados,
+        "excedentes_reales": emp.excedentes_reales,
+        "excedentes_presupuestados": emp.excedentes_presupuestados,
+        "fecha_diligenciamiento": emp.fecha_diligenciamiento.isoformat() if emp.fecha_diligenciamiento else None,
     }
 
 @app.put("/homologacion/{cargo_id}")

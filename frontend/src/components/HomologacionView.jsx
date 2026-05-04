@@ -197,40 +197,213 @@ function HomologacionView({ empresaId, onComplete }) {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-primary"
+          className="bg-white rounded-2xl shadow-lg overflow-hidden"
         >
-          <div className="flex items-center gap-3 mb-4">
-            <Building2 className="text-primary w-6 h-6" />
-            <h2 className="text-lg font-bold text-forest">{empresaData.nombre_empresa || 'Empresa'}</h2>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            {empresaData.nit && (
+          {/* Header */}
+          <div className="bg-gradient-to-r from-forest to-primary px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Building2 className="text-white w-6 h-6" />
               <div>
-                <p className="text-slate-400 text-xs font-medium">NIT</p>
-                <p className="font-semibold text-forest">{empresaData.nit}</p>
+                <h2 className="text-lg font-bold text-white">{empresaData.nombre_empresa || 'Empresa'}</h2>
+                {empresaData.razon_social && (
+                  <p className="text-xs text-white/70">{empresaData.razon_social}</p>
+                )}
               </div>
+            </div>
+            {empresaData.fecha_diligenciamiento && (
+              <span className="text-xs text-white/80 bg-white/10 px-3 py-1 rounded-full font-medium">
+                {empresaData.fecha_diligenciamiento}
+              </span>
             )}
-            {(empresaData.ciudad || empresaData.departamento) && (
-              <div className="flex items-start gap-2">
-                <MapPin size={14} className="text-slate-400 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-slate-400 text-xs font-medium">Ubicacion</p>
-                  <p className="font-semibold text-forest">{[empresaData.ciudad, empresaData.departamento].filter(Boolean).join(', ')}</p>
+          </div>
+
+          <div className="p-6">
+            {/* Row 1: Identificacion */}
+            <div className="mb-5">
+              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-primary"></span> Identificacion
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                {empresaData.nit && (
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">NIT</p>
+                    <p className="font-bold text-forest text-sm">{empresaData.nit}</p>
+                  </div>
+                )}
+                {empresaData.tipo_empresa && (
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Tipo</p>
+                    <p className="font-bold text-forest text-sm">{empresaData.tipo_empresa}</p>
+                  </div>
+                )}
+                {empresaData.sector_economico && (
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Sector</p>
+                    <p className="font-bold text-forest text-sm">{empresaData.sector_economico}</p>
+                  </div>
+                )}
+                {empresaData.actividad_economica && (
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Actividad</p>
+                    <p className="font-bold text-forest text-sm">{empresaData.actividad_economica}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Row 2: Ubicacion y Contacto */}
+            <div className="mb-5">
+              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Ubicacion y Contacto
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                {(empresaData.ciudad || empresaData.departamento) && (
+                  <div className="flex items-start gap-2 bg-slate-50 rounded-lg p-3">
+                    <MapPin size={14} className="text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Ubicacion</p>
+                      <p className="font-semibold text-forest text-sm">{[empresaData.ciudad, empresaData.departamento].filter(Boolean).join(', ')}</p>
+                    </div>
+                  </div>
+                )}
+                {empresaData.direccion && (
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Direccion</p>
+                    <p className="font-semibold text-forest text-sm">{empresaData.direccion}</p>
+                  </div>
+                )}
+                {empresaData.telefono && (
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Telefono</p>
+                    <p className="font-semibold text-forest text-sm">{empresaData.telefono}</p>
+                  </div>
+                )}
+                {empresaData.persona_contacto && (
+                  <div className="flex items-start gap-2 bg-slate-50 rounded-lg p-3">
+                    <User size={14} className="text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Contacto</p>
+                      <p className="font-semibold text-forest text-sm">{empresaData.persona_contacto}</p>
+                      {empresaData.cargo_contacto && <p className="text-[10px] text-slate-400">{empresaData.cargo_contacto}</p>}
+                    </div>
+                  </div>
+                )}
+                {empresaData.email_contacto && (
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Email</p>
+                    <p className="font-semibold text-forest text-sm truncate">{empresaData.email_contacto}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Row 3: Datos de Personal */}
+            {(empresaData.num_personas_contratadas || empresaData.empleados_presenciales || empresaData.empleados_teletrabajo || empresaData.empleados_mixta) && (
+              <div className="mb-5">
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500"></span> Datos de Personal
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  {empresaData.num_personas_contratadas && (
+                    <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
+                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Total Contratados</p>
+                      <p className="font-black text-blue-700 text-2xl">{empresaData.num_personas_contratadas}</p>
+                    </div>
+                  )}
+                  {empresaData.empleados_presenciales && (
+                    <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
+                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Presencial</p>
+                      <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_presenciales}</p>
+                    </div>
+                  )}
+                  {empresaData.empleados_teletrabajo && (
+                    <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
+                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Teletrabajo</p>
+                      <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_teletrabajo}</p>
+                    </div>
+                  )}
+                  {empresaData.empleados_mixta && (
+                    <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
+                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Mixta</p>
+                      <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_mixta}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
-            {empresaData.sector_economico && (
-              <div>
-                <p className="text-slate-400 text-xs font-medium">Sector</p>
-                <p className="font-semibold text-forest">{empresaData.sector_economico}</p>
+
+            {/* Row 4: Datos Financieros */}
+            {(empresaData.ventas_reales || empresaData.ingresos_reales || empresaData.excedentes_reales) && (
+              <div className="mb-5">
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span> Datos Financieros
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                  {empresaData.ventas_reales && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ventas Reales</p>
+                      <p className="font-black text-amber-700 text-sm">${empresaData.ventas_reales.toLocaleString()}</p>
+                    </div>
+                  )}
+                  {empresaData.ventas_presupuestadas && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ventas Presup.</p>
+                      <p className="font-black text-amber-700 text-sm">${empresaData.ventas_presupuestadas.toLocaleString()}</p>
+                    </div>
+                  )}
+                  {empresaData.ingresos_reales && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ingresos Reales</p>
+                      <p className="font-black text-amber-700 text-sm">${empresaData.ingresos_reales.toLocaleString()}</p>
+                    </div>
+                  )}
+                  {empresaData.ingresos_presupuestados && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ingresos Presup.</p>
+                      <p className="font-black text-amber-700 text-sm">${empresaData.ingresos_presupuestados.toLocaleString()}</p>
+                    </div>
+                  )}
+                  {empresaData.excedentes_reales && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Excedentes Reales</p>
+                      <p className="font-black text-amber-700 text-sm">${empresaData.excedentes_reales.toLocaleString()}</p>
+                    </div>
+                  )}
+                  {empresaData.excedentes_presupuestados && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Excedentes Presup.</p>
+                      <p className="font-black text-amber-700 text-sm">${empresaData.excedentes_presupuestados.toLocaleString()}</p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-            {empresaData.consultor && (
-              <div className="flex items-start gap-2">
-                <User size={14} className="text-slate-400 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-slate-400 text-xs font-medium">Consultor</p>
-                  <p className="font-semibold text-forest">{empresaData.consultor}</p>
+
+            {/* Row 5: Informacion adicional */}
+            {(empresaData.principales_productos || empresaData.motivacion || empresaData.consultor) && (
+              <div>
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-purple-500"></span> Informacion Adicional
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  {empresaData.consultor && (
+                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                      <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Consultor</p>
+                      <p className="font-semibold text-purple-700">{empresaData.consultor}</p>
+                    </div>
+                  )}
+                  {empresaData.principales_productos && (
+                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                      <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Productos</p>
+                      <p className="font-semibold text-purple-700 text-sm">{empresaData.principales_productos}</p>
+                    </div>
+                  )}
+                  {empresaData.motivacion && (
+                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                      <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Motivacion</p>
+                      <p className="font-semibold text-purple-700 text-sm">{empresaData.motivacion}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
