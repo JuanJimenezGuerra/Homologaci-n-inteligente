@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from .database import get_db, engine, Base
+from .database import get_db, engine, Base, run_migrations
 from .models import (
     User, Upload, Cargo, Homologacion, JobStatus, ProcessingLog,
     Empresa, CargoEmpresa, ValoracionCargo, MasterDescription, Valoracion,
@@ -19,7 +19,9 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 try:
-    print("Iniciando creacion de tablas...")
+    print("Iniciando migraciones de base de datos...")
+    run_migrations()
+    print("Iniciando creacion/verificacion de tablas...")
     Base.metadata.create_all(bind=engine)
     print("Tablas creadas/verificadas exitosamente.")
 except Exception as e:
