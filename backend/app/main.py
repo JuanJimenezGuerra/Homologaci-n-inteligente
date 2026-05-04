@@ -348,11 +348,14 @@ def ejecutar_homologacion(
     current_user: User = Depends(get_current_user)
 ):
     """Inicia homologacion en segundo plano y retorna inmediatamente para polling."""
+    from .database import SessionLocal
     from .services.matcher import find_exact_matches, load_all_masters
 
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
     if not cargos:
         raise HTTPException(status_code=404, detail="No hay cargos en este upload")
+
+    cargo_ids = [c.id for c in cargos]
 
     # Inicializar estado de progreso
     with _progress_lock:
@@ -369,151 +372,168 @@ def ejecutar_homologacion(
             "started_at": __import__('datetime').datetime.now().isoformat(),
         }
 
-    # Iniciar procesamiento en background
+    # Iniciar procesamiento en background con sesion propia
     def run_homologacion():
-        from .services.matcher import find_exact_matches, load_all_masters, normalize_cargo_name
+        thread_db = SessionLocal()
+        try:
+            from .services.matcher import find_exact_matches, load_all_masters
 
-        masters = load_all_masters(db)
-        masters_list = [{"nombre": m["nombre"], "descripcion": m["descripcion"], "area": m["area"]} for m in masters]
+            # Re-cargar cargos con la sesion del thread
+            cargos_thread = thread_db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+            masters = load_all_masters(thread_db)
 
-        matched_exact, unmatched = find_exact_matches(cargos, masters)
+            matched_exact, unmatched = find_exact_matches(cargos_thread, masters)
 
-        # Mark exact matches as HOMOLOGADO
-        with _progress_lock:
-            _homologacion_progress[upload_id]["current_batch"] = "Procesando matchs exactos..."
+            with _progress_lock:
+                _homologacion_progress[upload_id]["current_batch"] = "Procesando matchs exactos..."
 
-        exact_count = 0
-        for cargo, master in matched_exact:
-            homo = cargo.homologacion
-            if homo:
-                homo.cargo_homologado = master["nombre"]
-                homo.justificacion = f"Match exacto ({master.get('area', '')})"
-                homo.editado_manual = False
-            else:
-                homo = Homologacion(
-                    cargo_id=cargo.id,
-                    cargo_homologado=master["nombre"],
-                    justificacion=f"Match exacto ({master.get('area', '')})"
-                )
-                db.add(homo)
-            cargo.estado = "HOMOLOGADO"
-            exact_count += 1
+            exact_count = 0
+            for cargo, master in matched_exact:
+                homo = cargo.homologacion
+                if homo:
+                    homo.cargo_homologado = master["nombre"]
+                    homo.justificacion = f"Match exacto ({master.get('area', '')})"
+                    homo.editado_manual = False
+                else:
+                    homo = Homologacion(
+                        cargo_id=cargo.id,
+                        cargo_homologado=master["nombre"],
+                        justificacion=f"Match exacto ({master.get('area', '')})"
+                    )
+                    thread_db.add(homo)
+                cargo.estado = "HOMOLOGADO"
+                exact_count += 1
+
+                with _progress_lock:
+                    prog = _homologacion_progress.get(upload_id, {})
+                    prog["processed"] = exact_count
+                    prog["exact_matches"] = exact_count
+                    prog["current_cargo"] = cargo.nombre_cargo
+                    prog["recent_results"].append({
+                        "id": cargo.id,
+                        "nombre_cargo": cargo.nombre_cargo,
+                        "cargo_homologado": master["nombre"],
+                        "estado": "homologado",
+                        "justificacion": f"Match exacto ({master.get('area', '')})",
+                        "tipo": "exacto",
+                    })
+
+            thread_db.commit()
+            print(f"Homologacion: {exact_count} matchs exactos guardados")
+
+            with _progress_lock:
+                _homologacion_progress[upload_id]["exact_matches"] = exact_count
+
+            # IA for unmatched
+            ia_suggested = 0
+            if usar_ia and unmatched:
+                from .services.ia_service import homologar_con_ia
+
+                cargos_batch = [{
+                    "id": c.id,
+                    "nombre_cargo": c.nombre_cargo,
+                    "area": c.area,
+                    "descripcion": c.descripcion_empresa or "",
+                    "descripcion_empresa": c.descripcion_empresa or "",
+                    "cargo_jefe": "",
+                } for c in unmatched]
+
+                try:
+                    with _progress_lock:
+                        _homologacion_progress[upload_id]["current_batch"] = f"Consultando IA ({len(unmatched)} cargos restantes)..."
+
+                    resultados = homologar_con_ia(thread_db, cargos_batch, masters)
+                    batch_processed = exact_count
+
+                    for res in resultados:
+                        cargo_id = res.get("id")
+                        if not cargo_id:
+                            continue
+                        cargo = next((c for c in unmatched if c.id == cargo_id), None)
+                        if not cargo:
+                            continue
+
+                        homo = cargo.homologacion
+                        if not homo:
+                            homo = Homologacion(cargo_id=cargo.id)
+                            thread_db.add(homo)
+
+                        cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
+                        justificacion = res.get("justificacion", "")
+                        confianza = res.get("confianza", 0)
+
+                        batch_processed += 1
+
+                        with _progress_lock:
+                            prog = _homologacion_progress.get(upload_id, {})
+                            prog["processed"] = batch_processed
+                            prog["current_cargo"] = cargo.nombre_cargo
+
+                        if cargo_homologado and cargo_homologado != "SIN COINCIDENCIA":
+                            homo.cargo_homologado = cargo_homologado
+                            homo.justificacion = f"Sugerido IA: {justificacion} (confianza: {confianza})"
+                            homo.editado_manual = False
+                            cargo.estado = "SUGERIDO"
+                            ia_suggested += 1
+                            with _progress_lock:
+                                prog["ia_suggested"] = ia_suggested
+                                prog["recent_results"].append({
+                                    "id": cargo.id,
+                                    "nombre_cargo": cargo.nombre_cargo,
+                                    "cargo_homologado": cargo_homologado,
+                                    "estado": "sugerido",
+                                    "justificacion": f"Sugerido IA: {justificacion}",
+                                    "tipo": "ia",
+                                })
+                        else:
+                            homo.cargo_homologado = "SIN COINCIDENCIA"
+                            homo.justificacion = f"IA: {justificacion}" if justificacion else "Sin coincidencia"
+                            cargo.estado = "SIN_COINCIDENCIA"
+                            with _progress_lock:
+                                prog["not_matched"] = prog.get("not_matched", 0) + 1
+                                prog["recent_results"].append({
+                                    "id": cargo.id,
+                                    "nombre_cargo": cargo.nombre_cargo,
+                                    "cargo_homologado": "SIN COINCIDENCIA",
+                                    "estado": "sin_coincidencia",
+                                    "justificacion": justificacion or "Sin coincidencia",
+                                    "tipo": "sin_coincidencia",
+                                })
+
+                        with _progress_lock:
+                            prog = _homologacion_progress.get(upload_id, {})
+                            if len(prog.get("recent_results", [])) > 50:
+                                prog["recent_results"] = prog["recent_results"][-50:]
+
+                    thread_db.commit()
+                    print(f"Homologacion IA: {ia_suggested} sugeridos, {len(unmatched) - ia_suggested} sin coincidencia")
+                except Exception as e:
+                    print(f"Error homologacion IA: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    with _progress_lock:
+                        _homologacion_progress[upload_id]["current_batch"] = f"Error IA: {str(e)[:100]}"
 
             with _progress_lock:
                 prog = _homologacion_progress.get(upload_id, {})
-                prog["processed"] = exact_count
-                prog["exact_matches"] = exact_count
-                prog["current_cargo"] = cargo.nombre_cargo
-                prog["recent_results"].append({
-                    "id": cargo.id,
-                    "nombre_cargo": cargo.nombre_cargo,
-                    "cargo_homologado": master["nombre"],
-                    "estado": "homologado",
-                    "justificacion": f"Match exacto ({master.get('area', '')})",
-                    "tipo": "exacto",
-                })
+                prog["status"] = "completado"
+                prog["processed"] = len(cargos_thread)
+                prog["exact_matches"] = len(matched_exact)
+                prog["ia_suggested"] = ia_suggested
+                prog["not_matched"] = len(unmatched) - ia_suggested
+                prog["current_batch"] = "Completado"
+                prog["current_cargo"] = None
 
-        db.commit()
-
-        with _progress_lock:
-            _homologacion_progress[upload_id]["exact_matches"] = exact_count
-
-        # IA for unmatched - marked as SUGERIDO
-        ia_suggested = 0
-        if usar_ia and unmatched:
-            from .services.ia_service import homologar_con_ia
-
-            cargos_batch = [{
-                "id": c.id,
-                "nombre_cargo": c.nombre_cargo,
-                "area": c.area,
-                "descripcion": c.descripcion_empresa or "",
-                "descripcion_empresa": c.descripcion_empresa or "",
-                "cargo_jefe": "",
-            } for c in unmatched]
-
-            try:
-                with _progress_lock:
-                    _homologacion_progress[upload_id]["current_batch"] = f"Consultando IA ({len(unmatched)} cargos restantes)..."
-
-                resultados = homologar_con_ia(db, cargos_batch, masters)
-                batch_processed = exact_count
-
-                for res in resultados:
-                    cargo_id = res.get("id")
-                    if not cargo_id:
-                        continue
-                    cargo = next((c for c in unmatched if c.id == cargo_id), None)
-                    if not cargo:
-                        continue
-
-                    homo = cargo.homologacion
-                    if not homo:
-                        homo = Homologacion(cargo_id=cargo.id)
-                        db.add(homo)
-
-                    cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
-                    justificacion = res.get("justificacion", "")
-                    confianza = res.get("confianza", 0)
-
-                    batch_processed += 1
-
-                    with _progress_lock:
-                        prog = _homologacion_progress.get(upload_id, {})
-                        prog["processed"] = batch_processed
-                        prog["current_cargo"] = cargo.nombre_cargo
-
-                    if cargo_homologado and cargo_homologado != "SIN COINCIDENCIA":
-                        homo.cargo_homologado = cargo_homologado
-                        homo.justificacion = f"Sugerido IA: {justificacion} (confianza: {confianza})"
-                        homo.editado_manual = False
-                        cargo.estado = "SUGERIDO"
-                        ia_suggested += 1
-                        with _progress_lock:
-                            prog["ia_suggested"] = ia_suggested
-                            prog["recent_results"].append({
-                                "id": cargo.id,
-                                "nombre_cargo": cargo.nombre_cargo,
-                                "cargo_homologado": cargo_homologado,
-                                "estado": "sugerido",
-                                "justificacion": f"Sugerido IA: {justificacion}",
-                                "tipo": "ia",
-                            })
-                    else:
-                        homo.cargo_homologado = "SIN COINCIDENCIA"
-                        homo.justificacion = f"IA: {justificacion}" if justificacion else "Sin coincidencia"
-                        cargo.estado = "SIN_COINCIDENCIA"
-                        with _progress_lock:
-                            prog["not_matched"] = prog.get("not_matched", 0) + 1
-                            prog["recent_results"].append({
-                                "id": cargo.id,
-                                "nombre_cargo": cargo.nombre_cargo,
-                                "cargo_homologado": "SIN COINCIDENCIA",
-                                "estado": "sin_coincidencia",
-                                "justificacion": justificacion or "Sin coincidencia",
-                                "tipo": "sin_coincidencia",
-                            })
-
-                    # Limit recent_results to last 50
-                    with _progress_lock:
-                        if len(prog.get("recent_results", [])) > 50:
-                            prog["recent_results"] = prog["recent_results"][-50:]
-
-                db.commit()
-            except Exception as e:
-                print(f"Error homologacion IA: {e}")
-                with _progress_lock:
-                    _homologacion_progress[upload_id]["current_batch"] = f"Error IA: {str(e)[:100]}"
-
-        with _progress_lock:
-            prog = _homologacion_progress.get(upload_id, {})
-            prog["status"] = "completado"
-            prog["processed"] = len(cargos)
-            prog["exact_matches"] = len(matched_exact)
-            prog["ia_suggested"] = ia_suggested
-            prog["not_matched"] = len(unmatched) - ia_suggested
-            prog["current_batch"] = "Completado"
-            prog["current_cargo"] = None
+            print(f"Homologacion completada: {len(cargos_thread)} cargos procesados")
+        except Exception as e:
+            print(f"Error CRITICO en thread homologacion: {e}")
+            import traceback
+            traceback.print_exc()
+            with _progress_lock:
+                _homologacion_progress[upload_id]["status"] = "error"
+                _homologacion_progress[upload_id]["current_batch"] = f"Error: {str(e)[:100]}"
+        finally:
+            thread_db.close()
 
     # Start background thread
     thread = threading.Thread(target=run_homologacion, daemon=True)
@@ -587,15 +607,15 @@ def reprocesar_homologacion(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Reprocesa homologaciones usando IA con las observaciones del analista.
-    Si se proporcionan cargo_ids, solo reprocesa esos cargos especificos."""
+    """Reprocesa homologaciones usando IA con las observaciones del analista."""
+    from .database import SessionLocal
     from .services.ia_service import homologar_con_ia_observaciones
+    from .services.matcher import load_all_masters
 
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
     if not cargos:
         raise HTTPException(status_code=404, detail="No hay cargos en este upload")
 
-    # Filter: if cargo_ids provided, use only those; otherwise use non-exact matches
     if req.cargo_ids:
         cargos_to_reprocess = [c for c in cargos if c.id in req.cargo_ids]
     else:
@@ -604,11 +624,9 @@ def reprocesar_homologacion(
     if not cargos_to_reprocess:
         return {"mensaje": "No hay cargos seleccionados para reprocesar"}
 
-    masters = []
-    from .services.matcher import load_all_masters
-    masters = load_all_masters(db)
+    cargo_ids_to_reprocess = [c.id for c in cargos_to_reprocess]
+    observaciones_text = req.observaciones
 
-    # Inicializar progreso
     with _progress_lock:
         _homologacion_progress[upload_id] = {
             "status": "reprocesando",
@@ -624,80 +642,92 @@ def reprocesar_homologacion(
         }
 
     def run_reproceso():
-        cargos_batch = [{
-            "id": c.id,
-            "nombre_cargo": c.nombre_cargo,
-            "area": c.area,
-            "descripcion": c.descripcion_empresa or "",
-            "descripcion_empresa": c.descripcion_empresa or "",
-            "cargo_homologado_actual": c.homologacion.cargo_homologado if c.homologacion else "",
-        } for c in cargos_to_reprocess]
+        thread_db = SessionLocal()
+        try:
+            from .services.ia_service import homologar_con_ia_observaciones
+            from .services.matcher import load_all_masters
 
-        results_count = 0
-        resultados = homologar_con_ia_observaciones(db, cargos_batch, masters, req.observaciones)
+            cargos_thread = thread_db.query(Cargo).filter(Cargo.id.in_(cargo_ids_to_reprocess)).all()
+            masters = load_all_masters(thread_db)
 
-        for res in resultados:
-            cargo_id = res.get("id")
-            cargo = next((c for c in cargos_to_reprocess if c.id == cargo_id), None)
-            if not cargo:
-                continue
+            cargos_batch = [{
+                "id": c.id,
+                "nombre_cargo": c.nombre_cargo,
+                "area": c.area,
+                "descripcion": c.descripcion_empresa or "",
+                "descripcion_empresa": c.descripcion_empresa or "",
+                "cargo_homologado_actual": c.homologacion.cargo_homologado if c.homologacion else "",
+            } for c in cargos_thread]
 
-            homo = cargo.homologacion
-            if not homo:
-                homo = Homologacion(cargo_id=cargo.id)
-                db.add(homo)
+            results_count = 0
+            resultados = homologar_con_ia_observaciones(thread_db, cargos_batch, masters, observaciones_text)
 
-            cargo_homologado = res.get("cargo_homologado", "SIN_COINCIDENCIA")
-            justificacion = res.get("justificacion", "")
+            for res in resultados:
+                cargo_id = res.get("id")
+                cargo = next((c for c in cargos_thread if c.id == cargo_id), None)
+                if not cargo:
+                    continue
 
-            results_count += 1
+                homo = cargo.homologacion
+                if not homo:
+                    homo = Homologacion(cargo_id=cargo.id)
+                    thread_db.add(homo)
+
+                cargo_homologado = res.get("cargo_homologado", "SIN_COINCIDENCIA")
+                justificacion = res.get("justificacion", "")
+                results_count += 1
+
+                with _progress_lock:
+                    prog = _homologacion_progress.get(upload_id, {})
+                    prog["processed"] = results_count
+                    prog["current_cargo"] = cargo.nombre_cargo
+
+                if cargo_homologado and cargo_homologado != "SIN_COINCIDENCIA":
+                    homo.cargo_homologado = cargo_homologado
+                    homo.justificacion = f"Reproceso IA (obs. analista): {justificacion}"
+                    homo.editado_manual = False
+                    cargo.estado = "SUGERIDO"
+                    with _progress_lock:
+                        prog["ia_suggested"] = results_count
+                        prog["recent_results"].append({
+                            "id": cargo.id, "nombre_cargo": cargo.nombre_cargo,
+                            "cargo_homologado": cargo_homologado, "estado": "sugerido",
+                            "justificacion": f"Reproceso: {justificacion}", "tipo": "reproceso",
+                        })
+                else:
+                    homo.cargo_homologado = "SIN_COINCIDENCIA"
+                    homo.justificacion = f"Reproceso IA: {justificacion}" if justificacion else "Sin coincidencia"
+                    cargo.estado = "SIN_COINCIDENCIA"
+                    with _progress_lock:
+                        prog["not_matched"] = prog.get("not_matched", 0) + 1
+                        prog["recent_results"].append({
+                            "id": cargo.id, "nombre_cargo": cargo.nombre_cargo,
+                            "cargo_homologado": "SIN COINCIDENCIA", "estado": "sin_coincidencia",
+                            "justificacion": justificacion or "Sin coincidencia", "tipo": "reproceso",
+                        })
+
+                with _progress_lock:
+                    prog = _homologacion_progress.get(upload_id, {})
+                    if len(prog.get("recent_results", [])) > 50:
+                        prog["recent_results"] = prog["recent_results"][-50:]
+
+            thread_db.commit()
+            print(f"Reproceso completado: {results_count}/{len(cargos_thread)} cargos")
 
             with _progress_lock:
                 prog = _homologacion_progress.get(upload_id, {})
-                prog["processed"] = results_count
-                prog["current_cargo"] = cargo.nombre_cargo
-
-            if cargo_homologado and cargo_homologado != "SIN_COINCIDENCIA":
-                homo.cargo_homologado = cargo_homologado
-                homo.justificacion = f"Reproceso IA (obs. analista): {justificacion}"
-                homo.editado_manual = False
-                cargo.estado = "SUGERIDO"
-                with _progress_lock:
-                    prog["ia_suggested"] = results_count
-                    prog["recent_results"].append({
-                        "id": cargo.id,
-                        "nombre_cargo": cargo.nombre_cargo,
-                        "cargo_homologado": cargo_homologado,
-                        "estado": "sugerido",
-                        "justificacion": f"Reproceso: {justificacion}",
-                        "tipo": "reproceso",
-                    })
-            else:
-                homo.cargo_homologado = "SIN_COINCIDENCIA"
-                homo.justificacion = f"Reproceso IA: {justificacion}" if justificacion else "Sin coincidencia"
-                cargo.estado = "SIN_COINCIDENCIA"
-                with _progress_lock:
-                    prog["not_matched"] = prog.get("not_matched", 0) + 1
-                    prog["recent_results"].append({
-                        "id": cargo.id,
-                        "nombre_cargo": cargo.nombre_cargo,
-                        "cargo_homologado": "SIN COINCIDENCIA",
-                        "estado": "sin_coincidencia",
-                        "justificacion": justificacion or "Sin coincidencia",
-                        "tipo": "reproceso",
-                    })
-
+                prog["status"] = "completado"
+                prog["current_batch"] = "Reproceso completado"
+                prog["current_cargo"] = None
+        except Exception as e:
+            print(f"Error CRITICO en thread reproceso: {e}")
+            import traceback
+            traceback.print_exc()
             with _progress_lock:
-                if len(prog.get("recent_results", [])) > 50:
-                    prog["recent_results"] = prog["recent_results"][-50:]
-
-        db.commit()
-
-        with _progress_lock:
-            prog = _homologacion_progress.get(upload_id, {})
-            prog["status"] = "completado"
-            prog["current_batch"] = "Reproceso completado"
-            prog["current_cargo"] = None
+                _homologacion_progress[upload_id]["status"] = "error"
+                _homologacion_progress[upload_id]["current_batch"] = f"Error: {str(e)[:100]}"
+        finally:
+            thread_db.close()
 
     thread = threading.Thread(target=run_reproceso, daemon=True)
     thread.start()
