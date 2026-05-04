@@ -123,6 +123,10 @@ class Empresa(Base):
     empleados_teletrabajo = Column(Integer, nullable=True)
     empleados_mixta = Column(Integer, nullable=True)
 
+    # Tipos de contratos
+    tipos_contratos = Column(Text, nullable=True)
+    distribucion_contratos = Column(Text, nullable=True)
+
     # Datos financieros
     ventas_reales = Column(Float, nullable=True)
     ventas_presupuestadas = Column(Float, nullable=True)

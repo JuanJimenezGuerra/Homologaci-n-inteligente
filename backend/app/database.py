@@ -271,6 +271,8 @@ def run_migrations():
             ("empleados_presenciales", "INTEGER"),
             ("empleados_teletrabajo", "INTEGER"),
             ("empleados_mixta", "INTEGER"),
+            ("tipos_contratos", "TEXT"),
+            ("distribucion_contratos", "TEXT"),
             ("ventas_reales", "DOUBLE PRECISION"),
             ("ventas_presupuestadas", "DOUBLE PRECISION"),
             ("ingresos_reales", "DOUBLE PRECISION"),

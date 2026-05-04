@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link2, Play, Loader2, AlertCircle, Building2, MapPin, User, Edit2, Check, X, MessageSquare, RefreshCw, ArrowRight, Calendar, Phone, Mail, Package, TrendingUp, Users, DollarSign, FileText, ChevronDown, ChevronUp, Activity } from 'lucide-react';
+import { Link2, Play, Loader2, AlertCircle, Building2, MapPin, User, Edit2, Check, X, MessageSquare, RefreshCw, ArrowRight, Calendar, Phone, Mail, Package, Users, DollarSign, FileText, Activity, Globe, Briefcase, Target } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
@@ -36,13 +36,10 @@ function HomologacionView({ empresaId, onComplete }) {
   const [filterStatus, setFilterStatus] = useState('all');
   const [observaciones, setObservaciones] = useState('');
   const [selectedCargoIds, setSelectedCargoIds] = useState(new Set());
-  const [showEmpresaExpanded, setShowEmpresaExpanded] = useState(false);
 
-  // Real-time progress state
   const [progress, setProgress] = useState(null);
   const [liveCargos, setLiveCargos] = useState([]);
   const pollIntervalRef = useRef(null);
-  const liveFeedRef = useRef(null);
 
   useEffect(() => {
     if (empresaId) loadData();
@@ -55,20 +52,22 @@ function HomologacionView({ empresaId, onComplete }) {
     const token = localStorage.getItem('token');
 
     try {
-      const empRes = await fetch(`${API}/uploads/${empresaId}/empresa`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const [empRes, cargosRes] = await Promise.all([
+        fetch(`${API}/uploads/${empresaId}/empresa`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/uploads/${empresaId}/cargos`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
       if (empRes.ok) setEmpresaData(await empRes.json());
-
-      const cargosRes = await fetch(`${API}/uploads/${empresaId}/cargos`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (cargosRes.ok) setCargos(await cargosRes.json());
+      if (cargosRes.ok) {
+        const loadedCargos = await cargosRes.json();
+        setCargos(loadedCargos);
+        return loadedCargos;
+      }
     } catch (e) {
       setError('Error al cargar datos: ' + e.message);
     } finally {
       setLoading(false);
     }
+    return null;
   };
 
   const startPolling = () => {
@@ -90,17 +89,21 @@ function HomologacionView({ empresaId, onComplete }) {
             clearInterval(pollIntervalRef.current);
             setProcessing(false);
             setReprocessing(false);
-            await loadData();
-            setMensaje(`Homologacion completada: ${status.exact_matches || 0} matchs exactos, ${status.ia_suggested || 0} sugeridos IA, ${status.not_matched || 0} sin coincidencia`);
+            const loadedCargos = await loadData();
+            if (loadedCargos) {
+              const h = loadedCargos.filter(c => (c.estado || '').toLowerCase() === 'homologado').length;
+              const s = loadedCargos.filter(c => (c.estado || '').toLowerCase() === 'sugerido').length;
+              const sc = loadedCargos.filter(c => (c.estado || '').toLowerCase().includes('sin_coincidencia')).length;
+              setMensaje(`Homologacion completada: ${h} matchs exactos, ${s} sugeridos IA, ${sc} sin coincidencia`);
+            }
           }
         }
 
         if (resultsRes.ok) {
-          const results = await resultsRes.json();
-          setLiveCargos(results);
+          setLiveCargos(await resultsRes.json());
         }
       } catch (e) {
-        // Silent fail during polling
+        // Silent
       }
     }, 1500);
   };
@@ -144,9 +147,7 @@ function HomologacionView({ empresaId, onComplete }) {
     setMensaje('Iniciando reproceso...');
     setProgress(null);
 
-    const body = {
-      observaciones: observaciones.trim(),
-    };
+    const body = { observaciones: observaciones.trim() };
     if (selectedCargoIds.size > 0) {
       body.cargo_ids = Array.from(selectedCargoIds);
     }
@@ -183,16 +184,10 @@ function HomologacionView({ empresaId, onComplete }) {
     try {
       const res = await fetch(`${API}/cargos/${cargoId}`, {
         method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ cargo_homologado: editValue, justificacion: 'Editado manualmente por analista' }),
       });
-      if (res.ok) {
-        setEditingId(null);
-        await loadData();
-      }
+      if (res.ok) { setEditingId(null); await loadData(); }
     } catch (e) {
       setError('Error al guardar: ' + e.message);
     }
@@ -208,10 +203,8 @@ function HomologacionView({ empresaId, onComplete }) {
   };
 
   const selectAllReprocessable = () => {
-    const reprocessable = displayCargos
-      .filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado')
-      .map(c => c.id);
-    setSelectedCargoIds(new Set(reprocessable));
+    const ids = displayCargos.filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado').map(c => c.id);
+    setSelectedCargoIds(new Set(ids));
   };
 
   const clearSelection = () => setSelectedCargoIds(new Set());
@@ -229,7 +222,7 @@ function HomologacionView({ empresaId, onComplete }) {
     total: displayCargos.length,
     homologados: displayCargos.filter(c => (c.estado || '').toLowerCase() === 'homologado').length,
     sugeridos: displayCargos.filter(c => (c.estado || '').toLowerCase() === 'sugerido').length,
-    pendientes: displayCargos.filter(c => (c.estado || '').toLowerCase() === 'pendiente' || (c.estado || '').toLowerCase() === 'procesando').length,
+    pendientes: displayCargos.filter(c => ['pendiente', 'procesando'].includes((c.estado || '').toLowerCase())).length,
     sin_coincidencia: displayCargos.filter(c => (c.estado || '').toLowerCase().includes('sin_coincidencia')).length,
   };
 
@@ -240,10 +233,8 @@ function HomologacionView({ empresaId, onComplete }) {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return null;
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
-    } catch { return dateStr; }
+    try { return new Date(dateStr).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' }); }
+    catch { return dateStr; }
   };
 
   if (loading && displayCargos.length === 0) {
@@ -270,361 +261,303 @@ function HomologacionView({ empresaId, onComplete }) {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* Empresa Data Card - Compact View */}
+      {/* ============ EMPRESA: TODOS LOS DATOS VISIBLES ============ */}
       {empresaData && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-lg overflow-hidden"
-        >
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-lg overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-r from-forest to-primary px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Building2 className="text-white w-6 h-6" />
-                <div>
-                  <h2 className="text-lg font-bold text-white">{empresaData.nombre_empresa || 'Empresa'}</h2>
-                  {empresaData.razon_social && (
-                    <p className="text-xs text-white/70">{empresaData.razon_social}</p>
+            <div className="flex items-center gap-3">
+              <Building2 className="text-white w-6 h-6" />
+              <div>
+                <h2 className="text-lg font-bold text-white">{empresaData.nombre_empresa || 'Empresa'}</h2>
+                {empresaData.razon_social && <p className="text-xs text-white/70">{empresaData.razon_social}</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className="p-5 space-y-5">
+            {/* SECCION 1: General */}
+            <div>
+              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500"></span> Informacion General
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                {empresaData.fecha_diligenciamiento && (
+                  <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-3 border border-blue-100">
+                    <Calendar size={14} className="text-blue-500 shrink-0" />
+                    <div>
+                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Fecha diligenciamiento</p>
+                      <p className="font-semibold text-blue-700 text-sm">{formatDate(empresaData.fecha_diligenciamiento)}</p>
+                    </div>
+                  </div>
+                )}
+                {empresaData.consultor && (
+                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Consultor</p>
+                    <p className="font-semibold text-blue-700 text-sm">{empresaData.consultor}</p>
+                  </div>
+                )}
+                {empresaData.nit && (
+                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">NIT</p>
+                    <p className="font-bold text-blue-700 text-sm">{empresaData.nit}</p>
+                  </div>
+                )}
+                {empresaData.tipo_empresa && (
+                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Tipo de Empresa</p>
+                    <p className="font-semibold text-blue-700 text-sm">{empresaData.tipo_empresa}</p>
+                  </div>
+                )}
+                {empresaData.sector_economico && (
+                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Sector Economico</p>
+                    <p className="font-semibold text-blue-700 text-sm">{empresaData.sector_economico}</p>
+                  </div>
+                )}
+                {empresaData.actividad_economica && (
+                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Actividad Economica</p>
+                    <p className="font-semibold text-blue-700 text-sm">{empresaData.actividad_economica}</p>
+                  </div>
+                )}
+                {empresaData.direccion && (
+                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                    <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Direccion</p>
+                    <p className="font-semibold text-blue-700 text-sm">{empresaData.direccion}</p>
+                  </div>
+                )}
+                {(empresaData.ciudad || empresaData.departamento) && (
+                  <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-3 border border-blue-100">
+                    <MapPin size={14} className="text-blue-500 shrink-0" />
+                    <div>
+                      <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Ubicacion</p>
+                      <p className="font-semibold text-blue-700 text-sm">{[empresaData.ciudad, empresaData.departamento].filter(Boolean).join(', ')}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* SECCION 2: Contacto */}
+            {(empresaData.persona_contacto || empresaData.email_contacto || empresaData.telefono || empresaData.telefono_contacto) && (
+              <div>
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Contacto
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  {empresaData.persona_contacto && (
+                    <div className="flex items-start gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                      <User size={14} className="text-emerald-500 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Persona que diligencia</p>
+                        <p className="font-semibold text-emerald-700 text-sm">{empresaData.persona_contacto}</p>
+                        {empresaData.cargo_contacto && <p className="text-[10px] text-emerald-400 mt-0.5">{empresaData.cargo_contacto}</p>}
+                      </div>
+                    </div>
+                  )}
+                  {empresaData.email_contacto && (
+                    <div className="flex items-start gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                      <Mail size={14} className="text-emerald-500 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Email</p>
+                        <p className="font-semibold text-emerald-700 text-sm truncate">{empresaData.email_contacto}</p>
+                      </div>
+                    </div>
+                  )}
+                  {empresaData.telefono && (
+                    <div className="flex items-center gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                      <Phone size={14} className="text-emerald-500 shrink-0" />
+                      <div>
+                        <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Telefono empresa</p>
+                        <p className="font-semibold text-emerald-700 text-sm">{empresaData.telefono}</p>
+                      </div>
+                    </div>
+                  )}
+                  {empresaData.telefono_contacto && (
+                    <div className="flex items-center gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                      <Phone size={14} className="text-emerald-500 shrink-0" />
+                      <div>
+                        <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Telefono contacto</p>
+                        <p className="font-semibold text-emerald-700 text-sm">{empresaData.telefono_contacto}</p>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
-              <button
-                onClick={() => setShowEmpresaExpanded(!showEmpresaExpanded)}
-                className="flex items-center gap-1 text-xs text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all"
-              >
-                {showEmpresaExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                {showEmpresaExpanded ? 'Ocultar detalles' : 'Ver todos los datos'}
-              </button>
-            </div>
-          </div>
-
-          {/* Always visible: Basic info row */}
-          <div className="p-5 border-b border-slate-100">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-              {empresaData.nit && (
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">NIT</p>
-                  <p className="font-bold text-forest text-sm">{empresaData.nit}</p>
-                </div>
-              )}
-              {empresaData.tipo_empresa && (
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Tipo</p>
-                  <p className="font-bold text-forest text-sm">{empresaData.tipo_empresa}</p>
-                </div>
-              )}
-              {(empresaData.ciudad || empresaData.departamento) && (
-                <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-3">
-                  <MapPin size={14} className="text-slate-400 shrink-0" />
-                  <div>
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Ubicacion</p>
-                    <p className="font-semibold text-forest text-sm">{[empresaData.ciudad, empresaData.departamento].filter(Boolean).join(', ')}</p>
-                  </div>
-                </div>
-              )}
-              {empresaData.sector_economico && (
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Sector</p>
-                  <p className="font-bold text-forest text-sm">{empresaData.sector_economico}</p>
-                </div>
-              )}
-              {empresaData.persona_contacto && (
-                <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-3">
-                  <User size={14} className="text-slate-400 shrink-0" />
-                  <div>
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Contacto</p>
-                    <p className="font-semibold text-forest text-sm">{empresaData.persona_contacto}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Expanded details */}
-          <AnimatePresence>
-            {showEmpresaExpanded && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden"
-              >
-                <div className="p-5 space-y-5">
-                  {/* Fecha y Consultor */}
-                  {(empresaData.fecha_diligenciamiento || empresaData.consultor) && (
-                    <div>
-                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-blue-500"></span> General
-                      </h3>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        {empresaData.fecha_diligenciamiento && (
-                          <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-3 border border-blue-100">
-                            <Calendar size={14} className="text-blue-500 shrink-0" />
-                            <div>
-                              <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Fecha diligenciamiento</p>
-                              <p className="font-semibold text-blue-700 text-sm">{formatDate(empresaData.fecha_diligenciamiento)}</p>
-                            </div>
-                          </div>
-                        )}
-                        {empresaData.consultor && (
-                          <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Consultor</p>
-                            <p className="font-semibold text-blue-700 text-sm">{empresaData.consultor}</p>
-                          </div>
-                        )}
-                        {empresaData.actividad_economica && (
-                          <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Actividad Economica</p>
-                            <p className="font-semibold text-blue-700 text-sm">{empresaData.actividad_economica}</p>
-                          </div>
-                        )}
-                        {empresaData.direccion && (
-                          <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Direccion</p>
-                            <p className="font-semibold text-blue-700 text-sm">{empresaData.direccion}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Contacto completo */}
-                  <div>
-                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Contacto Completo
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      {empresaData.persona_contacto && (
-                        <div className="flex items-start gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-                          <User size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-                          <div>
-                            <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Persona que diligencia</p>
-                            <p className="font-semibold text-emerald-700 text-sm">{empresaData.persona_contacto}</p>
-                            {empresaData.cargo_contacto && <p className="text-[10px] text-emerald-400 mt-0.5">{empresaData.cargo_contacto}</p>}
-                          </div>
-                        </div>
-                      )}
-                      {empresaData.email_contacto && (
-                        <div className="flex items-start gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-                          <Mail size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-                          <div>
-                            <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Email</p>
-                            <p className="font-semibold text-emerald-700 text-sm truncate">{empresaData.email_contacto}</p>
-                          </div>
-                        </div>
-                      )}
-                      {empresaData.telefono && (
-                        <div className="flex items-center gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-                          <Phone size={14} className="text-emerald-500 shrink-0" />
-                          <div>
-                            <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Telefono empresa</p>
-                            <p className="font-semibold text-emerald-700 text-sm">{empresaData.telefono}</p>
-                          </div>
-                        </div>
-                      )}
-                      {empresaData.telefono_contacto && (
-                        <div className="flex items-center gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-                          <Phone size={14} className="text-emerald-500 shrink-0" />
-                          <div>
-                            <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide">Telefono contacto</p>
-                            <p className="font-semibold text-emerald-700 text-sm">{empresaData.telefono_contacto}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Productos y Motivacion */}
-                  {(empresaData.principales_productos || empresaData.motivacion) && (
-                    <div>
-                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-purple-500"></span> Informacion de la Compania
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        {empresaData.principales_productos && (
-                          <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Package size={14} className="text-purple-500" />
-                              <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Productos/Servicios</p>
-                            </div>
-                            <p className="font-semibold text-purple-700 text-sm">{empresaData.principales_productos}</p>
-                          </div>
-                        )}
-                        {empresaData.motivacion && (
-                          <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                            <div className="flex items-center gap-2 mb-1">
-                              <FileText size={14} className="text-purple-500" />
-                              <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Motivacion para participar</p>
-                            </div>
-                            <p className="font-semibold text-purple-700 text-sm">{empresaData.motivacion}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Datos de Personal */}
-                  {(empresaData.num_personas_contratadas || empresaData.empleados_presenciales || empresaData.empleados_teletrabajo || empresaData.empleados_mixta) && (
-                    <div>
-                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-blue-500"></span> Datos de Personal
-                      </h3>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        {empresaData.num_personas_contratadas && (
-                          <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
-                            <div className="flex items-center justify-center gap-1 mb-1">
-                              <Users size={14} className="text-blue-500" />
-                              <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Total contratados</p>
-                            </div>
-                            <p className="font-black text-blue-700 text-2xl">{empresaData.num_personas_contratadas}</p>
-                          </div>
-                        )}
-                        {empresaData.empleados_presenciales && (
-                          <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
-                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Presencial</p>
-                            <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_presenciales}</p>
-                          </div>
-                        )}
-                        {empresaData.empleados_teletrabajo && (
-                          <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
-                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Teletrabajo</p>
-                            <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_teletrabajo}</p>
-                          </div>
-                        )}
-                        {empresaData.empleados_mixta && (
-                          <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
-                            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wide">Mixta</p>
-                            <p className="font-black text-blue-700 text-2xl">{empresaData.empleados_mixta}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Datos Financieros */}
-                  {(empresaData.ventas_reales || empresaData.ingresos_reales || empresaData.excedentes_reales) && (
-                    <div>
-                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-amber-500"></span> Datos Financieros
-                      </h3>
-                      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
-                        {empresaData.ventas_reales && (
-                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                            <div className="flex items-center justify-center gap-1 mb-1">
-                              <DollarSign size={12} className="text-amber-500" />
-                              <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ventas Reales</p>
-                            </div>
-                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ventas_reales)}</p>
-                          </div>
-                        )}
-                        {empresaData.ventas_presupuestadas && (
-                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                            <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ventas Presup.</p>
-                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ventas_presupuestadas)}</p>
-                          </div>
-                        )}
-                        {empresaData.ingresos_reales && (
-                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                            <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ingresos Reales</p>
-                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ingresos_reales)}</p>
-                          </div>
-                        )}
-                        {empresaData.ingresos_presupuestados && (
-                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                            <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ingresos Presup.</p>
-                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ingresos_presupuestados)}</p>
-                          </div>
-                        )}
-                        {empresaData.excedentes_reales && (
-                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                            <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Excedentes Reales</p>
-                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.excedentes_reales)}</p>
-                          </div>
-                        )}
-                        {empresaData.excedentes_presupuestados && (
-                          <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                            <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Excedentes Presup.</p>
-                            <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.excedentes_presupuestados)}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
             )}
-          </AnimatePresence>
+
+            {/* SECCION 3: Compania */}
+            {(empresaData.principales_productos || empresaData.motivacion) && (
+              <div>
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-purple-500"></span> Informacion de la Compania
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  {empresaData.principales_productos && (
+                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Package size={14} className="text-purple-500" />
+                        <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Productos/Servicios</p>
+                      </div>
+                      <p className="font-semibold text-purple-700 text-sm">{empresaData.principales_productos}</p>
+                    </div>
+                  )}
+                  {empresaData.motivacion && (
+                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Target size={14} className="text-purple-500" />
+                        <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wide">Motivacion para participar</p>
+                      </div>
+                      <p className="font-semibold text-purple-700 text-sm">{empresaData.motivacion}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* SECCION 4: Personal */}
+            {(empresaData.num_personas_contratadas || empresaData.empleados_presenciales || empresaData.empleados_teletrabajo || empresaData.empleados_mixta || empresaData.tipos_contratos || empresaData.distribucion_contratos) && (
+              <div>
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-500"></span> Datos de Personal
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
+                  {empresaData.num_personas_contratadas && (
+                    <div className="bg-cyan-50 rounded-lg p-3 text-center border border-cyan-100">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <Users size={14} className="text-cyan-500" />
+                        <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wide">Total contratados</p>
+                      </div>
+                      <p className="font-black text-cyan-700 text-2xl">{empresaData.num_personas_contratadas}</p>
+                    </div>
+                  )}
+                  {empresaData.empleados_presenciales && (
+                    <div className="bg-cyan-50 rounded-lg p-3 text-center border border-cyan-100">
+                      <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wide">Presencial</p>
+                      <p className="font-black text-cyan-700 text-2xl">{empresaData.empleados_presenciales}</p>
+                    </div>
+                  )}
+                  {empresaData.empleados_teletrabajo && (
+                    <div className="bg-cyan-50 rounded-lg p-3 text-center border border-cyan-100">
+                      <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wide">Teletrabajo</p>
+                      <p className="font-black text-cyan-700 text-2xl">{empresaData.empleados_teletrabajo}</p>
+                    </div>
+                  )}
+                  {empresaData.empleados_mixta && (
+                    <div className="bg-cyan-50 rounded-lg p-3 text-center border border-cyan-100">
+                      <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wide">Mixta</p>
+                      <p className="font-black text-cyan-700 text-2xl">{empresaData.empleados_mixta}</p>
+                    </div>
+                  )}
+                </div>
+                {(empresaData.tipos_contratos || empresaData.distribucion_contratos) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    {empresaData.tipos_contratos && (
+                      <div className="bg-cyan-50 rounded-lg p-3 border border-cyan-100">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Briefcase size={14} className="text-cyan-500" />
+                          <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wide">Tipos de contratos</p>
+                        </div>
+                        <p className="font-semibold text-cyan-700 text-sm">{empresaData.tipos_contratos}</p>
+                      </div>
+                    )}
+                    {empresaData.distribucion_contratos && (
+                      <div className="bg-cyan-50 rounded-lg p-3 border border-cyan-100">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Globe size={14} className="text-cyan-500" />
+                          <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wide">Distribucion de contratos</p>
+                        </div>
+                        <p className="font-semibold text-cyan-700 text-sm">{empresaData.distribucion_contratos}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SECCION 5: Financieros */}
+            {(empresaData.ventas_reales || empresaData.ingresos_reales || empresaData.excedentes_reales || empresaData.ventas_presupuestadas || empresaData.ingresos_presupuestados || empresaData.excedentes_presupuestados) && (
+              <div>
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span> Datos Financieros
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+                  {empresaData.ventas_reales && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <DollarSign size={12} className="text-amber-500" />
+                        <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ventas Reales</p>
+                      </div>
+                      <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ventas_reales)}</p>
+                    </div>
+                  )}
+                  {empresaData.ventas_presupuestadas && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ventas Presup.</p>
+                      <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ventas_presupuestadas)}</p>
+                    </div>
+                  )}
+                  {empresaData.ingresos_reales && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ingresos Reales</p>
+                      <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ingresos_reales)}</p>
+                    </div>
+                  )}
+                  {empresaData.ingresos_presupuestados && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Ingresos Presup.</p>
+                      <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.ingresos_presupuestados)}</p>
+                    </div>
+                  )}
+                  {empresaData.excedentes_reales && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Excedentes Reales</p>
+                      <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.excedentes_reales)}</p>
+                    </div>
+                  )}
+                  {empresaData.excedentes_presupuestados && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
+                      <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide">Excedentes Presup.</p>
+                      <p className="font-black text-amber-700 text-sm">{formatCurrency(empresaData.excedentes_presupuestados)}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </motion.div>
       )}
 
-      {/* Progress Bar (during processing) */}
+      {/* ============ BARRA DE PROGRESO (durante procesamiento) ============ */}
       {processing && progress && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-lg p-4 border-2 border-blue-100"
-        >
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-lg p-4 border-2 border-blue-100">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <Loader2 className="animate-spin text-blue-600" size={20} />
               <div>
                 <p className="font-bold text-forest text-sm">{progress.current_batch || 'Procesando...'}</p>
-                {progress.current_cargo && (
-                  <p className="text-xs text-slate-500">Procesando: <span className="font-semibold text-forest">{progress.current_cargo}</span></p>
-                )}
+                {progress.current_cargo && <p className="text-xs text-slate-500">Procesando: <span className="font-semibold text-forest">{progress.current_cargo}</span></p>}
               </div>
             </div>
             <div className="text-right">
               <p className="text-2xl font-black text-blue-700">{progress.processed || 0}<span className="text-sm text-slate-400 font-medium">/{progress.total}</span></p>
             </div>
           </div>
-
-          {/* Progress bar */}
           <div className="w-full bg-slate-100 rounded-full h-3 mb-3 overflow-hidden">
-            <motion.div
-              className="h-full bg-gradient-to-r from-blue-400 to-emerald-400 rounded-full"
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min(100, ((progress.processed || 0) / (progress.total || 1)) * 100)}%` }}
-              transition={{ duration: 0.3 }}
-            />
+            <motion.div className="h-full bg-gradient-to-r from-blue-400 to-emerald-400 rounded-full" initial={{ width: 0 }} animate={{ width: `${Math.min(100, ((progress.processed || 0) / (progress.total || 1)) * 100)}%` }} transition={{ duration: 0.3 }} />
           </div>
-
-          {/* Quick stats */}
           <div className="flex gap-4 text-xs">
-            {progress.exact_matches > 0 && (
-              <span className="flex items-center gap-1 text-emerald-600 font-bold">
-                <Check size={12} /> {progress.exact_matches} Match
-              </span>
-            )}
-            {progress.ia_suggested > 0 && (
-              <span className="flex items-center gap-1 text-purple-600 font-bold">
-                <Activity size={12} /> {progress.ia_suggested} Sugeridos IA
-              </span>
-            )}
-            {progress.not_matched > 0 && (
-              <span className="flex items-center gap-1 text-amber-600 font-bold">
-                <AlertCircle size={12} /> {progress.not_matched} Sin coincidencia
-              </span>
-            )}
+            {progress.exact_matches > 0 && <span className="flex items-center gap-1 text-emerald-600 font-bold"><Check size={12} /> {progress.exact_matches} Match</span>}
+            {progress.ia_suggested > 0 && <span className="flex items-center gap-1 text-purple-600 font-bold"><Activity size={12} /> {progress.ia_suggested} Sugeridos IA</span>}
+            {progress.not_matched > 0 && <span className="flex items-center gap-1 text-amber-600 font-bold"><AlertCircle size={12} /> {progress.not_matched} Sin coincidencia</span>}
           </div>
-
-          {/* Live feed of recent results */}
           {progress.recent_results && progress.recent_results.length > 0 && (
             <div className="mt-3 pt-3 border-t border-slate-100">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Ultimos resultados:</p>
               <div className="flex gap-2 overflow-x-auto pb-1 max-h-16 overflow-y-auto">
                 {progress.recent_results.slice(-10).reverse().map((r, idx) => (
-                  <div
-                    key={`${r.id}-${idx}`}
-                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap ${
-                      r.tipo === 'exacto' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                      r.tipo === 'ia' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
-                      r.tipo === 'reproceso' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                      'bg-amber-50 text-amber-700 border border-amber-200'
-                    }`}
-                  >
+                  <div key={`${r.id}-${idx}`} className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap ${r.tipo === 'exacto' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : r.tipo === 'ia' || r.tipo === 'reproceso' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
                     <span className="font-bold">{r.nombre_cargo}</span>
                     <span className="mx-1">→</span>
                     <span>{r.cargo_homologado}</span>
@@ -636,7 +569,7 @@ function HomologacionView({ empresaId, onComplete }) {
         </motion.div>
       )}
 
-      {/* Stats & Controls */}
+      {/* ============ STATS & CONTROLES ============ */}
       <div className="bg-white rounded-2xl shadow-lg p-4">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3 flex-wrap">
@@ -651,29 +584,15 @@ function HomologacionView({ empresaId, onComplete }) {
             </div>
           </div>
           <div className="flex gap-2 items-center flex-wrap">
-            <select
-              value={filterStatus}
-              onChange={e => setFilterStatus(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20">
               <option value="all">Todos</option>
               <option value="homologado">Match Exacto</option>
               <option value="sugerido">Sugeridos IA</option>
               <option value="pendiente">Pendientes</option>
               <option value="sin_coincidencia">Sin Coincidencia</option>
             </select>
-            <input
-              type="text"
-              placeholder="Buscar cargo..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 w-44"
-            />
-            <button
-              onClick={ejecutarHomologacion}
-              disabled={processing}
-              className="flex items-center gap-2 bg-forest text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-primary transition-all disabled:opacity-70"
-            >
+            <input type="text" placeholder="Buscar cargo..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 w-44" />
+            <button onClick={ejecutarHomologacion} disabled={processing} className="flex items-center gap-2 bg-forest text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-primary transition-all disabled:opacity-70">
               {processing ? <Loader2 size={16} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
               {processing ? 'PROCESANDO...' : 'EJECUTAR HOMOLOGACION'}
             </button>
@@ -681,21 +600,19 @@ function HomologacionView({ empresaId, onComplete }) {
         </div>
       </div>
 
-      {/* Messages */}
+      {/* ============ MENSAJES ============ */}
       {mensaje && (
-        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
-          className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 rounded-xl text-sm font-medium flex items-center gap-2">
+        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 rounded-xl text-sm font-medium flex items-center gap-2">
           <Check size={14} /> {mensaje}
         </motion.div>
       )}
       {error && (
-        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
-          className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm font-medium flex items-center gap-2">
+        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm font-medium flex items-center gap-2">
           <AlertCircle size={14} /> {error}
         </motion.div>
       )}
 
-      {/* Cargos Table */}
+      {/* ============ TABLA DE CARGOS ============ */}
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -704,15 +621,7 @@ function HomologacionView({ empresaId, onComplete }) {
                 <th className="px-3 py-3 w-8">#</th>
                 {(processing || selectedCargoIds.size > 0) && (
                   <th className="px-3 py-3 w-8">
-                    <input
-                      type="checkbox"
-                      checked={selectedCargoIds.size > 0 && displayCargos.filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado').length === selectedCargoIds.size}
-                      onChange={e => {
-                        if (e.target.checked) selectAllReprocessable();
-                        else clearSelection();
-                      }}
-                      className="rounded border-slate-300 text-primary focus:ring-primary"
-                    />
+                    <input type="checkbox" checked={selectedCargoIds.size > 0 && displayCargos.filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado').length > 0 && selectedCargoIds.size === displayCargos.filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado').length} onChange={e => { if (e.target.checked) selectAllReprocessable(); else clearSelection(); }} className="rounded border-slate-300 text-primary focus:ring-primary" />
                   </th>
                 )}
                 <th className="px-3 py-3 min-w-[200px]">Cargo</th>
@@ -730,24 +639,11 @@ function HomologacionView({ empresaId, onComplete }) {
                 const isSelected = selectedCargoIds.has(c.id);
                 const isReprocessable = c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado';
                 return (
-                  <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
-                    isSelected ? 'bg-purple-50/60' :
-                    c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' :
-                    c.estado?.toLowerCase().includes('sin_coincidencia') ? 'bg-amber-50/30' :
-                    c.estado?.toLowerCase() === 'procesando' ? 'bg-blue-50/50 animate-pulse' :
-                    idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-                  }`}>
+                  <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-purple-50/60' : c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' : c.estado?.toLowerCase().includes('sin_coincidencia') ? 'bg-amber-50/30' : c.estado?.toLowerCase() === 'procesando' ? 'bg-blue-50/50 animate-pulse' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                     <td className="px-3 py-2.5 text-slate-300 font-mono text-center text-xs">{idx + 1}</td>
                     {(processing || selectedCargoIds.size > 0) && (
                       <td className="px-3 py-2.5 text-center">
-                        {isReprocessable && (
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleCargoSelection(c.id)}
-                            className="rounded border-slate-300 text-primary focus:ring-primary"
-                          />
-                        )}
+                        {isReprocessable && <input type="checkbox" checked={isSelected} onChange={() => toggleCargoSelection(c.id)} className="rounded border-slate-300 text-primary focus:ring-primary" />}
                       </td>
                     )}
                     <td className="px-3 py-2.5 font-semibold text-forest">{c.nombre_cargo}</td>
@@ -756,37 +652,20 @@ function HomologacionView({ empresaId, onComplete }) {
                     <td className="px-3 py-2.5">
                       {isEditing ? (
                         <div className="flex items-center gap-1">
-                          <input
-                            value={editValue}
-                            onChange={e => setEditValue(e.target.value)}
-                            autoFocus
-                            onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(c.id); if (e.key === 'Escape') setEditingId(null); }}
-                            className="border border-primary rounded px-2 py-1 text-xs w-full focus:outline-none focus:ring-1 focus:ring-primary"
-                            placeholder="Escribe o selecciona cargo homologado..."
-                          />
+                          <input value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(c.id); if (e.key === 'Escape') setEditingId(null); }} className="border border-primary rounded px-2 py-1 text-xs w-full focus:outline-none focus:ring-1 focus:ring-primary" placeholder="Cargo homologado..." />
                           <button onClick={() => handleSaveEdit(c.id)} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"><Check size={13} /></button>
                           <button onClick={() => setEditingId(null)} className="p-1 text-red-400 hover:bg-red-50 rounded"><X size={13} /></button>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1">
-                          <span className={`text-xs ${h.cargo_homologado && h.cargo_homologado !== 'SIN COINCIDENCIA' ? 'text-forest font-medium' : 'text-slate-300 italic'}`}>
-                            {h.cargo_homologado || 'Sin homologar'}
-                          </span>
-                          <button onClick={() => handleEdit(c.id, h.cargo_homologado || '')} className="p-1 text-slate-300 hover:text-primary hover:bg-emerald-50 rounded" title="Editar">
-                            <Edit2 size={12} />
-                          </button>
+                          <span className={`text-xs ${h.cargo_homologado && h.cargo_homologado !== 'SIN COINCIDENCIA' ? 'text-forest font-medium' : 'text-slate-300 italic'}`}>{h.cargo_homologado || 'Sin homologar'}</span>
+                          <button onClick={() => handleEdit(c.id, h.cargo_homologado || '')} className="p-1 text-slate-300 hover:text-primary hover:bg-emerald-50 rounded" title="Editar"><Edit2 size={12} /></button>
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-slate-400 text-[10px] max-w-[200px] truncate" title={h.justificacion}>
-                      {h.justificacion || '—'}
-                    </td>
+                    <td className="px-3 py-2.5 text-slate-400 text-[10px] max-w-[200px] truncate" title={h.justificacion}>{h.justificacion || '—'}</td>
                     <td className="px-3 py-2.5">
-                      {!isEditing && (
-                        <button onClick={() => handleEdit(c.id, h.cargo_homologado || '')} className="p-1 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded" title="Editar">
-                          <Edit2 size={13} />
-                        </button>
-                      )}
+                      {!isEditing && <button onClick={() => handleEdit(c.id, h.cargo_homologado || '')} className="p-1 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded" title="Editar"><Edit2 size={13} /></button>}
                     </td>
                   </tr>
                 );
@@ -794,21 +673,13 @@ function HomologacionView({ empresaId, onComplete }) {
             </tbody>
           </table>
         </div>
-        {displayCargos.length === 0 && (
-          <div className="p-8 text-center text-slate-400 text-sm">No hay cargos que coincidan con la busqueda</div>
-        )}
+        {displayCargos.length === 0 && <div className="p-8 text-center text-slate-400 text-sm">No hay cargos que coincidan con la busqueda</div>}
       </div>
 
-      {/* Observaciones + Reprocesar Selectivo */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl shadow-lg p-6 border border-purple-100"
-      >
+      {/* ============ OBSERVACIONES + REPROCESAR ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-lg p-6 border border-purple-100">
         <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 bg-purple-50 rounded-xl">
-            <MessageSquare className="text-purple-600" size={20} />
-          </div>
+          <div className="p-2 bg-purple-50 rounded-xl"><MessageSquare className="text-purple-600" size={20} /></div>
           <div>
             <h3 className="font-bold text-lg text-forest">Observaciones del Analista</h3>
             <p className="text-xs text-slate-500">Describe ajustes o indicaciones para que la IA reprocese las homologaciones</p>
@@ -818,63 +689,31 @@ function HomologacionView({ empresaId, onComplete }) {
         <div className="space-y-4">
           <div className="flex gap-2 flex-wrap text-xs">
             <span className="text-slate-400">Filtros rapidos:</span>
-            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Los cargos de Produccion deben buscar en el area de Operaciones')} className="px-2 py-1 bg-slate-100 rounded hover:bg-slate-200 transition-colors">
-              Produccion → Operaciones
-            </button>
-            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Los cargos con "Jefe" o "Coordinador" deben tener nivel jerarquico superior')} className="px-2 py-1 bg-slate-100 rounded hover:bg-slate-200 transition-colors">
-              Jefe/Coordinador → nivel superior
-            </button>
-            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Los cargos administrativos no deben aparecer en areas tecnicas')} className="px-2 py-1 bg-slate-100 rounded hover:bg-slate-200 transition-colors">
-              Administrativo ≠ Tecnico
-            </button>
+            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Los cargos de Produccion deben buscar en el area de Operaciones')} className="px-2 py-1 bg-slate-100 rounded hover:bg-slate-200 transition-colors">Produccion → Operaciones</button>
+            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Los cargos con "Jefe" o "Coordinador" deben tener nivel jerarquico superior')} className="px-2 py-1 bg-slate-100 rounded hover:bg-slate-200 transition-colors">Jefe/Coordinador → nivel superior</button>
+            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Los cargos administrativos no deben aparecer en areas tecnicas')} className="px-2 py-1 bg-slate-100 rounded hover:bg-slate-200 transition-colors">Administrativo ≠ Tecnico</button>
           </div>
 
-          <textarea
-            value={observaciones}
-            onChange={e => setObservaciones(e.target.value)}
-            placeholder="Ejemplo: Los cargos del area de Logistica deben homologarse con cargos del area de Cadena de Suministro. Los auxiliares deben ir en nivel basico..."
-            rows={4}
-            className="w-full border border-purple-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-purple-50/30"
-          />
+          <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ejemplo: Los cargos del area de Logistica deben homologarse con cargos del area de Cadena de Suministro..." rows={4} className="w-full border border-purple-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-purple-50/30" />
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <p className="text-xs text-slate-400">
-                {selectedCargoIds.size > 0
-                  ? `${selectedCargoIds.size} cargos seleccionados para reprocesar`
-                  : stats.sin_coincidencia > 0
-                    ? `${stats.sin_coincidencia} cargos sin coincidencia disponibles`
-                    : 'Todos los cargos tienen homologacion'
-                }
+                {selectedCargoIds.size > 0 ? `${selectedCargoIds.size} cargos seleccionados para reprocesar` : `${stats.sin_coincidencia + stats.sugeridos} cargos disponibles para reprocesar`}
               </p>
-              {selectedCargoIds.size > 0 && (
-                <button onClick={clearSelection} className="text-xs text-purple-500 hover:text-purple-700 font-bold">
-                  Limpiar seleccion
-                </button>
-              )}
+              {selectedCargoIds.size > 0 && <button onClick={clearSelection} className="text-xs text-purple-500 hover:text-purple-700 font-bold">Limpiar seleccion</button>}
             </div>
-            <button
-              onClick={reprocesarHomologacion}
-              disabled={reprocessing || !observaciones.trim()}
-              className="flex items-center gap-2 bg-purple-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-            >
-              {reprocessing ? (
-                <><Loader2 size={16} className="animate-spin" /> Reprocesando...</>
-              ) : (
-                <><RefreshCw size={16} /> {selectedCargoIds.size > 0 ? `Reprocesar ${selectedCargoIds.size} seleccionados` : 'Reprocesar con IA'}</>
-              )}
+            <button onClick={reprocesarHomologacion} disabled={reprocessing || !observaciones.trim()} className="flex items-center gap-2 bg-purple-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">
+              {reprocessing ? <><Loader2 size={16} className="animate-spin" /> Reprocesando...</> : <><RefreshCw size={16} /> {selectedCargoIds.size > 0 ? `Reprocesar ${selectedCargoIds.size} seleccionados` : 'Reprocesar con IA'}</>}
             </button>
           </div>
         </div>
       </motion.div>
 
-      {/* Next Step */}
+      {/* ============ NEXT STEP ============ */}
       {stats.homologados + stats.sugeridos > 0 && onComplete && !processing && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-end">
-          <button
-            onClick={onComplete}
-            className="flex items-center gap-2 bg-forest text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-primary transition-all shadow-lg"
-          >
+          <button onClick={onComplete} className="flex items-center gap-2 bg-forest text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-primary transition-all shadow-lg">
             Ir a Valuacion <ArrowRight size={16} />
           </button>
         </motion.div>
