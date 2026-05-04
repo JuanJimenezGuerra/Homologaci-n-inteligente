@@ -712,7 +712,14 @@ def valorar_lote_con_ia(cargos: list) -> list:
 
 def buscar_en_internet_y_homologar(cargo: dict, db) -> dict:
     """Busca funciones del cargo en internet y homologa contra la base maestra."""
-    from duckduckgo_search import DDGS
+    try:
+        from ddgs import DDGS
+    except ImportError:
+        try:
+            from duckduckgo_search import DDGS
+        except ImportError:
+            logger.error("ddgs no instalado. Usando búsqueda web alternativa.")
+            DDGS = None
 
     nombre_cargo = cargo.get("nombre_cargo", "")
     area = cargo.get("area", "")
@@ -722,17 +729,22 @@ def buscar_en_internet_y_homologar(cargo: dict, db) -> dict:
     search_url = f"https://duckduckgo.com/?q={requests.utils.quote(search_query)}"
     funciones_encontradas = ""
 
-    try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(search_query, max_results=5))
-            if results:
-                funciones_encontradas = "\n".join([
-                    f"- {r.get('title', '')}: {r.get('body', '')[:300]}"
-                    for r in results[:3]
-                ])
-                search_url = results[0].get("href", search_url)
-    except Exception as e:
-        logger.error(f"Error buscando en DuckDuckGo: {e}")
+    if DDGS is not None:
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.text(search_query, max_results=5))
+                if results:
+                    funciones_encontradas = "\n".join([
+                        f"- {r.get('title', '')}: {r.get('body', '')[:300]}"
+                        for r in results[:3]
+                    ])
+                    search_url = results[0].get("href", search_url)
+        except Exception as e:
+            logger.error(f"Error buscando en DuckDuckGo: {e}")
+            # Fallback: usar URL de búsqueda estática
+            search_url = f"https://duckduckgo.com/?q={requests.utils.quote(search_query)}"
+    else:
+        logger.warning("DuckDuckGo no disponible, usando información base")
         try:
             resp = requests.get(
                 "https://html.duckduckgo.com/html/",
@@ -743,7 +755,7 @@ def buscar_en_internet_y_homologar(cargo: dict, db) -> dict:
             if resp.ok:
                 search_url = f"https://duckduckgo.com/?q={requests.utils.quote(search_query)}"
         except Exception as e2:
-            logger.error(f"Error en fallback de busqueda: {e2}")
+            logger.error(f"Error en fallback de búsqueda: {e2}")
 
     # 2. Cargar la base maestra completa
     masters = load_master_cargos(db)

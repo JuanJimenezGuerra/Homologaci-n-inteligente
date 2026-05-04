@@ -50,8 +50,9 @@ function HomologacionView({ empresaId, onComplete }) {
   const [filterStatus, setFilterStatus] = useState('all');
   const [observaciones, setObservaciones] = useState('');
   const [selectedCargoIds, setSelectedCargoIds] = useState(new Set());
-  const [searchingInternet, setSearchingInternet] = useState(false);
+  const [searchingInternet, setSearchInternet] = useState(false);
   const [searchingIds, setSearchingIds] = useState(new Set());
+  const [showConfirmValoracion, setShowConfirmValoracion] = useState(false);
 
   const [progress, setProgress] = useState(null);
   const [liveCargos, setLiveCargos] = useState([]);
@@ -61,6 +62,58 @@ function HomologacionView({ empresaId, onComplete }) {
     if (empresaId) loadData();
     return () => { if (pollIntervalRef.current) clearInterval(pollIntervalRef.current); };
   }, [empresaId]);
+
+  // Cargar información salarial de la empresa
+  useEffect(() => {
+    if (empresaId && cargos.length > 0) {
+      // Los datos salariales ya vienen en el upload, pero podemos cargar más detalles
+      const loadSalarios = async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch(`${API}/uploads/${empresaId}/empresa`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setEmpresaData(prev => ({ ...prev, ...data }));
+          }
+        } catch (e) {
+          console.warn('Error cargando datos salariales:', e);
+        }
+      };
+      loadSalarios();
+    }
+  }, [empresaId, cargos.length]);
+
+  // Notificar al padre cuando cambien los cargos
+  useEffect(() => {
+    if (onComplete && cargos.length > 0) {
+      // Solo notificar si hay al menos algunos homologados
+      const homologados = cargos.filter(c => c.estado === 'homologado' || c.estado === 'HOMOLOGADO' || c.estado === 'sugerido' || c.estado === 'SUGERIDO');
+      if (homologados.length > 0) {
+        // Guardar en localStorage para persistencia
+        try { localStorage.setItem('shr_cargos_homologacion', JSON.stringify(cargos)); } catch {}
+      }
+    }
+  }, [cargos, onComplete]);
+
+  const handleIrValoracion = () => {
+    setShowConfirmValoracion(true);
+  };
+
+  const confirmarIrValoracion = () => {
+    setShowConfirmValoracion(false);
+    // Descargar hoja de información
+    const link = document.createElement('a');
+    link.href = '/ejemplos/EXPLICACIÓN GENERAL ESCENARIOS DE PAGO-es-ES.docx';
+    link.download = 'EXPLICACIÓN GENERAL ESCENARIOS DE PAGO-es-ES.docx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Guardar datos y pasar a valoración
+    if (onComplete) onComplete(cargos);
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -248,7 +301,7 @@ function HomologacionView({ empresaId, onComplete }) {
     ).map(c => c.id);
 
     if (sinCoincidenciaIds.length === 0) {
-      setError('No hay cargos SIN_COINCIDENCIA para buscar');
+      setError('No hay cargos SIN COINCIDENCIA para buscar');
       return;
     }
 
@@ -274,14 +327,27 @@ function HomologacionView({ empresaId, onComplete }) {
     }
   };
 
+  // Columnas visibles (para colapsar)
+  const [visibleCols, setVisibleCols] = useState({
+    cargo: true,
+    area: true,
+    estado: true,
+    homologado: true,
+    justificacion: true,
+    salario: true,
+    acciones: true,
+  });
+
+  const toggleCol = (col) => setVisibleCols(prev => ({ ...prev, [col]: !prev[col] }));
+
+  const normalizeStatus = (s) => (s || '').toLowerCase().replace(/[_\s-]+/g, '_');
   const displayCargos = (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => {
     const matchSearch = (c.nombre_cargo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (c.area || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (c.homologacion?.cargo_homologado || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const statusVal = (c.estado || '').toLowerCase().replace(/ /g, '_');
-    const matchFilter = filterStatus === 'all' ||
-      statusVal === filterStatus ||
-      statusVal.includes(filterStatus.replace('_', ''));
+    const statusVal = normalizeStatus(c.estado);
+    const filterVal = normalizeStatus(filterStatus);
+    const matchFilter = filterStatus === 'all' || statusVal === filterVal;
     return matchSearch && matchFilter;
   });
 
@@ -604,7 +670,28 @@ function HomologacionView({ empresaId, onComplete }) {
 
       {/* ============ TABLA DE CARGOS ============ */}
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Controles de columnas */}
+      <div className="flex gap-2 mb-3 flex-wrap">
+        {Object.entries(visibleCols).map(([col, visible]) => (
+          <button
+            key={col}
+            onClick={() => toggleCol(col)}
+            className={`text-[10px] px-2 py-1 rounded-full font-bold transition-all ${
+              visible ? 'bg-forest text-white' : 'bg-slate-100 text-slate-400'
+            }`}
+          >
+            {col === 'cargo' ? 'Cargo' :
+             col === 'area' ? 'Area' :
+             col === 'estado' ? 'Estado' :
+             col === 'homologado' ? 'Homologado' :
+             col === 'justificacion' ? 'Justificacion' :
+             col === 'salario' ? 'Salario' :
+             col === 'acciones' ? 'Acc.' : col}
+          </button>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-forest text-white text-[10px] font-bold uppercase">
               <tr>
@@ -614,83 +701,97 @@ function HomologacionView({ empresaId, onComplete }) {
                     <input type="checkbox" checked={selectedCargoIds.size > 0 && displayCargos.filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado').length > 0 && selectedCargoIds.size === displayCargos.filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado').length} onChange={e => { if (e.target.checked) selectAllReprocessable(); else clearSelection(); }} className="rounded border-slate-300 text-primary focus:ring-primary" />
                   </th>
                 )}
-                <th className="px-3 py-3 min-w-[200px]">Cargo</th>
-                <th className="px-3 py-3 min-w-[100px]">Area</th>
-                <th className="px-3 py-3 w-28">Estado</th>
-                <th className="px-3 py-3 min-w-[250px]">Cargo Homologado (editable)</th>
-                <th className="px-3 py-3 min-w-[180px]">Justificacion</th>
-                <th className="px-3 py-3 w-20">Acc.</th>
+                {visibleCols.cargo && <th className="px-3 py-3 min-w-[200px]">Cargo</th>}
+                {visibleCols.area && <th className="px-3 py-3 min-w-[100px]">Area</th>}
+                {visibleCols.estado && <th className="px-3 py-3 w-28">Estado</th>}
+                {visibleCols.homologado && <th className="px-3 py-3 min-w-[250px]">Cargo Homologado (editable)</th>}
+                {visibleCols.justificacion && <th className="px-3 py-3 min-w-[180px]">Justificacion</th>}
+                {visibleCols.salario && <th className="px-3 py-3 min-w-[120px]">Salario Actual</th>}
+                {visibleCols.salario && <th className="px-3 py-3 min-w-[120px]">Salario Esperado</th>}
+                {visibleCols.acciones && <th className="px-3 py-3 w-20">Acc.</th>}
               </tr>
             </thead>
-            <tbody>
-              {displayCargos.map((c, idx) => {
-                const h = c.homologacion || {};
-                const isEditing = editingId === c.id;
-                const isSelected = selectedCargoIds.has(c.id);
-                const isReprocessable = c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado';
-                const isBuscadorInternet = (c.estado || '').toLowerCase().includes('buscado_en_internet');
-                const isSinCoincidencia = (c.estado || '').toLowerCase().includes('sin_coincidencia');
-                const isSearching = searchingIds.has(c.id);
-                return (
-                  <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-purple-50/60' : isBuscadorInternet ? 'bg-cyan-50/40' : c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' : isSinCoincidencia ? 'bg-amber-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
-                    <td className="px-3 py-2.5 text-slate-300 font-mono text-center text-xs">{idx + 1}</td>
-                    {(processing || selectedCargoIds.size > 0) && (
-                      <td className="px-3 py-2.5 text-center">
-                        {isReprocessable && <input type="checkbox" checked={isSelected} onChange={() => toggleCargoSelection(c.id)} className="rounded border-slate-300 text-primary focus:ring-primary" />}
-                      </td>
-                    )}
-                    <td className="px-3 py-2.5 font-semibold text-forest">{c.nombre_cargo}</td>
-                    <td className="px-3 py-2.5 text-slate-500 text-xs">{c.area}</td>
-                    <td className="px-3 py-2.5"><StatusBadge estado={c.estado} /></td>
-                    <td className="px-3 py-2.5">
-                      {isEditing ? (
-                        <div className="flex items-center gap-1">
-                          <input value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(c.id); if (e.key === 'Escape') setEditingId(null); }} className="border border-primary rounded px-2 py-1 text-xs w-full focus:outline-none focus:ring-1 focus:ring-primary" placeholder="Cargo homologado..." />
-                          <button onClick={() => handleSaveEdit(c.id)} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"><Check size={13} /></button>
-                          <button onClick={() => setEditingId(null)} className="p-1 text-red-400 hover:bg-red-50 rounded"><X size={13} /></button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <span className={`text-xs ${isBuscadorInternet ? 'text-cyan-700 font-bold uppercase' : h.cargo_homologado && h.cargo_homologado !== 'SIN COINCIDENCIA' ? 'text-forest font-medium' : 'text-slate-300 italic'}`}>
-                            {h.cargo_homologado || 'Sin homologar'}
-                          </span>
-                          <button onClick={() => handleEdit(c.id, h.cargo_homologado || '')} className="p-1 text-slate-300 hover:text-primary hover:bg-emerald-50 rounded" title="Editar"><Edit2 size={12} /></button>
-                        </div>
+                <tbody>
+                {displayCargos.map((c, idx) => {
+                  const h = c.homologacion || {};
+                  const isEditing = editingId === c.id;
+                  const isSelected = selectedCargoIds.has(c.id);
+                  const isReprocessable = c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado';
+                  const isBuscadorInternet = (c.estado || '').toLowerCase().includes('buscado_en_internet');
+                  const isSinCoincidencia = (c.estado || '').toLowerCase().includes('sin_coincidencia');
+                  const isSearching = searchingIds.has(c.id);
+                  
+                  // Datos salariales del cargo (si existen en la empresa)
+                  const salarioActual = c.homologacion?.datos_excel?.real_pagado || 
+                                   c.homologacion?.datos_excel?.basico || null;
+                  const salarioEsperado = c.homologacion?.datos_excel?.punto_medio_referencia || null;
+                  
+                  return (
+                    <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-purple-50/60' : isBuscadorInternet ? 'bg-cyan-50/40' : c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' : isSinCoincidencia ? 'bg-amber-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                      <td className="px-3 py-2.5 text-slate-300 font-mono text-center text-xs">{idx + 1}</td>
+                      {(processing || selectedCargoIds.size > 0) && (
+                        <td className="px-3 py-2.5 text-center">
+                          {isReprocessable && <input type="checkbox" checked={isSelected} onChange={() => toggleCargoSelection(c.id)} className="rounded border-slate-300 text-primary focus:ring-primary" />}
+                        </td>
                       )}
-                    </td>
-                    <td className="px-3 py-2.5 text-slate-400 text-[10px] max-w-[200px]">
-                      {isBuscadorInternet ? (
-                        <div className="space-y-1">
-                          <p className="text-cyan-600 font-medium truncate" title={h.justificacion}>{h.justificacion || '—'}</p>
-                          {h.busqueda_internet_url && (
-                            <a href={h.busqueda_internet_url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-blue-500 hover:text-blue-700 flex items-center gap-1">
-                              <Globe size={9} /> Ver busqueda
-                            </a>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="truncate" title={h.justificacion}>{h.justificacion || '—'}</p>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-1">
-                        {isSinCoincidencia && !isBuscadorInternet && (
-                          <button
-                            onClick={() => buscarInternet(c.id)}
-                            disabled={isSearching}
-                            className="p-1 text-cyan-500 hover:text-cyan-700 hover:bg-cyan-50 rounded"
-                            title="Buscar en internet"
-                          >
-                            {isSearching ? <Loader2 size={13} className="animate-spin" /> : <Globe size={13} />}
-                          </button>
+                      {visibleCols.cargo && <td className="px-3 py-2.5 font-semibold text-forest">{c.nombre_cargo}</td>}
+                      {visibleCols.area && <td className="px-3 py-2.5 text-slate-500 text-xs">{c.area}</td>}
+                      {visibleCols.estado && <td className="px-3 py-2.5"><StatusBadge estado={c.estado} /></td>}
+                      {visibleCols.homologado && <td className="px-3 py-2.5">
+                        {isEditing ? (
+                          <div className="flex items-center gap-1">
+                            <input value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(c.id); if (e.key === 'Escape') setEditingId(null); }} className="border border-primary rounded px-2 py-1 text-xs w-full focus:outline-none focus:ring-1 focus:ring-primary" placeholder="Cargo homologado..." />
+                            <button onClick={() => handleSaveEdit(c.id)} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"><Check size={13} /></button>
+                            <button onClick={() => setEditingId(null)} className="p-1 text-red-400 hover:bg-red-50 rounded"><X size={13} /></button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <span className={`text-xs ${isBuscadorInternet ? 'text-cyan-700 font-bold uppercase' : h.cargo_homologado && h.cargo_homologado !== 'SIN COINCIDENCIA' ? 'text-forest font-medium' : 'text-slate-300 italic'}`}>
+                              {h.cargo_homologado || 'Sin homologar'}
+                            </span>
+                            <button onClick={() => handleEdit(c.id, h.cargo_homologado || '')} className="p-1 text-slate-300 hover:text-primary hover:bg-emerald-50 rounded" title="Editar"><Edit2 size={12} /></button>
+                          </div>
                         )}
-                        {!isEditing && <button onClick={() => handleEdit(c.id, h.cargo_homologado || '')} className="p-1 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded" title="Editar"><Edit2 size={13} /></button>}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
+                      </td>}
+                      {visibleCols.justificacion && <td className="px-3 py-2.5 text-slate-400 text-[10px] max-w-[200px]">
+                        {isBuscadorInternet ? (
+                          <div className="space-y-1">
+                            <p className="text-cyan-600 font-medium truncate" title={h.justificacion}>{h.justificacion || '—'}</p>
+                            {h.busqueda_internet_url && (
+                              <a href={h.busqueda_internet_url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-blue-500 hover:text-blue-700 flex items-center gap-1">
+                                <Globe size={9} /> Ver búsqueda
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="truncate" title={h.justificacion}>{h.justificacion || '—'}</p>
+                        )}
+                      </td>}
+                      {visibleCols.salario && <td className="px-3 py-2.5 text-xs text-slate-600">
+                        {salarioActual ? `$${Number(salarioActual).toLocaleString('es-CO')}` : '—'}
+                      </td>}
+                      {visibleCols.salario && <td className="px-3 py-2.5 text-xs text-emerald-600 font-medium">
+                        {salarioEsperado ? `$${Number(salarioEsperado).toLocaleString('es-CO')}` : '—'}
+                      </td>}
+                      {visibleCols.acciones && <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-1">
+                          {isSinCoincidencia && !isBuscadorInternet && (
+                            <button
+                              onClick={() => buscarInternet(c.id)}
+                              disabled={isSearching}
+                              className="p-1 text-cyan-500 hover:text-cyan-700 hover:bg-cyan-50 rounded"
+                              title="Buscar en internet"
+                            >
+                              {isSearching ? <Loader2 size={13} className="animate-spin" /> : <Globe size={13} />}
+                            </button>
+                          )}
+                          {!isEditing && <button onClick={() => handleEdit(c.id, h.cargo_homologado || '')} className="p-1 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded" title="Editar"><Edit2 size={13} /></button>}
+                        </div>
+                      </td>}
+                    </tr>
+                  );
+                })}
+              </tbody>
           </table>
         </div>
         {displayCargos.length === 0 && <div className="p-8 text-center text-slate-400 text-sm">No hay cargos que coincidan con la busqueda</div>}
@@ -731,12 +832,33 @@ function HomologacionView({ empresaId, onComplete }) {
       </motion.div>
 
       {/* ============ NEXT STEP ============ */}
-      {stats.homologados + stats.sugeridos > 0 && onComplete && !processing && (
+      {stats.homologados + stats.sugeridos > 0 && !processing && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-end">
-          <button onClick={onComplete} className="flex items-center gap-2 bg-forest text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-primary transition-all shadow-lg">
+          <button onClick={handleIrValoracion} className="flex items-center gap-2 bg-forest text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-primary transition-all shadow-lg">
             Ir a Valuacion <ArrowRight size={16} />
           </button>
         </motion.div>
+      )}
+
+      {/* ============ MODAL CONFIRMACIÓN IR A VALORACIÓN ============ */}
+      {showConfirmValoracion && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <h3 className="text-lg font-bold text-forest mb-3">¿Confirmar ir a Valuación?</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Al pasar a Valuación se descargará la hoja de información y se guardarán los datos de homologación.
+              ¿Está seguro de continuar?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setShowConfirmValoracion(false)} className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium hover:bg-slate-50">
+                Cancelar
+              </button>
+              <button onClick={confirmarIrValoracion} className="px-4 py-2 rounded-xl bg-forest text-white text-sm font-bold hover:bg-primary">
+                Sí, continuar
+              </button>
+            </div>
+          </motion.div>
+        </div>
       )}
     </div>
   );

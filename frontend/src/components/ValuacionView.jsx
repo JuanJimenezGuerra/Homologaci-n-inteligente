@@ -364,10 +364,10 @@ const fetchValoracionesFromUpload = async (uploadId) => {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-const ValuacionView = ({ uploadData }) => {
-  const [cargos, setCargos] = useState([]);
-  const [valoraciones, setValoraciones] = useState({});
-  const [loading, setLoading] = useState(false);
+const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCargosChange, onValoracionesChange, onComplete, onBack }) => {
+  const [cargos, setCargos] = useState(() => cargosIniciales || []);
+  const [valoraciones, setValoraciones] = useState(() => valoracionesIniciales || {});
+  const [loading, setLoading] = useState(!cargosIniciales || cargosIniciales.length === 0);
   const [processingIds, setProcessingIds] = useState(new Set());
   const [expandedId, setExpandedId] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -378,12 +378,29 @@ const ValuacionView = ({ uploadData }) => {
 
   useEffect(() => {
     const loadCargos = async () => {
+      let loadedFromLocalStorage = false;
+
+      // 1. Intentar localStorage primero para mostrar datos inmediatamente
+      try {
+        const saved = localStorage.getItem('shr_valoracion_cargos');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.length > 0) {
+            setCargos(parsed);
+            loadedFromLocalStorage = true;
+          }
+        }
+      } catch {}
+
+      // 2. Si uploadData es un array (viene de otro componente), usarlo
       if (Array.isArray(uploadData) && uploadData.length > 0) {
         setCargos(uploadData);
         try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(uploadData)); } catch {}
+        setLoading(false);
         return;
       }
-      
+
+      // 3. Intentar API para obtener datos actualizados
       const uploadId = Number(uploadData);
       if (uploadId && !isNaN(uploadId)) {
         setLoading(true);
@@ -393,30 +410,105 @@ const ValuacionView = ({ uploadData }) => {
           setCargos(fetched);
           try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(fetched)); } catch {}
         } catch (e) {
-          setError('No se pudieron cargar los cargos. Ve al dashboard y procesa primero.');
-          setCargos([]);
+          console.warn('Error cargando de API, usando localStorage:', e.message);
+          if (!loadedFromLocalStorage) {
+            setError('No se pudieron cargar los cargos del servidor. Usando datos locales si están disponibles.');
+          }
         } finally {
           setLoading(false);
         }
         return;
       }
-      
-      try {
-        const saved = localStorage.getItem('shr_valoracion_cargos');
-        if (saved) setCargos(JSON.parse(saved));
-      } catch {}
+
+      // 4. Fallback final a localStorage
+      if (!loadedFromLocalStorage) {
+        try {
+          const saved = localStorage.getItem('shr_valoracion_cargos');
+          if (saved) {
+            setCargos(JSON.parse(saved));
+          } else {
+            setError('No hay datos disponibles. Ve a la pestaña de Homologación primero.');
+          }
+        } catch {}
+      }
     };
-    
+
     loadCargos();
   }, [uploadData]);
+
+  // Cargar cargos y valoraciones
+  useEffect(() => {
+    const loadData = async () => {
+      let loadedFromLocalStorage = false;
+
+      // 1. Intentar localStorage primero
+      try {
+        const saved = localStorage.getItem('shr_valoracion_cargos');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.length > 0) {
+            setCargos(parsed);
+            loadedFromLocalStorage = true;
+          }
+        }
+      } catch {}
+
+      // 2. Si tenemos cargos iniciales, usarlos
+      if (cargosIniciales && cargosIniciales.length > 0) {
+        setCargos(cargosIniciales);
+        setLoading(false);
+        return;
+      }
+
+      // 3. Intentar API
+      const uploadIdNum = Number(uploadId);
+      if (uploadIdNum && !isNaN(uploadIdNum)) {
+        setLoading(true);
+        setError(null);
+        try {
+          const fetched = await fetchCargosFromUpload(uploadIdNum);
+          setCargos(fetched);
+          try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(fetched)); } catch {}
+        } catch (e) {
+          console.warn('Error cargando de API:', e.message);
+          if (!loadedFromLocalStorage) {
+            setError('No se pudieron cargar los cargos del servidor. Ve a la pestaña de Homologación primero.');
+          }
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      // 4. Fallback final
+      if (!loadedFromLocalStorage) {
+        try {
+          const saved = localStorage.getItem('shr_valoracion_cargos');
+          if (saved) {
+            setCargos(JSON.parse(saved));
+          } else {
+            setError('No hay datos disponibles. Ve a la pestaña de Homologación primero.');
+          }
+        } catch {}
+      }
+    };
+
+    loadData();
+  }, [uploadId, cargosIniciales]);
 
   // Cargar valoraciones existentes del backend
   useEffect(() => {
     const loadValoraciones = async () => {
-      const uploadId = Number(uploadData);
-      if (uploadId && !isNaN(uploadId)) {
+      // Si tenemos valoraciones iniciales, usarlas
+      if (valoracionesIniciales && Object.keys(valoracionesIniciales).length > 0) {
+        setValoraciones(valoracionesIniciales);
+        return;
+      }
+
+      const uploadIdNum = Number(uploadId);
+      if (uploadIdNum && !isNaN(uploadIdNum)) {
         try {
-          const vals = await fetchValoracionesFromUpload(uploadId);
+          const vals = await fetchValoracionesFromUpload(uploadIdNum);
           const map = {};
           vals.forEach(v => {
             if (v.valoracion) {
@@ -424,23 +516,28 @@ const ValuacionView = ({ uploadData }) => {
             }
           });
           setValoraciones(map);
+          if (onValoracionesChange) onValoracionesChange(map);
           try { localStorage.setItem('shr_valoraciones', JSON.stringify(map)); } catch {}
         } catch {
           // Fallback a localStorage
           try {
             const saved = localStorage.getItem('shr_valoraciones');
-            if (saved) setValoraciones(JSON.parse(saved));
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              setValoraciones(parsed);
+            }
           } catch {}
         }
       }
     };
     
     loadValoraciones();
-  }, [uploadData, cargos.length]);
+  }, [uploadId, valoracionesIniciales]);
 
   const saveValoraciones = (updated) => {
     setValoraciones(updated);
     try { localStorage.setItem('shr_valoraciones', JSON.stringify(updated)); } catch {}
+    if (onValoracionesChange) onValoracionesChange(updated);
   };
 
   const callIA = async (cargoId) => {

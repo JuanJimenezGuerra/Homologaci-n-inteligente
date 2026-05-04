@@ -16,6 +16,12 @@ function App() {
   const [userEmail, setUserEmail] = useState(null);
   const [activeTab, setActiveTab] = useState('formulario');
   const [empresaId, setEmpresaId] = useState(null);
+  const [cargosHomologacion, setCargosHomologacion] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('shr_cargos_homologacion') || 'null'); } catch { return null; }
+  });
+  const [valoracionesData, setValoracionesData] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('shr_valoraciones') || 'null'); } catch { return null; }
+  });
 
   useEffect(() => {
     if (token) {
@@ -47,11 +53,19 @@ function App() {
     setActiveTab('homologacion');
   };
 
-  const handleHomologacionCompleta = () => {
+  const handleHomologacionCompleta = (cargos) => {
+    if (cargos) {
+      setCargosHomologacion(cargos);
+      try { localStorage.setItem('shr_cargos_homologacion', JSON.stringify(cargos)); } catch {}
+    }
     setActiveTab('valoracion');
   };
 
-  const handleValoracionCompleta = () => {
+  const handleValoracionCompleta = (valoraciones) => {
+    if (valoraciones) {
+      setValoracionesData(valoraciones);
+      try { localStorage.setItem('shr_valoraciones', JSON.stringify(valoraciones)); } catch {}
+    }
     setActiveTab('analisis');
   };
 
@@ -85,7 +99,17 @@ function App() {
       )}
       {activeTab === 'valoracion' && (
         <ValuacionView
-          uploadData={empresaId}
+          uploadId={empresaId}
+          cargosIniciales={cargosHomologacion}
+          valoracionesIniciales={valoracionesData}
+          onCargosChange={(cargos) => {
+            setCargosHomologacion(cargos);
+            try { localStorage.setItem('shr_cargos_homologacion', JSON.stringify(cargos)); } catch {}
+          }}
+          onValoracionesChange={(vals) => {
+            setValoracionesData(vals);
+            try { localStorage.setItem('shr_valoraciones', JSON.stringify(vals)); } catch {}
+          }}
           onComplete={handleValoracionCompleta}
           onBack={() => setActiveTab('homologacion')}
         />

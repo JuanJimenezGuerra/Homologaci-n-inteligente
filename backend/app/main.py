@@ -797,7 +797,25 @@ def buscar_internet_homologar(cargo_id: int, db: Session = Depends(get_db)):
         "descripcion_empresa": cargo.descripcion_empresa or "",
     }
 
-    resultado = buscar_en_internet_y_homologar(cargo_dict, db)
+    try:
+        resultado = buscar_en_internet_y_homologar(cargo_dict, db)
+    except Exception as e:
+        logger.error(f"Error en busqueda internet para cargo {cargo_id}: {e}")
+        # Fallback: usar IA directamente sin busqueda web
+        try:
+            from .services.ia_service import homologar_con_ia, load_all_masters
+            masters = load_all_masters(db)
+            resultado = homologar_con_ia(cargo_dict, masters)
+            resultado["url_busqueda"] = f"https://duckduckgo.com/?q={requests.utils.quote(cargo.nombre_cargo)}"
+            resultado["justificacion"] = "IA directa (sin busqueda web): " + resultado.get("justificacion", "")
+        except Exception as e2:
+            logger.error(f"Fallback IA tambien fallo: {e2}")
+            # Ultimo fallback: dejar sin cambios
+            resultado = {
+                "cargo_homologado": "SIN COINCIDENCIA",
+                "justificacion": f"Error en busqueda y IA: {str(e)[:100]}",
+                "url_busqueda": f"https://duckduckgo.com/?q={requests.utils.quote(cargo.nombre_cargo)}",
+            }
 
     hom.cargo_homologado = resultado["cargo_homologado"]
     hom.justificacion = resultado["justificacion"]
