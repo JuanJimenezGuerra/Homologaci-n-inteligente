@@ -8,7 +8,7 @@ from typing import Optional, List, Dict
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-flash-1.5:free")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
@@ -26,35 +26,41 @@ def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 
         print("OpenRouter: API key no configurada")
         return None
     try:
-        print(f"OpenRouter: llamando con modelo {OPENROUTER_MODEL}, {len(messages)} mensajes, {max_tokens} max_tokens")
-        resp = requests.post(
-            OPENROUTER_URL,
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": BACKEND_URL,
-                "X-Title": "SHR Homologacion",
-            },
-            json={
-                "model": OPENROUTER_MODEL,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            },
-            timeout=60,
-        )
-        if resp.ok:
-            data = resp.json()
-            content = data.get("choices", [{}])[0].get("message", {}).get("content")
-            print(f"OpenRouter: OK, respuesta {len(content) if content else 0} chars")
-            return content
-        elif resp.status_code == 401:
-            print(f"OpenRouter: ERROR 401 - API key invalida. Ve a openrouter.ai/settings/keys y genera una nueva.")
-            print(f"OpenRouter: key usada: ...{OPENROUTER_API_KEY[-4:]}")
-            return None
-        else:
-            print(f"OpenRouter: HTTP {resp.status_code} - {resp.text[:300]}")
-            logger.error(f"OpenRouter HTTP {resp.status_code}: {resp.text[:200]}")
+        models_to_try = [OPENROUTER_MODEL, "google/gemma-3-27b:free", "mistralai/mistral-small-3.1-24b-instruct:free", "meta-llama/llama-3.3-70b-instruct:free"]
+        unique_models = list(dict.fromkeys(models_to_try))
+
+        for model in unique_models:
+            print(f"OpenRouter: probando modelo {model}")
+            resp = requests.post(
+                OPENROUTER_URL,
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": BACKEND_URL,
+                    "X-Title": "SHR Homologacion",
+                },
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                },
+                timeout=60,
+            )
+            if resp.ok:
+                data = resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content")
+                actual_model = data.get("model", model)
+                print(f"OpenRouter: OK con {actual_model}, respuesta {len(content) if content else 0} chars")
+                return content
+            elif resp.status_code == 401:
+                print(f"OpenRouter: ERROR 401 - API key invalida.")
+                return None
+            else:
+                print(f"OpenRouter: {model} fallo HTTP {resp.status_code} - {resp.text[:200]}")
+
+        print("OpenRouter: TODOS los modelos gratuitos fallaron")
+        return None
     except Exception as e:
         print(f"OpenRouter: excepcion - {e}")
         logger.error(f"OpenRouter error: {e}")
