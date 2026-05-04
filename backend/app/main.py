@@ -16,6 +16,7 @@ from .services.analisis_service import calcular_curvas_equidad, analizar_equidad
 import os
 import shutil
 import threading
+import time
 from typing import List, Optional
 from pydantic import BaseModel
 
