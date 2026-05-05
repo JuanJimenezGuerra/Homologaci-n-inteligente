@@ -15,7 +15,7 @@ print("=== ENV VARS DEBUG ===")
 key2 = os.getenv("OPENROUTER_API_KEY2")
 print("OPENROUTER_API_KEY2: " + ("OK" if key2 else "NO CONFIGURADA"))
 print("OPENROUTER_API_KEY (lo que lee): " + ("OK" if OPENROUTER_API_KEY else "VACIA"))
-print("OPENROUTER_MODEL: " + OPENROUTER_MODEL)
+print("OPENROUTER_MODELS: " + str(OPENROUTER_MODELS))
 api_vars = [k for k in os.environ.keys() if "API" in k or "KEY" in k]
 print("Todas las vars: " + str(api_vars))
 
