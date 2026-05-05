@@ -12,9 +12,10 @@ from ..models import (
 
 logger = logging.getLogger(__name__)
 
+import time
+
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY2")
-# Modelo Google Gemma 4 26B A4B (free) para respuestas cortas
-OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free"
+OPENROUTER_MODELS = ["openrouter/free", "minimax/minimax-m2.5:free"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
@@ -23,29 +24,43 @@ OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
 
 def _call_ia(prompt, max_tokens=500):
-    """Intenta OpenRouter primero, fallback a OpenAI."""
+    """Usa openrouter/free y MiniMax como respaldo."""
     messages = [{"role": "user", "content": prompt}]
 
     if OPENROUTER_API_KEY:
-        try:
-            resp = requests.post(
-                OPENROUTER_URL,
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": OPENROUTER_MODEL,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": 0.1,
-                },
-                timeout=30,
-            )
-            if resp.ok:
-                return resp.json()["choices"][0]["message"]["content"]
-        except Exception as e:
-            logger.error(f"OpenRouter error: {e}")
+        for model in OPENROUTER_MODELS:
+            for intento in range(3):
+                try:
+                    logger.info(f"IA: llamando {model} (intento {intento + 1})")
+                    resp = requests.post(
+                        OPENROUTER_URL,
+                        headers={
+                            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": model,
+                            "messages": messages,
+                            "max_tokens": max_tokens,
+                            "temperature": 0.1,
+                        },
+                        timeout=30,
+                    )
+                    if resp.ok:
+                        return resp.json()["choices"][0]["message"]["content"]
+                    elif resp.status_code == 429:
+                        wait = 2 ** intento
+                        logger.warning(f"Rate limit en {model}, esperando {wait}s")
+                        time.sleep(wait)
+                        continue
+                    else:
+                        logger.error(f"OpenRouter {model} HTTP {resp.status_code}: {resp.text[:100]}")
+                        break
+                except Exception as e:
+                    logger.error(f"OpenRouter {model} error: {e}")
+                    if intento < 2:
+                        time.sleep(2)
+        logger.warning("Todos los modelos OpenRouter fallaron")
 
     if OPENAI_API_KEY:
         try:

@@ -4,9 +4,9 @@ import time
 import requests
 import re
 
-# Modelo Google Gemma 4 26B A4B (free) para respuestas cortas
+# Modelos gratuitos: openrouter/free como principal, MiniMax como respaldo
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY2", "")
-OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free"
+OPENROUTER_MODELS = ["openrouter/free", "minimax/minimax-m2.5:free"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -21,7 +21,7 @@ print("Todas las vars: " + str(api_vars))
 
 
 def call_ia(messages, max_tokens=300, timeout=30):
-    """Llama a OpenRouter con modelo pequeño para respuestas cortas."""
+    """Llama a OpenRouter usando openrouter/free y MiniMax como respaldo."""
     if not OPENROUTER_API_KEY:
         print("[IA] ERROR: No hay OPENROUTER_API_KEY")
         return ""
@@ -34,39 +34,46 @@ def call_ia(messages, max_tokens=300, timeout=30):
         }
         messages = [system_msg] + messages
 
-    for intento in range(2):
-        try:
-            print("[IA] Llamando " + OPENROUTER_MODEL + " (intento " + str(intento + 1) + ")...")
-            resp = requests.post(
-                URL,
-                headers={
-                    "Authorization": "Bearer " + OPENROUTER_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": OPENROUTER_MODEL,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": 0.0
-                },
-                timeout=timeout
-            )
-            if resp.ok:
-                data = resp.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                if content:
-                    print("[IA] Respuesta recibida: " + str(len(content)) + " caracteres")
-                    return content
+    for model in OPENROUTER_MODELS:
+        for intento in range(3):
+            try:
+                print("[IA] Llamando " + model + " (intento " + str(intento + 1) + ")...")
+                resp = requests.post(
+                    URL,
+                    headers={
+                        "Authorization": "Bearer " + OPENROUTER_API_KEY,
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": model,
+                        "messages": messages,
+                        "max_tokens": max_tokens,
+                        "temperature": 0.0
+                    },
+                    timeout=timeout
+                )
+                if resp.ok:
+                    data = resp.json()
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                    if content:
+                        print("[IA] Respuesta recibida: " + str(len(content)) + " caracteres")
+                        return content
+                    else:
+                        print("[IA] Respuesta vacia")
+                elif resp.status_code == 429:
+                    wait = 2 ** intento
+                    print("[IA] Rate limit en " + model + ", esperando " + str(wait) + "s")
+                    time.sleep(wait)
+                    continue
                 else:
-                    print("[IA] Respuesta vacia")
-            else:
-                print("[IA] HTTP " + str(resp.status_code) + ": " + resp.text[:150])
-        except Exception as e:
-            print("[IA] Error: " + str(e))
+                    print("[IA] HTTP " + str(resp.status_code) + ": " + resp.text[:150])
+                    break
+            except Exception as e:
+                print("[IA] Error: " + str(e))
+                if intento < 2:
+                    time.sleep(2)
 
-        if intento == 0:
-            time.sleep(2)
-
+    print("[IA] Todos los modelos fallaron")
     return ""
 
 
