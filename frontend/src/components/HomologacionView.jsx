@@ -836,7 +836,7 @@ function HomologacionView({ empresaId, onComplete }) {
       {stats.homologados + stats.sugeridos > 0 && !processing && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-end">
           <button onClick={handleIrValoracion} className="flex items-center gap-2 bg-forest text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-primary transition-all shadow-lg">
-            Ir a Valuacion <ArrowRight size={16} />
+            Ir a Valoración <ArrowRight size={16} />
           </button>
         </motion.div>
       )}

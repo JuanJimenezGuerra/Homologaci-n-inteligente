@@ -854,10 +854,6 @@ def buscar_internet_lote(body: dict = Body(...), db: Session = Depends(get_db)):
             if not cargo:
                 resultados.append({"cargo_id": cargo_id, "error": "Cargo no encontrado"})
                 continue
-            cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
-            if not cargo:
-                resultados.append({"cargo_id": cargo_id, "error": "Cargo no encontrado"})
-                continue
 
             hom = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
             if not hom:

@@ -79,10 +79,8 @@ def call_ia(messages, max_tokens=300, timeout=30):
 
 def _limpiar_json(text):
     """Limpia el texto JSON antes del parseo."""
-    # Remover marcadores markdown si existen
     text = re.sub(r'```json\s*', '', text)
     text = re.sub(r'```\s*', '', text)
-    # Remover texto antes del primer { o [ y despues del ultimo } o ]
     for start_char, end_char in [("{", "}"), ("[", "]")]:
         start = text.find(start_char)
         end = text.rfind(end_char) + 1
@@ -97,12 +95,9 @@ def extract_json(text):
     if not text:
         return None
     try:
-        # Limpiar texto
         text = _limpiar_json(text)
-        # Intentar parseo directo
         return json.loads(text)
     except:
-        # Si falla, buscar objeto JSON en el texto
         try:
             start = text.find("{")
             end = text.rfind("}") + 1
@@ -120,8 +115,6 @@ def extract_json_array(text):
         return None
     try:
         text = text.strip()
-
-        # Intentar parseo directo primero
         try:
             result = json.loads(text)
             if isinstance(result, list):
@@ -129,7 +122,6 @@ def extract_json_array(text):
         except:
             pass
 
-        # Buscar array JSON con estrategia mejorada
         start = text.find("[")
         end = text.rfind("]") + 1
         if start == -1 or end <= start:
@@ -137,7 +129,6 @@ def extract_json_array(text):
             return None
 
         candidate = text[start:end]
-        # Limpiar caracteres problematicos antes del parseo
         candidate = _limpiar_json(candidate)
 
         print("[IA] Intentando parsear JSON array: " + candidate[:500] + "...")
@@ -173,21 +164,22 @@ def homologar_con_ia(db, cargos, masters=None):
     print("[HOMOLOGACION] Procesando " + str(len(cargos)) + " cargos")
 
     resultados = []
-    for i in range(0, len(cargos), 8):
-        batch = cargos[i:i+8]
-        catalogo = "\n".join(["- " + m["nombre"] for m in masters[:80]])
-        cargos_txt = "\n".join(["ID:" + str(c.get("id")) + " | " + str(c.get("nombre_cargo", "")).upper() for c in batch])
+    for i in range(0, len(cargos), 5):  # Reducir batch a 5 para mejor precision
+        batch = cargos[i:i+5]
+        # Enviar hasta 150 cargos del catalogo para mejor cobertura
+        catalogo = "\n".join(["- " + m["nombre"] for m in masters[:150]])
+        cargos_txt = "\n".join(["ID:" + str(c.get("id")) + " | " + str(c.get("nombre_cargo", "")).upper() + " | Area:" + str(c.get("area", "")) for c in batch])
 
-        prompt = "Eres experto en homologacion de cargos en Colombia.\n\n"
-        prompt += "CATALOGO:\n" + catalogo + "\n\n"
-        prompt += "CARGOS:\n" + cargos_txt + "\n\n"
-        prompt += "INSTRUCCIONES ESTRICTAS:\n"
-        prompt += "1. Para cada ID, busca el cargo mas similar en el catalogo.\n"
-        prompt += "2. RESPONDE UNICAMENTE CON EL ARRAY JSON, SIN TEXTO ADICIONAL.\n"
-        prompt += '3. Formato exacto: [{"id": 1, "cargo_homologado": "NOMBRE", "justificacion": "razon", "confianza": 0.5}]\n'
-        prompt += '4. Si no hay coincidencia, usa "SIN COINCIDENCIA" como cargo_homologado.\n'
-        prompt += "5. NO incluyas explicaciones, solo el JSON.\n"
-        prompt += "6. NO uses markdown ni comillas especiales."
+        prompt = "Eres experto en homologacion de cargos en Colombia. Analiza SIMILITUD SEMANTICA.\n\n"
+        prompt += "CATALOGO MAESTRO (" + str(len(masters[:150])) + " cargos):\n" + catalogo + "\n\n"
+        prompt += "CARGOS A HOMOLOGAR:\n" + cargos_txt + "\n\n"
+        prompt += "INSTRUCCIONES PRIORITARIAS:\n"
+        prompt += "1. Busca el cargo mas SIMILAR semanticamente en el catalogo, no solo coincidencia exacta.\n"
+        prompt += "2. Ejemplos: 'Auxiliar' = 'Asistente', 'Coord' = 'Coordinador', 'Jefe' = 'Gerente'.\n"
+        prompt += "3. RESPONDE UNICAMENTE CON EL ARRAY JSON, SIN TEXTO ADICIONAL.\n"
+        prompt += '4. Formato: [{"id": 1, "cargo_homologado": "NOMBRE_EXACTO_CATALOGO", "justificacion": "similitud", "confianza": 0.8}]\n'
+        prompt += '5. Si no hay similitud usa "SIN COINCIDENCIA". Confianza: 0.0-1.0.\n'
+        prompt += "6. NO expliques, SOLO JSON."
 
         content = ""
         for intento in range(2):
@@ -239,20 +231,60 @@ def valorar_con_ia(cargo):
 
 
 def buscar_en_internet(cargo):
+    """Busca informacion del cargo en internet para mejorar homologacion."""
     if not OPENROUTER_API_KEY:
         return {"fuente": "Sin API key", "titulo": cargo.get("nombre_cargo", ""), "descripcion": "", "url": ""}
 
     nombre = cargo.get("nombre_cargo", "")
-    prompt = 'Dame info del cargo "' + nombre + '" en Colombia.\n\n'
-    prompt += "INSTRUCCIONES ESTRICTAS:\n"
-    prompt += "1. Responde UNICAMENTE con el objeto JSON, sin texto adicional.\n"
-    prompt += "2. No uses markdown ni explicaciones.\n"
-    prompt += '3. Formato exacto: {"fuente":"Internet","titulo":"Cargo","descripcion":"Breve","url":"https://ejemplo.com"}'
+    prompt = "Busca informacion del cargo '" + nombre + "' en Colombia.\n\n"
+    prompt += "INSTRUCCIONES:\n"
+    prompt += "1. Da una descripcion BREVE (max 50 palabras) de las funciones principales.\n"
+    prompt += '2. Responde UNICAMENTE con JSON: {"fuente":"Internet","titulo":"' + nombre + '","descripcion":"funciones principales","url":"https://ejemplo.com"}\n'
+    prompt += "3. Si no encuentras info, usa descripcion generica basada en el nombre del cargo."
 
-    content = call_ia([{"role": "user", "content": prompt}], max_tokens=300)
+    content = call_ia([{"role": "user", "content": prompt}], max_tokens=200)
     if not content:
         return {"fuente": "Error", "titulo": nombre, "descripcion": "Error IA", "url": ""}
     parsed = extract_json(content)
     if parsed and isinstance(parsed, dict):
         return parsed
     return {"fuente": "Error", "titulo": nombre, "descripcion": "Error parseo", "url": ""}
+
+
+def buscar_en_internet_y_homologar(cargo_dict, db):
+    """Busca info en internet y luego homologa el cargo."""
+    # Primero buscar en internet
+    info = buscar_en_internet(cargo_dict)
+    
+    # Luego usar esa info para mejorar la homologacion
+    masters = load_master_cargos(db)
+    
+    nombre = cargo_dict.get("nombre_cargo", "")
+    descripcion = info.get("descripcion", "")
+    
+    prompt = "Eres experto en homologacion de cargos en Colombia.\n\n"
+    prompt += "CARGO A HOMOLOGAR: " + nombre + "\n"
+    prompt += "INFO ENCONTRADA: " + descripcion + "\n\n"
+    prompt += "CATALOGO (primeros 50):\n"
+    prompt += "\n".join(["- " + m["nombre"] for m in masters[:50]]) + "\n\n"
+    prompt += "INSTRUCCIONES:\n"
+    prompt += "1. Busca el cargo mas similar en el catalogo.\n"
+    prompt += '2. Responde UNICAMENTE con JSON: {"cargo_homologado": "NOMBRE", "justificacion": "razon", "confianza": 0.5}\n'
+    prompt += '3. Si no hay coincidencia usa "SIN COINCIDENCIA".'
+
+    content = call_ia([{"role": "user", "content": prompt}], max_tokens=300)
+    if content:
+        parsed = extract_json(content)
+        if parsed and isinstance(parsed, dict):
+            resultado = {
+                "cargo_homologado": parsed.get("cargo_homologado", "SIN COINCIDENCIA"),
+                "justificacion": parsed.get("justificacion", "Info de internet"),
+                "url_busqueda": info.get("url", "https://duckduckgo.com/?q=" + nombre.replace(" ", "+")),
+            }
+            return resultado
+
+    return {
+        "cargo_homologado": "SIN COINCIDENCIA",
+        "justificacion": "Error en busqueda y homologacion",
+        "url_busqueda": info.get("url", "https://duckduckgo.com/?q=" + nombre.replace(" ", "+")),
+    }

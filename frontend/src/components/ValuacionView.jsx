@@ -380,7 +380,7 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
     const loadCargos = async () => {
       let loadedFromLocalStorage = false;
 
-      // 1. Intentar localStorage primero para mostrar datos inmediatamente
+      // 1. Intentar localStorage primero
       try {
         const saved = localStorage.getItem('shr_valoracion_cargos');
         if (saved) {
@@ -392,27 +392,26 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
         }
       } catch {}
 
-      // 2. Si uploadData es un array (viene de otro componente), usarlo
-      if (Array.isArray(uploadData) && uploadData.length > 0) {
-        setCargos(uploadData);
-        try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(uploadData)); } catch {}
+      // 2. Si tenemos cargos iniciales, usarlos
+      if (cargosIniciales && cargosIniciales.length > 0) {
+        setCargos(cargosIniciales);
         setLoading(false);
         return;
       }
 
-      // 3. Intentar API para obtener datos actualizados
-      const uploadId = Number(uploadData);
-      if (uploadId && !isNaN(uploadId)) {
+      // 3. Intentar API
+      const uploadIdNum = Number(uploadId);
+      if (uploadIdNum && !isNaN(uploadIdNum)) {
         setLoading(true);
         setError(null);
         try {
-          const fetched = await fetchCargosFromUpload(uploadId);
+          const fetched = await fetchCargosFromUpload(uploadIdNum);
           setCargos(fetched);
           try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(fetched)); } catch {}
         } catch (e) {
-          console.warn('Error cargando de API, usando localStorage:', e.message);
+          console.warn('Error cargando de API:', e.message);
           if (!loadedFromLocalStorage) {
-            setError('No se pudieron cargar los cargos del servidor. Usando datos locales si están disponibles.');
+            setError('No se pudieron cargar los cargos del servidor. Ve a la pestaña de Homologación primero.');
           }
         } finally {
           setLoading(false);
@@ -420,21 +419,14 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
         return;
       }
 
-      // 4. Fallback final a localStorage
+      // 4. Fallback final
       if (!loadedFromLocalStorage) {
-        try {
-          const saved = localStorage.getItem('shr_valoracion_cargos');
-          if (saved) {
-            setCargos(JSON.parse(saved));
-          } else {
-            setError('No hay datos disponibles. Ve a la pestaña de Homologación primero.');
-          }
-        } catch {}
+        setError('No hay datos disponibles. Ve a la pestaña de Homologación primero.');
       }
     };
 
     loadCargos();
-  }, [uploadData]);
+  }, [uploadId, cargosIniciales]);
 
   // Cargar cargos y valoraciones
   useEffect(() => {
