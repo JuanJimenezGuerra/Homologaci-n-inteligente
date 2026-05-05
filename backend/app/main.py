@@ -839,11 +839,20 @@ def buscar_internet_homologar(cargo_id: int, db: Session = Depends(get_db)):
 def buscar_internet_lote(body: dict = Body(...), db: Session = Depends(get_db)):
     """Busqueda en internet para multiple cargos SIN_COINCIDENCIA."""
     cargo_ids = body.get("cargo_ids", [])
+    if not cargo_ids:
+        return {"resultados": [], "mensaje": "No hay cargos para buscar"}
+    
     from .services.ia_service import buscar_en_internet_y_homologar
 
     resultados = []
+    errores = 0
+    procesados = 0
     for cargo_id in cargo_ids:
         try:
+            cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+            if not cargo:
+                resultados.append({"cargo_id": cargo_id, "error": "Cargo no encontrado"})
+                continue
             cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
             if not cargo:
                 resultados.append({"cargo_id": cargo_id, "error": "Cargo no encontrado"})
@@ -865,22 +874,28 @@ def buscar_internet_lote(body: dict = Body(...), db: Session = Depends(get_db)):
 
             hom.cargo_homologado = resultado["cargo_homologado"]
             hom.justificacion = resultado["justificacion"]
-            hom.busqueda_internet_url = resultado["url_busqueda"]
+            hom.busqueda_internet_url = resultado.get("url_busqueda", "")
             hom.estado_busqueda = "BUSCADO_EN_INTERNET"
             cargo.estado = "BUSCADO_EN_INTERNET"
             db.commit()
+            procesados += 1
 
             resultados.append({
                 "cargo_id": cargo_id,
-                "cargo_homologado": resultado["cargo_homologado"],
-                "justificacion": resultado["justificacion"],
-                "url_busqueda": resultado["url_busqueda"],
+                "cargo_homologado": resultado.get("cargo_homologado", "SIN COINCIDENCIA"),
+                "justificacion": resultado.get("justificacion", ""),
+                "url_busqueda": resultado.get("url_busqueda", ""),
                 "estado": "BUSCADO_EN_INTERNET",
             })
-            time.sleep(2)
+            time.sleep(2)  # Delay entre cargos para evitar rate limiting
         except Exception as e:
             db.rollback()
+            errores += 1
+            logger.error(f"Error en busqueda para cargo {cargo_id}: {e}")
             resultados.append({"cargo_id": cargo_id, "error": str(e)})
+    
+    logger.info(f"Busqueda masiva completada: {procesados} exitosos, {errores} errores de {len(cargo_ids)} totales")
+    return {"resultados": resultados, "procesados": procesados, "errores": errores, "total": len(cargo_ids)}
 
     return {"resultados": resultados}
 

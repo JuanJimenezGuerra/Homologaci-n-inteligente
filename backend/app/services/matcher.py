@@ -15,17 +15,17 @@ def _get_db():
 
 
 def normalize_cargo_name(text):
-    """Normaliza nombre de cargo: MAYUSCULAS, sin tildes, sin comas, sin espacios extra."""
+    """Normaliza nombre de cargo: MAYÚSCULAS, sin tildes, sin puntuación ni caracteres especiales."""
     if not text:
         return ""
     t = str(text).strip().upper()
     # Quitar tildes
     t = t.replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
-    # Qutar comas, puntos y comas, puntos
-    t = t.replace(",", "").replace(";", "").replace(".", "").replace(":", "")
-    # Quitar caracteres especiales pero mantener letras, numeros y espacios
+    # Quitar puntuación común: , . ; : ¡ ! ¿ ? ( ) [ ] { } / \ - _ 
+    t = re.sub(r"[,.;:!?¿¡()\[\]{}/\\\-_]", "", t)
+    # Quitar cualquier otro carácter que no sea letra, número o espacio
     t = re.sub(r"[^A-Z0-9\s]", "", t)
-    # Colapsar espacios multiples
+    # Colapsar espacios múltiples
     t = re.sub(r"\s+", " ", t).strip()
     return t
 

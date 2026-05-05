@@ -266,22 +266,23 @@ def load_master_cargos(db) -> list:
 
 
 def build_homologacion_prompt(cargos: list, masters: list) -> str:
-    """Construye el prompt para homologacion de cargos con IA."""
-
+    """Construye el prompt para homologación de cargos con IA."""
+    
     masters_text = "\n".join([
-        f"- {m['nombre']} | {m['area']}"
+        f"- {m['nombre'].upper() if m.get('nombre') else ''} | {m.get('area', '')}"
         for m in masters[:80]
     ])
-
+    
     cargos_text = ""
     for c in cargos[:10]:
-        desc = c.get("descripcion", "") or c.get("descripcion_empresa", "") or ""
-        area = c.get("area", "N/A")
+        desc = (c.get("descripcion", "") or c.get("descripcion_empresa", "") or "").upper()
+        area = (c.get("area", "N/A") or "").upper()
+        nombre = (c.get("nombre_cargo", "") or "").upper()
         cargos_text += f"""
-ID: {c['id']}
-Cargo: {c['nombre_cargo']}
-Area: {area}
-Descripcion: {desc[:150]}
+ID: {c.get('id', '')}
+CARGO: {nombre}
+AREA: {area}
+DESCRIPCION: {desc[:150]}
 ---
 """
 

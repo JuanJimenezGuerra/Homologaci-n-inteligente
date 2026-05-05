@@ -12,3 +12,19 @@ services:
         value: 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
       - key: BACKEND_URL
         value: https://shr-backend-prod.onrender.com
+  
+  # Cron-job 1: Ping cada minuto (Render free tier se duerme tras 50s sin tráfico)
+  - type: cron
+    name: shr-api-keepalive-1m
+    schedule: '*/1 * * * *'  # Cada minuto
+    envVars:
+      - key: CRON_COMMAND
+        value: curl -s https://shr-backend-prod.onrender.com/ping || true
+
+  # Cron-job 2: Segundo ping con delay para cubrir el gap de 30s
+  - type: cron
+    name: shr-api-keepalive-30s
+    schedule: '*/1 * * * *'  # Cada minuto
+    envVars:
+      - key: CRON_COMMAND
+        value: sleep 30 && curl -s https://shr-backend-prod.onrender.com/ping || true
