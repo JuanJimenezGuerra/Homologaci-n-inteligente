@@ -1,97 +1,12 @@
 import os
 import json
-import time
-import requests
+import re
 import logging
 from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
-HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "")
-HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "HuggingFaceH4/zephyr-7b-beta")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
-
-print(f"IA Service: HUGGINGFACE_API_KEY={'CONFIGURADA' if HUGGINGFACE_API_KEY else 'NO CONFIGURADA (usando gratis)'}")
-print(f"IA Service: HUGGINGFACE_MODEL={HUGGINGFACE_MODEL}")
-
-
-def call_huggingface(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
-    """Call Hugging Face Inference API using requests (no extra libs needed)."""
-    try:
-        print(f"HuggingFace: llamando {HUGGINGFACE_MODEL}")
-        
-        # Convert messages to prompt
-        prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages]) + "\nassistant:"
-        
-        headers = {"Content-Type": "application/json"}
-        if HUGGINGFACE_API_KEY:
-            headers["Authorization"] = f"Bearer {HUGGINGFACE_API_KEY}"
-        
-        # Try direct Inference API call
-        url = f"https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}"
-        
-        resp = requests.post(
-            url,
-            headers=headers,
-            json={
-                "inputs": prompt,
-                "parameters": {
-                    "max_new_tokens": max_tokens,
-                    "temperature": temperature,
-                    "return_full_text": False,
-                }
-            },
-            timeout=60,
-        )
-        
-        if resp.ok:
-            data = resp.json()
-            # Handle response formats
-            if isinstance(data, list) and len(data) > 0:
-                if isinstance(data[0], dict):
-                    content = data[0].get("generated_text", "").strip()
-                else:
-                    content = str(data[0]).strip()
-            elif isinstance(data, dict):
-                content = data.get("generated_text", "").strip()
-            else:
-                content = str(data).strip()
-            
-            if len(content) == 0:
-                print(f"HuggingFace: {HUGGINGFACE_MODEL} devolvio respuesta vacia")
-                return None
-            
-            print(f"HuggingFace: OK, respuesta {len(content)} chars")
-            return content
-        else:
-            print(f"HuggingFace: HTTP {resp.status_code} - {resp.text[:200]}")
-            return None
-    except Exception as e:
-        print(f"HuggingFace: excepcion - {e}")
-        return None
-
-
-def call_ia(messages: list, max_tokens: int = 800, temperature: float = 0.1, timeout: int = 60) -> Optional[str]:
-    """Usa Hugging Face Inference API (free tier, no registration)."""
-    import threading
-    result = {"content": None}
-
-    def _call():
-        try:
-            result["content"] = call_huggingface(messages, max_tokens, temperature)
-        except Exception as e:
-            print(f"call_ia error: {e}")
-            result["content"] = None
-
-    thread = threading.Thread(target=_call)
-    thread.daemon = True
-    thread.start()
-    thread.join(timeout)
-
-    if thread.is_alive():
-        print(f"call_ia: TIMEOUT tras {timeout}s")
-        return None
-    return result["content"]
 
 
 def extract_json(text: str) -> Optional[dict]:
@@ -109,102 +24,8 @@ def extract_json(text: str) -> Optional[dict]:
         return None
 
 
-def extract_json_array(text: str) -> Optional[list]:
-    """Extrae array JSON de la respuesta de IA, manejando respuestas truncadas/incompletas."""
-    if not text:
-        return None
-    try:
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
-        text = text.strip()
-
-        # Intento directo primero
-        try:
-            parsed = json.loads(text)
-            if isinstance(parsed, list):
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
-        # Si fallo, intentar reparar JSON truncado
-        repaired = _repair_truncated_json_array(text)
-        if repaired:
-            return repaired
-
-        # Ultimo intento: extraer objetos JSON individuales del texto
-        return _extract_individual_objects(text)
-
-    except Exception as e:
-        logger.error(f"Error extrayendo JSON array: {e}. Texto: {text[:300]}")
-    return None
-
-
-def _repair_truncated_json_array(text: str) -> Optional[list]:
-    """Repara un array JSON truncado quitando el ultimo objeto incompleto."""
-    text = text.strip()
-    if not text.startswith("["):
-        return None
-
-    # Agregar cierre si falta
-    if not text.endswith("]"):
-        # Encontrar el ultimo objeto completo
-        # Buscar patrones de } o numeros/cierres antes del corte
-        last_complete = text.rfind("},")
-        if last_complete == -1:
-            # Quizas solo hay un objeto truncado
-            last_complete = text.rfind("}")
-            if last_complete > 0:
-                repaired = text[:last_complete + 1] + "]"
-            else:
-                return None
-        else:
-            repaired = text[:last_complete + 1] + "\n]"
-
-        try:
-            return json.loads(repaired)
-        except json.JSONDecodeError:
-            pass
-
-        # Intentar con mas reparaciones: quitar comas sueltas
-        repaired2 = repaired.rstrip(" ,\n") + "]"
-        try:
-            return json.loads(repaired2)
-        except json.JSONDecodeError:
-            pass
-
-    return None
-
-
-def _extract_individual_objects(text: str) -> Optional[list]:
-    """Extrae objetos JSON individuales de texto con formato JSON."""
-    results = []
-    depth = 0
-    start = -1
-
-    for i, ch in enumerate(text):
-        if ch == "{":
-            if depth == 0:
-                start = i
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0 and start >= 0:
-                obj_str = text[start:i + 1]
-                try:
-                    obj = json.loads(obj_str)
-                    if isinstance(obj, dict) and "id" in obj:
-                        results.append(obj)
-                except json.JSONDecodeError:
-                    pass
-                start = -1
-
-    return results if results else None
-
-
 # ==========================================
-# HOMOLOGACION CON IA
+# HOMOLOGACION CON COINCIDENCIA LOCAL
 # ==========================================
 
 MASTER_CARGOS_CACHE = None
@@ -236,223 +57,191 @@ def load_master_cargos(db) -> list:
     return masters
 
 
-def build_homologacion_prompt(cargos: list, masters: list) -> str:
-    """Construye el prompt para homologación de cargos con IA."""
-    
-    masters_text = "\n".join([
-        f"- {m['nombre'].upper() if m.get('nombre') else ''} | {m.get('area', '')}"
-        for m in masters[:80]
-    ])
-    
-    cargos_text = ""
-    for c in cargos[:10]:
-        desc = (c.get("descripcion", "") or c.get("descripcion_empresa", "") or "").upper()
-        area = (c.get("area", "N/A") or "").upper()
-        nombre = (c.get("nombre_cargo", "") or "").upper()
-        cargos_text += f"""
-ID: {c.get('id', '')}
-CARGO: {nombre}
-AREA: {area}
-DESCRIPCION: {desc[:150]}
----
-"""
-
-    prompt = f"""Given the following master job catalog and company jobs, find the most similar master job for each company job.
-
-MASTER JOBS:
-{masters_text}
-
-COMPANY JOBS TO MATCH:
-{cargos_text}
-
-For each company job, return the most similar master job name from the catalog. If no similar job exists, return "SIN COINCIDENCIA".
-
-Return ONLY a JSON array:
-[
-  {{
-    "id": JOB_ID,
-    "cargo_homologado": "MASTER_JOB_NAME or SIN COINCIDENCIA",
-    "justificacion": "brief reason",
-    "confianza": 0.0 to 1.0
-  }}
-]"""
-
-    return prompt
-
-
 def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
-    """Homologa un lote de cargos usando IA. Retorna lista de resultados."""
-    ia_error = "sin_error"
-
-    if not HUGGINGFACE_API_KEY:
-        print("homologar_con_ia: Usando Hugging Face free tier (sin API key)")
-
+    """Homologa cargos usando coincidencia de texto local (sin IA externa)."""
+    
     if masters is None:
         masters = load_master_cargos(db)
     if not masters:
         print("homologar_con_ia: NO hay cargos maestros en la base de datos")
-        ia_error = "Sin catalogo maestro en la base de datos"
-        return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error} for c in cargos]
-
-    batch_size = 8
-    print(f"homologar_con_ia: Procesando {len(cargos)} cargos en lotes de {batch_size}")
-
+        return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Sin catalogo maestro", "confianza": 0.0} for c in cargos]
+    
+    print(f"homologar_con_ia: Procesando {len(cargos)} cargos con coincidencia de texto local")
+    
+    import re
+    
+    def normalize(text):
+        """Normaliza texto para comparacion."""
+        if not text:
+            return ""
+        text = text.upper()
+        text = re.sub(r'[^\w\s]', ' ', text)
+        text = re.sub(r'\s+', ' ', text)
+        return text.strip()
+    
+    def match_score(cargo_name, master_name, cargo_desc="", master_desc=""):
+        """Calcula score de coincidencia entre cargo y master."""
+        n_cargo = normalize(cargo_name)
+        n_master = normalize(master_name)
+        
+        if not n_cargo or not n_master:
+            return 0.0
+        
+        # Coincidencia exacta
+        if n_cargo == n_master:
+            return 1.0
+        
+        # Coincidencia de palabras
+        cargo_words = set(n_cargo.split())
+        master_words = set(n_master.split())
+        
+        if len(cargo_words) == 0 or len(master_words) == 0:
+            return 0.0
+        
+        # Palabras en comun
+        common = cargo_words & master_words
+        score_words = len(common) / max(len(cargo_words), len(master_words))
+        
+        # Bonus si una es substring de la otra
+        if n_cargo in n_master or n_master in n_cargo:
+            score_words = max(score_words, 0.8)
+        
+        # Verificar jerarquia (jefe, coordinador, analista, auxiliar)
+        jerarquia = ["JEFE", "DIRECTOR", "GERENTE", "COORDINADOR", "SUPERVISOR", "ANALISTA", "ESPECIALISTA", "TECNICO", "AUXILIAR", "ASISTENTE"]
+        cargo_jer = next((j for j in jerarquia if j in n_cargo), None)
+        master_jer = next((j for j in jerarquia if j in n_master), None)
+        
+        # Penalizar si la jerarquia no coincide
+        if cargo_jer and master_jer and cargo_jer != master_jer:
+            score_words *= 0.6
+        
+        return round(score_words, 2)
+    
     resultados = []
-    for i in range(0, len(cargos), batch_size):
-        batch = cargos[i:i + batch_size]
-        prompt = build_homologacion_prompt(batch, masters)
-        prompt_len = len(prompt)
-        lote_num = i // batch_size + 1
-        print(f"homologar_con_ia: Lote {lote_num}, {len(batch)} cargos, prompt {prompt_len} chars")
-
-        # Intentar con retry automatico si falla el primer modelo
-        content = None
-        max_retries = 2
-        for attempt in range(max_retries):
-            content = call_ia([{"role": "user", "content": prompt}], max_tokens=2000, timeout=90)
-            if content:
-                break
-            print(f"homologar_con_ia: Lote {lote_num} intento {attempt + 1} fallo, reintentando...")
-            time.sleep(2)
-
-        if not content:
-            ia_error = "Sin respuesta de IA tras reintentos."
-            print(f"homologar_con_ia: Lote {lote_num} FALLO definitivo - sin respuesta de IA")
-            resultados.extend([
-                {"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error}
-                for c in batch
-            ])
-            continue
-
-        parsed = extract_json_array(content)
-        if parsed and isinstance(parsed, list):
-            parsed_ids = {r.get("id") for r in parsed}
-            batch_ids = {c.get("id") for c in batch}
-            matched_count = len(parsed_ids & batch_ids)
-            print(f"homologar_con_ia: Lote {lote_num} OK - {len(parsed)} objetos, {matched_count}/{len(batch)} matchean")
-
-            for res in parsed:
-                resultados.append({
-                    "id": res.get("id"),
-                    "cargo_homologado": res.get("cargo_homologado", "SIN_COINCIDENCIA"),
-                    "justificacion": res.get("justificacion", ""),
-                    "confianza": res.get("confianza", 0.5),
-                })
-
-            for c in batch:
-                if c.get("id") not in parsed_ids:
-                    print(f"homologar_con_ia: Lote {lote_num} - cargo {c.get('id')} ({c.get('nombre_cargo')}) sin resultado")
-                    resultados.append({
-                        "id": c.get("id"),
-                        "cargo_homologado": "SIN_COINCIDENCIA",
-                        "justificacion": "Respuesta IA truncada (modelo gratuito con limite de tokens)",
-                        "confianza": 0.0,
-                        "_ia_error": "JSON truncado por modelo",
-                    })
+    for c in cargos:
+        cargo_name = c.get("nombre_cargo", "")
+        cargo_desc = c.get("descripcion", "") or c.get("descripcion_empresa", "") or ""
+        
+        best_match = None
+        best_score = 0.0
+        
+        for m in masters:
+            master_name = m.get("nombre", "")
+            master_desc = m.get("descripcion", "")
+            
+            score = match_score(cargo_name, master_name, cargo_desc, master_desc)
+            
+            if score > best_score:
+                best_score = score
+                best_match = master_name
+        
+        if best_match and best_score >= 0.3:
+            resultados.append({
+                "id": c.get("id"),
+                "cargo_homologado": best_match,
+                "justificacion": f"Coincidencia texto ({int(best_score*100)}%)",
+                "confianza": best_score,
+            })
         else:
-            print(f"homologar_con_ia: Lote {lote_num} FALLO parseo - contenido: {content[:200]}...")
-            resultados.extend([
-                {"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Error parseando respuesta IA", "confianza": 0.0, "_ia_error": "Error parseando respuesta IA"}
-                for c in batch
-            ])
-
-    total_ok = len([r for r in resultados if r.get("_ia_error") is None])
-    total_ia_error = len([r for r in resultados if r.get("_ia_error") is not None])
-    print(f"homologar_con_ia: Completado - {total_ok}/{len(cargos)} exitosos, {total_ia_error} errores IA")
+            resultados.append({
+                "id": c.get("id"),
+                "cargo_homologado": "SIN_COINCIDENCIA",
+                "justificacion": "Sin coincidencia en catalogo",
+                "confianza": 0.0,
+            })
+    
+    total_ok = len([r for r in resultados if r["cargo_homologado"] != "SIN_COINCIDENCIA"])
+    print(f"homologar_con_ia: Completado - {total_ok}/{len(cargos)} coincidencias encontradas")
     return resultados
 
 
 def homologar_con_ia_observaciones(db, cargos: list, masters: list = None, observaciones: str = "") -> list:
-    """Homologa cargos con IA incluyendo observaciones del analista para reprocesamiento."""
-    if not OPENROUTER_API_KEY and not OPENAI_API_KEY:
-        print("homologar_con_ia_observaciones: NO hay API key de IA")
-        return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Sin API key", "confianza": 0.0} for c in cargos]
-
+    """Homologa cargos con coincidencia local, considerando observaciones del analista."""
+    
     if masters is None:
-        from .ia_service import load_master_cargos
         masters = load_master_cargos(db)
     if not masters:
         return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Sin catalogo maestro", "confianza": 0.0} for c in cargos]
 
-    print(f"homologar_con_ia_observaciones: Reprocesando {len(cargos)} cargos con observaciones del analista")
+    print(f"homologar_con_ia_observaciones: Reprocesando {len(cargos)} cargos con observaciones")
 
-    # Build prompt with observations context
-    obs_text = f"\nOBSERVACIONES DEL ANALISTA:\n{observaciones}\n" if observaciones else ""
+    import re
 
-    masters_text = "\n".join([
-        f"- {m['nombre']} | {m['area']}"
-        for m in masters[:80]
-    ])
+    def normalize(text):
+        if not text:
+            return ""
+        text = text.upper()
+        text = re.sub(r'[^\w\s]', ' ', text)
+        text = re.sub(r'\s+', ' ', text)
+        return text.strip()
 
-    cargos_text = ""
-    for c in cargos[:5]:
-        desc = c.get("descripcion", "") or c.get("descripcion_empresa", "") or ""
-        area = c.get("area", "N/A")
-        hom_actual = c.get("cargo_homologado_actual", "") or ""
-        hom_note = f" (Homologado actual: {hom_actual})" if hom_actual and hom_actual != "SIN_COINCIDENCIA" else ""
-        cargos_text += f"""
-ID: {c['id']}
-Cargo: {c['nombre_cargo']}{hom_note}
-Area: {area}
-Descripcion: {desc[:200]}
----
-"""
+    def match_score(cargo_name, master_name):
+        n_cargo = normalize(cargo_name)
+        n_master = normalize(master_name)
 
-    prompt = f"""Eres un experto en clasificacion y homologacion de cargos en Colombia bajo metodologia SHR/HAY.
+        if not n_cargo or not n_master:
+            return 0.0
 
-Un analista ya reviso las homologaciones anteriores y tiene observaciones. Usa esas observaciones para mejorar los resultados.
-{obs_text}
-=== CATALOGO MAESTRO DE CARGOS ===
-{masters_text}
+        if n_cargo == n_master:
+            return 1.0
 
-=== CARGOS A REPROCESAR ===
-{cargos_text}
+        cargo_words = set(n_cargo.split())
+        master_words = set(n_master.split())
 
-INSTRUCCIONES:
-1. Revisa las observaciones del analista y ajustalas a la seleccion del cargo maestro.
-2. Si el analista indico que un cargo pertenece a otra area, busca en esa area del catalogo.
-3. Si el analista menciono que el cargo tiene funciones diferentes, considera eso.
-4. Responde SOLO con un array JSON valido.
+        if len(cargo_words) == 0 or len(master_words) == 0:
+            return 0.0
 
-[
-  {{
-    "id": ID_NUMERICO,
-    "cargo_homologado": "NOMBRE EXACTO DEL CARGO MAESTRO",
-    "justificacion": "Razon breve incluyendo las observaciones del analista (max 100 chars)",
-    "confianza": 0.0 a 1.0
-  }}
-]"""
+        common = cargo_words & master_words
+        score_words = len(common) / max(len(cargo_words), len(master_words))
 
-    messages = [{"role": "user", "content": prompt}]
-    content = call_ia(messages, max_tokens=2000)
+        if n_cargo in n_master or n_master in n_cargo:
+            score_words = max(score_words, 0.8)
 
-    if not content:
-        print("homologar_con_ia_observaciones: Sin respuesta de IA")
-        return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Error en IA", "confianza": 0.0} for c in cargos]
+        return round(score_words, 2)
 
-    parsed = extract_json_array(content)
-    if parsed and isinstance(parsed, list):
-        print(f"homologar_con_ia_observaciones: OK - {len(parsed)} resultados parseados")
-        return [{
-            "id": res.get("id"),
-            "cargo_homologado": res.get("cargo_homologado", "SIN_COINCIDENCIA"),
-            "justificacion": res.get("justificacion", ""),
-            "confianza": res.get("confianza", 0.5),
-        } for res in parsed]
+    # Parse observaciones to improve matching
+    obs_lower = observaciones.upper() if observaciones else ""
 
-    # Fallback: extract individual objects
-    objects = _extract_individual_objects(content)
-    if objects:
-        print(f"homologar_con_ia_observaciones: OK - {len(objects)} objetos extraidos individualmente")
-        return [{
-            "id": res.get("id"),
-            "cargo_homologado": res.get("cargo_homologado", "SIN_COINCIDENCIA"),
-            "justificacion": res.get("justificacion", ""),
-            "confianza": res.get("confianza", 0.5),
-        } for res in objects]
+    resultados = []
+    for c in cargos:
+        cargo_name = c.get("nombre_cargo", "")
 
-    print(f"homologar_con_ia_observaciones: FALLO parseo - raw: {content[:150]}")
-    return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": "Error parseando IA", "confianza": 0.0} for c in cargos]
+        best_match = None
+        best_score = 0.0
+
+        for m in masters:
+            master_name = m.get("nombre", "")
+            score = match_score(cargo_name, master_name)
+
+            # Boost score if observaciones mention this master
+            if obs_lower and normalize(master_name) in obs_lower:
+                score = max(score, 0.7)
+
+            if score > best_score:
+                best_score = score
+                best_match = master_name
+
+        if best_match and best_score >= 0.3:
+            justificacion = f"Coincidencia texto ({int(best_score*100)}%)"
+            if obs_lower and normalize(best_match) in obs_lower:
+                justificacion += " + obs. analista"
+            resultados.append({
+                "id": c.get("id"),
+                "cargo_homologado": best_match,
+                "justificacion": justificacion,
+                "confianza": best_score,
+            })
+        else:
+            resultados.append({
+                "id": c.get("id"),
+                "cargo_homologado": "SIN_COINCIDENCIA",
+                "justificacion": "Sin coincidencia en catalogo",
+                "confianza": 0.0,
+            })
+
+    total_ok = len([r for r in resultados if r["cargo_homologado"] != "SIN_COINCIDENCIA"])
+    print(f"homologar_con_ia_observaciones: Completado - {total_ok}/{len(cargos)} coincidencias encontradas")
+    return resultados
 
 
 # ==========================================
