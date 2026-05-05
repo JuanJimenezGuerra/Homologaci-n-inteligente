@@ -430,32 +430,51 @@ def ejecutar_homologacion(
             ia_suggested = 0
             total_processed = exact_count
             if usar_ia and unmatched:
-                from .services.ia_service import homologar_con_ia
+                from .services.ia_service import homologar_con_ia, OPENROUTER_API_KEY, OPENAI_API_KEY
 
                 with _progress_lock:
                     _homologacion_progress[upload_id]["current_batch"] = f"Consultando IA ({len(unmatched)} cargos restantes)..."
 
-                # Process unmatched one batch at a time (batch of 8), commit after each
-                for batch_start in range(0, len(unmatched), 8):
-                    batch = unmatched[batch_start:batch_start + 8]
-                    cargos_batch = [{
-                        "id": c.id,
-                        "nombre_cargo": c.nombre_cargo,
-                        "area": c.area,
-                        "descripcion": c.descripcion_empresa or "",
-                        "descripcion_empresa": c.descripcion_empresa or "",
-                        "cargo_jefe": "",
-                    } for c in batch]
+                # If no API keys, mark all as SIN COINCIDENCIA immediately
+                if not OPENROUTER_API_KEY and not OPENAI_API_KEY:
+                    print("WARNING: No API keys. Marking all unmatched as SIN COINCIDENCIA")
+                    for cargo in unmatched:
+                        homo = cargo.homologacion
+                        if not homo:
+                            homo = Homologacion(cargo_id=cargo.id)
+                            thread_db.add(homo)
+                        homo.cargo_homologado = "SIN COINCIDENCIA"
+                        homo.justificacion = "Sin API key de IA configurada"
+                        cargo.estado = "SIN_COINCIDENCIA"
+                        total_processed += 1
 
-                    try:
-                        resultados = homologar_con_ia(thread_db, cargos_batch, masters)
-                    except Exception as e:
-                        print(f"Error en lote IA batch {batch_start}: {e}")
-                        # Mark all in this batch as error
-                        resultados = [
-                            {"id": c["id"], "cargo_homologado": "SIN COINCIDENCIA", "justificacion": f"Error IA: {str(e)[:80]}", "confianza": 0.0}
-                            for c in cargos_batch
-                        ]
+                    with _progress_lock:
+                        prog = _homologacion_progress.get(upload_id, {})
+                        prog["not_matched"] = prog.get("not_matched", 0) + len(unmatched)
+                        prog["processed"] = total_processed
+                    thread_db.commit()
+                else:
+                    # Process unmatched one batch at a time (batch of 8), commit after each
+                    for batch_start in range(0, len(unmatched), 8):
+                        batch = unmatched[batch_start:batch_start + 8]
+                        cargos_batch = [{
+                            "id": c.id,
+                            "nombre_cargo": c.nombre_cargo,
+                            "area": c.area,
+                            "descripcion": c.descripcion_empresa or "",
+                            "descripcion_empresa": c.descripcion_empresa or "",
+                            "cargo_jefe": "",
+                        } for c in batch]
+
+                        try:
+                            resultados = homologar_con_ia(thread_db, cargos_batch, masters)
+                        except Exception as e:
+                            print(f"Error en lote IA batch {batch_start}: {e}")
+                            # Mark all in this batch as error
+                            resultados = [
+                                {"id": c["id"], "cargo_homologado": "SIN COINCIDENCIA", "justificacion": f"Error IA: {str(e)[:80]}", "confianza": 0.0}
+                                for c in cargos_batch
+                            ]
 
                     for res in resultados:
                         cargo_id = res.get("id")
