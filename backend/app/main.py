@@ -430,13 +430,13 @@ def ejecutar_homologacion(
             ia_suggested = 0
             total_processed = exact_count
             if usar_ia and unmatched:
-                from .services.ia_service import homologar_con_ia, OPENROUTER_API_KEY, OPENAI_API_KEY
+                from .services.ia_service import homologar_con_ia, HUGGINGFACE_API_KEY
 
                 with _progress_lock:
                     _homologacion_progress[upload_id]["current_batch"] = f"Consultando IA ({len(unmatched)} cargos restantes)..."
 
-                # If no API keys, mark all as SIN COINCIDENCIA immediately
-                if not OPENROUTER_API_KEY and not OPENAI_API_KEY:
+                # If no API key, mark all as SIN COINCIDENCIA immediately
+                if not HUGGINGFACE_API_KEY:
                     print("WARNING: No API keys. Marking all unmatched as SIN COINCIDENCIA")
                     for cargo in unmatched:
                         homo = cargo.homologacion
