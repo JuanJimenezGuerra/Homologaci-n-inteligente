@@ -355,12 +355,12 @@ function HomologacionView({ empresaId, onComplete }) {
   });
 
   const stats = {
-    total: displayCargos.length,
-    homologados: displayCargos.filter(c => (c.estado || '').toLowerCase() === 'homologado').length,
-    sugeridos: displayCargos.filter(c => (c.estado || '').toLowerCase() === 'sugerido').length,
-    pendientes: displayCargos.filter(c => ['pendiente', 'procesando'].includes((c.estado || '').toLowerCase())).length,
-    sin_coincidencia: displayCargos.filter(c => (c.estado || '').toLowerCase().includes('sin_coincidencia')).length,
-    buscados_internet: displayCargos.filter(c => (c.estado || '').toLowerCase().includes('buscado_en_internet')).length,
+    total: (processing && liveCargos.length > 0 ? liveCargos : cargos).length,
+    homologados: (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => (c.estado || '').toLowerCase() === 'homologado').length,
+    sugeridos: (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => (c.estado || '').toLowerCase() === 'sugerido').length,
+    pendientes: (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => ['pendiente', 'procesando'].includes((c.estado || '').toLowerCase())).length,
+    sin_coincidencia: (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => (c.estado || '').toLowerCase().includes('sin_coincidencia')).length,
+    buscados_internet: (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => (c.estado || '').toLowerCase().includes('buscado_en_internet')).length,
   };
 
   const formatCurrency = (val) => {
@@ -599,10 +599,8 @@ function HomologacionView({ empresaId, onComplete }) {
             <motion.div className="h-full bg-gradient-to-r from-blue-400 to-emerald-400 rounded-full" initial={{ width: 0 }} animate={{ width: `${Math.min(100, ((progress.processed || 0) / (progress.total || 1)) * 100)}%` }} transition={{ duration: 0.3 }} />
           </div>
           <div className="flex gap-4 text-xs">
-            {progress.exact_matches > 0 && <span className="flex items-center gap-1 text-emerald-600 font-bold"><Check size={12} /> {progress.exact_matches} Match</span>}
-            {progress.ia_suggested > 0 && <span className="flex items-center gap-1 text-purple-600 font-bold"><Activity size={12} /> {progress.ia_suggested} Sugeridos</span>}
-            {progress.not_matched > 0 && <span className="flex items-center gap-1 text-amber-600 font-bold"><AlertCircle size={12} /> {progress.not_matched} Sin coinc.</span>}
-          </div>
+             <span className="flex items-center gap-1 text-blue-600 font-bold"><Activity size={12} /> Consultando IA ({Math.max(0, (progress.total || 0) - (progress.processed || 0))} cargos restantes)</span>
+           </div>
           {progress.recent_results && progress.recent_results.length > 0 && (
             <div className="mt-3 pt-3 border-t border-slate-100">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Ultimos resultados:</p>

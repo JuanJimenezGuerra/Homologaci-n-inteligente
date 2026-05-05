@@ -559,7 +559,7 @@ def ejecutar_homologacion(
     }
 
 @app.get("/homologacion/status/{upload_id}")
-def get_homologacion_status(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_homologacion_status(upload_id: int, db: Session = Depends(get_db)):
     """Obtiene el estado actual del procesamiento de homologacion."""
     with _progress_lock:
         progress = _homologacion_progress.get(upload_id)
