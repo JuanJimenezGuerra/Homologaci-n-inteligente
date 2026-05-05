@@ -16,33 +16,56 @@ print(f"IA Service: HUGGINGFACE_MODEL={HUGGINGFACE_MODEL}")
 
 
 def call_huggingface(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
-    """Call Hugging Face using huggingface_hub InferenceClient (free tier)."""
+    """Call Hugging Face Inference API using requests (no extra libs needed)."""
     try:
         print(f"HuggingFace: llamando {HUGGINGFACE_MODEL}")
-        from huggingface_hub import InferenceClient
-        
-        client = InferenceClient(token=HUGGINGFACE_API_KEY if HUGGINGFACE_API_KEY else None)
         
         # Convert messages to prompt
         prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages]) + "\nassistant:"
         
-        # Use text_generation
-        response = client.text_generation(
-            prompt,
-            model=HUGGINGFACE_MODEL,
-            max_new_tokens=max_tokens,
-            temperature=temperature,
-            return_full_text=False,
+        headers = {"Content-Type": "application/json"}
+        if HUGGINGFACE_API_KEY:
+            headers["Authorization"] = f"Bearer {HUGGINGFACE_API_KEY}"
+        
+        # Try direct Inference API call
+        url = f"https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}"
+        
+        resp = requests.post(
+            url,
+            headers=headers,
+            json={
+                "inputs": prompt,
+                "parameters": {
+                    "max_new_tokens": max_tokens,
+                    "temperature": temperature,
+                    "return_full_text": False,
+                }
+            },
+            timeout=60,
         )
         
-        content = response.strip() if response else ""
-        
-        if len(content) == 0:
-            print(f"HuggingFace: {HUGGINGFACE_MODEL} devolvio respuesta vacia")
+        if resp.ok:
+            data = resp.json()
+            # Handle response formats
+            if isinstance(data, list) and len(data) > 0:
+                if isinstance(data[0], dict):
+                    content = data[0].get("generated_text", "").strip()
+                else:
+                    content = str(data[0]).strip()
+            elif isinstance(data, dict):
+                content = data.get("generated_text", "").strip()
+            else:
+                content = str(data).strip()
+            
+            if len(content) == 0:
+                print(f"HuggingFace: {HUGGINGFACE_MODEL} devolvio respuesta vacia")
+                return None
+            
+            print(f"HuggingFace: OK, respuesta {len(content)} chars")
+            return content
+        else:
+            print(f"HuggingFace: HTTP {resp.status_code} - {resp.text[:200]}")
             return None
-        
-        print(f"HuggingFace: OK, respuesta {len(content)} chars")
-        return content
     except Exception as e:
         print(f"HuggingFace: excepcion - {e}")
         return None
