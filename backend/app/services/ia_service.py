@@ -3,53 +3,45 @@ import json
 import time
 import requests
 
-# Configuration - Use Google Gemini API directly (FREE)
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
+# USA SOLO OPENROUTER CON MODELO GRATUITO
+API_KEY = os.getenv("OPENROUTER_API_KEY_2", "")  # Tu nueva key en Render
+MODEL = "meta-llama/llama-3.1-8b-instruct:free"  # Modelo 100% GRATUITO
+URL = "https://openrouter.ai/api/v1/chat/completions"
 
-print(f"[IA] GEMINI_API_KEY: {'OK' if GEMINI_API_KEY else 'NO - GET FREE KEY AT: https://ai.google.dev/'}")
+print(f"[IA] API_KEY: {'OK' if API_KEY else 'NO - Configura OPENROUTER_API_KEY_2 en Render'}")
+print(f"[IA] MODEL: {MODEL}")
 
 
 def call_ia(messages, max_tokens=1000, timeout=45):
-    """Call Google Gemini API directly (FREE tier)."""
-    if not GEMINI_API_KEY:
-        print("[IA] ERROR: No GEMINI_API_KEY! Get free key at https://ai.google.dev/")
+    """Llama a OpenRouter con modelo GRATUITO."""
+    if not API_KEY:
+        print("[IA] ERROR: No hay API_KEY")
         return ""
 
     try:
-        # Convert messages to Gemini format
-        contents = []
-        for m in messages:
-            role = "user" if m["role"] == "user" else "model"
-            contents.append({
-                "role": role,
-                "parts": [{"text": m["content"]}]
-            })
-
-        print(f"[IA] Calling Gemini...")
+        print(f"[IA] Llamando {MODEL}...")
         resp = requests.post(
-            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
-            json={"contents": contents, "generationConfig": {"maxOutputTokens": max_tokens}},
+            URL,
+            headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
+            json={"model": MODEL, "messages": messages, "max_tokens": max_tokens},
             timeout=timeout
         )
-
         if resp.ok:
-            data = resp.json()
-            content = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+            content = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
             if content:
-                print(f"[IA] OK: {len(content)} chars")
+                print(f"[IA] OK: {len(content)} caracteres")
                 return content
             else:
-                print("[IA] Empty response")
+                print("[IA] Respuesta vacía")
         else:
-            print(f"[IA] HTTP {resp.status_code}: {resp.text[:200]}")
+            print(f"[IA] HTTP {resp.status_code}: {resp.text[:150]}")
     except Exception as e:
         print(f"[IA] Error: {e}")
     return ""
 
 
 def extract_json(text):
-    """Extract JSON from response."""
+    """Extrae JSON de la respuesta."""
     if not text:
         return None
     try:
@@ -58,12 +50,12 @@ def extract_json(text):
         elif "```" in text:
             text = text.split("```")[1].split("```")[0].strip()
         return json.loads(text.strip())
-    except Exception:
+    except:
         return None
 
 
 def extract_json_array(text):
-    """Extract JSON array."""
+    """Extrae array JSON."""
     if not text:
         return None
     try:
@@ -74,7 +66,7 @@ def extract_json_array(text):
         text = text.strip()
         if text.startswith("["):
             return json.loads(text)
-    except Exception:
+    except:
         pass
     return None
 
@@ -96,33 +88,33 @@ def load_master_cargos(db):
 
 
 def homologar_con_ia(db, cargos, masters=None):
-    if not GEMINI_API_KEY:
+    if not API_KEY:
         return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key", "confianza": 0.0} for c in cargos]
 
     if masters is None:
         masters = load_master_cargos(db)
 
-    print(f"[homologar_con_ia] Processing {len(cargos)} cargos")
+    print(f"[HOMOLOGACION] Procesando {len(cargos)} cargos")
 
     resultados = []
     for i in range(0, len(cargos), 8):
         batch = cargos[i:i+8]
         catalogo = "\n".join([f"- {m['nombre']}" for m in masters[:80]])
-        cargos_text = "\n".join([f"ID:{c.get('id')} | {c.get('nombre_cargo', '').upper()}" for c in batch])
+        cargos_txt = "\n".join([f"ID:{c.get('id')} | {c.get('nombre_cargo', '').upper()}" for c in batch])
 
-        prompt = f"""You are an expert in job classification in Colombia.
+        prompt = f"""Eres experto en homologacion de cargos en Colombia.
 
-CATALOG:
+CATALOGO:
 {catalogo}
 
-JOBS TO MATCH:
-{cargos_text}
+CARGOS:
+{cargos_txt}
 
-INSTRUCTIONS:
-For each ID, find the most similar job in catalog.
-Return ONLY JSON array:
-[{"id": ID, "cargo_homologado": "EXACT_NAME", "justificacion": "reason", "confianza": 0.0 to 1.0}]
-If no match, use "SIN COINCIDENCIA"."""
+INSTRUCCIONES:
+1. Para cada ID, busca el cargo mas similar en el catalogo.
+2. Responde SOLO con array JSON:
+[{"id": ID, "cargo_homologado": "NOMBRE", "justificacion": "razon", "confianza": 0.0 a 1.0}]
+3. Si no hay coincidencia, usa "SIN COINCIDENCIA"."""
 
         content = ""
         for intento in range(2):
@@ -145,10 +137,10 @@ If no match, use "SIN COINCIDENCIA"."""
                     "confianza": float(r.get("confianza", 0.5)),
                 })
         else:
-            resultados.extend([{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Parse error", "confianza": 0.0} for c in batch])
+            resultados.extend([{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Error parseo", "confianza": 0.0} for c in batch])
 
     exitos = sum(1 for r in resultados if r["cargo_homologado"] != "SIN COINCIDENCIA")
-    print(f"[homologar_con_ia] Done: {exitos}/{len(cargos)} matched")
+    print(f"[HOMOLOGACION] {exitos}/{len(cargos)} exitos")
     return resultados
 
 
@@ -157,13 +149,13 @@ If no match, use "SIN COINCIDENCIA"."""
 # ==========================================
 
 def valorar_con_ia(cargo):
-    if not GEMINI_API_KEY:
+    if not API_KEY:
         return {"error": "Sin API key"}
 
-    prompt = f"""Assign SHR/HAY levels for: {cargo.get('nombre_cargo', 'N/A')}
+    prompt = f"""Asigna niveles SHR/HAY para: {cargo.get('nombre_cargo', 'N/A')}
 
-Return ONLY JSON:
-{"conocimientos":"A-H","experiencia":"--/-/o/+","habilidades":"I-VII","responsabilidad":"1-4","contacto":"A-C","frecuencia":"1-4","contraste":"I-V","complejidad":"1-5","iniciativa":"I-IV","autonomia":"A-G","magnitud":"0-14","impacto":"I-VII","justificacion":"brief"}"""
+Responde SOLO JSON:
+{"conocimientos":"A-H","experiencia":"--/-/o/+","habilidades":"I-VII","responsabilidad":"1-4","contacto":"A-C","frecuencia":"1-4","contraste":"I-V","complejidad":"1-5","iniciativa":"I-IV","autonomia":"A-G","magnitud":"0-14","impacto":"I-VII","justificacion":"breve"}"""
 
     content = call_ia([{"role": "user", "content": prompt}], max_tokens=500)
     if not content:
@@ -179,14 +171,14 @@ Return ONLY JSON:
 # ==========================================
 
 def buscar_en_internet(cargo):
-    if not GEMINI_API_KEY:
+    if not API_KEY:
         return {"fuente": "Sin API key", "titulo": cargo.get("nombre_cargo", ""), "descripcion": "", "url": ""}
 
     nombre = cargo.get("nombre_cargo", "")
-    prompt = f"""Info about job "{nombre}" in Colombia.
+    prompt = f"""Dame info del cargo "{nombre}" en Colombia.
 
-Return ONLY JSON:
-{"fuente":"Internet","titulo":"Job","descripcion":"Brief","url":"https://example.com"}"""
+Responde SOLO JSON:
+{"fuente":"Internet","titulo":"Cargo","descripcion":"Breve","url":"https://ejemplo.com"}"""
 
     content = call_ia([{"role": "user", "content": prompt}], max_tokens=400)
     if not content:
@@ -194,4 +186,4 @@ Return ONLY JSON:
     parsed = extract_json(content)
     if parsed and isinstance(parsed, dict):
         return parsed
-    return {"fuente": "Error", "titulo": nombre, "descripcion": "Parse error", "url": ""}
+    return {"fuente": "Error", "titulo": nombre, "descripcion": "Error parseo", "url": ""}
