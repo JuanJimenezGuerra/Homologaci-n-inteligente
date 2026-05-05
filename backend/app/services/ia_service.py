@@ -112,15 +112,33 @@ def call_openai(messages: list, max_tokens: int = 800, temperature: float = 0.1)
     return None
 
 
-def call_ia(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
-    """Intenta OpenRouter primero, fallback a OpenAI."""
-    content = call_openrouter(messages, max_tokens, temperature)
-    if content:
-        return content
-    print("OpenRouter fallo, intentando OpenAI fallback...")
-    logger.info("OpenRouter fallo, intentando OpenAI fallback...")
-    content = call_openai(messages, max_tokens, temperature)
-    return content
+def call_ia(messages: list, max_tokens: int = 800, temperature: float = 0.1, timeout: int = 60) -> Optional[str]:
+    """Intenta OpenRouter primero, fallback a OpenAI, con timeout."""
+    import threading
+    result = {"content": None}
+
+    def _call():
+        try:
+            content = call_openrouter(messages, max_tokens, temperature)
+            if content:
+                result["content"] = content
+                return
+            print("OpenRouter fallo, intentando OpenAI fallback...")
+            logger.info("OpenRouter fallo, intentando OpenAI fallback...")
+            result["content"] = call_openai(messages, max_tokens, temperature)
+        except Exception as e:
+            print(f"call_ia error: {e}")
+            result["content"] = None
+
+    thread = threading.Thread(target=_call)
+    thread.daemon = True
+    thread.start()
+    thread.join(timeout)
+
+    if thread.is_alive():
+        print(f"call_ia: TIMEOUT tras {timeout}s")
+        return None
+    return result["content"]
 
 
 def extract_json(text: str) -> Optional[dict]:
@@ -347,7 +365,7 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
         content = None
         max_retries = 2
         for attempt in range(max_retries):
-            content = call_ia([{"role": "user", "content": prompt}], max_tokens=2000)
+            content = call_ia([{"role": "user", "content": prompt}], max_tokens=2000, timeout=90)
             if content:
                 break
             print(f"homologar_con_ia: Lote {lote_num} intento {attempt + 1} fallo, reintentando...")
