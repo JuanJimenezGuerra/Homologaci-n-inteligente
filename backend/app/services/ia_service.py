@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # OpenRouter config (primary = agotada, secondary = nueva activa)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_API_KEY_2 = os.getenv("OPENROUTER_API_KEY_2", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-flash-1.5")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
 
