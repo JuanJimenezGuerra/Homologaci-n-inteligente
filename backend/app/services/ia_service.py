@@ -5,7 +5,7 @@ import requests
 
 # USA SOLO OPENROUTER CON MODELO GRATUITO
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY2", "")  # Tu nueva key en Render
-OPENROUTER_MODEL = "meta-llama/llama-3.1-8b-instruct:free"  # Modelo 100% GRATUITO
+OPENROUTER_MODEL = "google/gemini-2.0-flash-exp:free"  # Modelo 100% GRATUITO
 OPENAI_API_KEY = ""
 OPENAI_MODEL = ""
 URL = "https://openrouter.ai/api/v1/chat/completions"
