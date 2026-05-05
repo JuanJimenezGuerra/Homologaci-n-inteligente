@@ -8,8 +8,12 @@ API_KEY = os.getenv("OPENROUTER_API_KEY_2", "")  # Tu nueva key en Render
 MODEL = "meta-llama/llama-3.1-8b-instruct:free"  # Modelo 100% GRATUITO
 URL = "https://openrouter.ai/api/v1/chat/completions"
 
-print(f"[IA] API_KEY: {'OK' if API_KEY else 'NO - Configura OPENROUTER_API_KEY_2 en Render'}")
-print(f"[IA] MODEL: {MODEL}")
+# Debug: mostrar TODAS las vars de entorno relacionadas
+print("=== ENV VARS DEBUG ===")
+print(f"OPENROUTER_API_KEY_2: {'OK' if os.getenv('OPENROUTER_API_KEY_2') else 'NO CONFIGURADA'}")
+print(f"API_KEY (lo que lee): {'OK' if API_KEY else 'VACIA'}")
+print(f"MODEL: {MODEL}")
+print(f"Todas las vars: {[k for k in os.environ.keys() if 'API' in k or 'KEY' in k]}")
 
 
 def call_ia(messages, max_tokens=1000, timeout=45):
