@@ -337,7 +337,7 @@ function HomologacionView({ empresaId, onComplete }) {
     estado: true,
     homologado: true,
     justificacion: true,
-    salario: true,
+    salario: false, // Disabled - not used
     acciones: true,
   });
 
@@ -710,7 +710,6 @@ function HomologacionView({ empresaId, onComplete }) {
                 {visibleCols.homologado && <th className="px-3 py-3 min-w-[250px]">Cargo Homologado (editable)</th>}
                 {visibleCols.justificacion && <th className="px-3 py-3 min-w-[180px]">Justificacion</th>}
                 {visibleCols.salario && <th className="px-3 py-3 min-w-[120px]">Salario Actual</th>}
-                {visibleCols.salario && <th className="px-3 py-3 min-w-[120px]">Salario Esperado</th>}
                 {visibleCols.acciones && <th className="px-3 py-3 w-20">Acc.</th>}
               </tr>
             </thead>
@@ -724,11 +723,9 @@ function HomologacionView({ empresaId, onComplete }) {
                   const isSinCoincidencia = (c.estado || '').toLowerCase().includes('sin_coincidencia');
                   const isSearching = searchingIds.has(c.id);
                   
-                  // Datos salariales del cargo (si existen en la empresa)
+                   // Datos salariales del cargo (si existen en la empresa)
                   const salarioActual = c.homologacion?.datos_excel?.real_pagado || 
-                                   c.homologacion?.datos_excel?.basico || null;
-                  const salarioEsperado = c.homologacion?.datos_excel?.punto_medio_referencia || 
-                                   c.homologacion?.datos_excel?.punto_medio_referencia || null;
+                                  c.homologacion?.datos_excel?.basico || null;
                   
                   return (
                     <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-purple-50/60' : isBuscadorInternet ? 'bg-cyan-50/40' : c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' : isSinCoincidencia ? 'bg-amber-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
