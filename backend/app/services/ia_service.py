@@ -108,6 +108,7 @@ def homologar_con_ia(db, cargos, masters=None):
         catalogo = "\n".join([f"- {m['nombre']}" for m in masters[:80]])
         cargos_txt = "\n".join([f"ID:{c.get('id')} | {c.get('nombre_cargo', '').upper()}" for c in batch])
 
+        json_example = '[{"id": 1, "cargo_homologado": "NOMBRE", "justificacion": "razon", "confianza": 0.5}]'
         prompt = f"""Eres experto en homologacion de cargos en Colombia.
 
 CATALOGO:
@@ -118,8 +119,7 @@ CARGOS:
 
 INSTRUCCIONES:
 1. Para cada ID, busca el cargo mas similar en el catalogo.
-2. Responde SOLO con array JSON:
-[{"id": ID, "cargo_homologado": "NOMBRE", "justificacion": "razon", "confianza": 0.0 a 1.0}]
+2. Responde SOLO con array JSON (ejemplo: {json_example})
 3. Si no hay coincidencia, usa "SIN COINCIDENCIA"."""
 
         content = ""
