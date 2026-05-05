@@ -1,7 +1,7 @@
 import React from 'react';
 import { LayoutDashboard, LogOut, User as UserIcon, ShieldCheck, Building2, Link2, Target, TrendingUp, Scale } from 'lucide-react';
 import { motion } from 'framer-motion';
-import logoShr from '../assets/logo_shr.png';
+import logoShr from '../assets/logo_shr.png?v=2';
 
 const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
 
