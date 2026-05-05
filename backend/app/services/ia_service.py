@@ -7,70 +7,71 @@ from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
-# Configuración - API key original + nueva como respaldo
+# Configuración OpenRouter - usar la API key original que funcionaba
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_API_KEY_2 = os.getenv("OPENROUTER_API_KEY_2", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-3.5-turbo")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-print(f"IA Service: PRIMARY={'OK' if OPENROUTER_API_KEY else 'NO'}")
-print(f"IA Service: SECONDARY={'OK' if OPENROUTER_API_KEY_2 else 'NO'}")
+print(f"IA Service: OPENROUTER_API_KEY={'OK' if OPENROUTER_API_KEY else 'NO'}")
+print(f"IA Service: OPENROUTER_API_KEY_2={'OK' if OPENROUTER_API_KEY_2 else 'NO'}")
 print(f"IA Service: MODEL={OPENROUTER_MODEL}")
 
 
-def call_ia(messages: list, max_tokens: int = 1000, temperature: float = 0.0, timeout: int = 60) -> Optional[str]:
-    """Intenta PRIMARY (original) primero, luego SECONDARY (nueva) como respaldo."""
-    # Intentar con PRIMARY (tu API key original que funcionaba)
-    if OPENROUTER_API_KEY:
-        try:
-            print(f"OpenRouter: llamando {OPENROUTER_MODEL} (PRIMARY)")
-            headers = {
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "model": OPENROUTER_MODEL,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            resp = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=timeout)
-            if resp.ok:
-                data = resp.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                if content:
-                    print(f"OpenRouter PRIMARY: OK, {len(content)} chars")
-                    return content
-            else:
-                print(f"OpenRouter PRIMARY: HTTP {resp.status_code}")
-        except Exception as e:
-            print(f"OpenRouter PRIMARY: Error - {e}")
+def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 0.1, timeout: int = 60, use_secondary: bool = False) -> Optional[str]:
+    """Call OpenRouter API."""
+    try:
+        api_key = OPENROUTER_API_KEY_2 if use_secondary else OPENROUTER_API_KEY
+        if not api_key:
+            return None
 
-    # Si PRIMARY falló, intentar con SECONDARY (nueva key)
-    if OPENROUTER_API_KEY_2:
-        try:
-            print(f"OpenRouter: llamando {OPENROUTER_MODEL} (SECONDARY)")
-            headers = {
-                "Authorization": f"Bearer {OPENROUTER_API_KEY_2}",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "model": OPENROUTER_MODEL,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            resp = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=timeout)
-            if resp.ok:
-                data = resp.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                if content:
-                    print(f"OpenRouter SECONDARY: OK, {len(content)} chars")
-                    return content
+        model = OPENROUTER_MODEL
+        print(f"OpenRouter: llamando {model} ({'SEC' if use_secondary else 'PRI'})")
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+
+        resp = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=timeout)
+
+        if resp.ok:
+            data = resp.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            if content:
+                print(f"OpenRouter: OK, {len(content)} chars")
+                return content
             else:
-                print(f"OpenRouter SECONDARY: HTTP {resp.status_code}")
-        except Exception as e:
-            print(f"OpenRouter SECONDARY: Error - {e}")
+                print("OpenRouter: respuesta vacía")
+                return None
+        else:
+            print(f"OpenRouter: HTTP {resp.status_code} - {resp.text[:200]}")
+            return None
+    except Exception as e:
+        print(f"OpenRouter: Error - {e}")
+        return None
+
+
+def call_ia(messages: list, max_tokens: int = 800, temperature: float = 0.1, timeout: int = 60) -> Optional[str]:
+    """Intenta PRIMARY (original) primero, luego SECONDARY (nueva)."""
+    # PRIMARY (tu API key original que funcionaba)
+    if OPENROUTER_API_KEY:
+        content = call_openrouter(messages, max_tokens, temperature, timeout, use_secondary=False)
+        if content:
+            return content
+
+    # SECONDARY (tu nueva API key, por si la original falla)
+    if OPENROUTER_API_KEY_2:
+        content = call_openrouter(messages, max_tokens, temperature, timeout, use_secondary=True)
+        if content:
+            return content
 
     print("call_ia: Ambas keys fallaron")
     return None
@@ -91,7 +92,7 @@ def extract_json(text: str) -> Optional[dict]:
 
 
 def extract_json_array(text: str) -> Optional[list]:
-    """Extrae array JSON."""
+    """Extrae array JSON de la respuesta."""
     if not text:
         return None
     try:
@@ -112,13 +113,14 @@ def extract_json_array(text: str) -> Optional[list]:
 # ==========================================
 
 def load_master_cargos(db) -> list:
-    """Carga cargos maestros."""
+    """Carga los cargos maestros."""
     from ..models import MasterDescription, MasterCargo
 
     masters = []
     for m in db.query(MasterDescription).all():
         if m.nombre_cargo:
             masters.append({
+                "id": m.id,
                 "nombre": m.nombre_cargo.upper(),
                 "area": (m.area or "").upper(),
             })
@@ -126,6 +128,7 @@ def load_master_cargos(db) -> list:
     for m in db.query(MasterCargo).all():
         if m.nombre:
             masters.append({
+                "id": m.id,
                 "nombre": m.nombre.upper(),
                 "area": f"{(m.area_general or '')} {(m.area_especifica or '')}".strip().upper(),
             })
@@ -134,7 +137,7 @@ def load_master_cargos(db) -> list:
 
 
 def build_homologacion_prompt(cargos: list, masters: list) -> str:
-    """Construye el prompt."""
+    """Construye el prompt para homologación."""
     masters_text = "\n".join([f"- {m['nombre']}" for m in masters[:80]])
 
     cargos_text = ""
@@ -152,7 +155,7 @@ CARGOS A HOMOLOGAR:
 {cargos_text}
 
 INSTRUCCIONES:
-1. Para cada ID, encuentra el cargo más similar en el catálogo.
+1. Para cada ID, busca el cargo más similar en el catálogo.
 2. Responde SOLO con un array JSON:
 [
   {{"id": ID, "cargo_homologado": "NOMBRE_EXACTO", "justificacion": "razón", "confianza": 0.0 a 1.0}}
@@ -163,9 +166,9 @@ INSTRUCCIONES:
 
 
 def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
-    """Homologa usando OpenRouter."""
+    """Homologa cargos usando OpenRouter IA."""
 
-    if not OPENROUTER_API_KEY:
+    if not OPENROUTER_API_KEY and not OPENROUTER_API_KEY_2:
         return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key", "confianza": 0.0} for c in cargos]
 
     if masters is None:
@@ -207,7 +210,7 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
             resultados.extend([{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Error parseo", "confianza": 0.0} for c in batch])
 
     exitos = sum(1 for r in resultados if r["cargo_homologado"] != "SIN COINCIDENCIA")
-    print(f"homologar_con_ia: {exitos}/{len(cargos)} exitosos")
+    print(f"homologar_con_ia: {exitos}/{len(cargos)} exitos")
     return resultados
 
 
@@ -217,7 +220,7 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
 
 def valorar_con_ia(cargo: dict) -> dict:
     """Valora cargo con IA."""
-    if not OPENROUTER_API_KEY:
+    if not OPENROUTER_API_KEY and not OPENROUTER_API_KEY_2:
         return {"error": "Sin API key"}
 
     prompt = f"""Asigna niveles SHR/HAY para: {cargo.get('nombre_cargo', 'N/A')}
@@ -256,16 +259,16 @@ Responde SOLO JSON:
 # ==========================================
 
 def buscar_en_internet(cargo: dict) -> dict:
-    """Busca info del cargo."""
-    if not OPENROUTER_API_KEY:
+    """Busca info del cargo via IA."""
+    if not OPENROUTER_API_KEY and not OPENROUTER_API_KEY_2:
         return {"fuente": "Sin API key", "titulo": cargo.get("nombre_cargo", ""), "descripcion": "", "url": ""}
 
-    prompt = f"""Dame info del cargo "{cargo.get('nombre_cargo', '')}" en Colombia.
+    prompt = f"""Dame info breve del cargo "{cargo.get('nombre_cargo', '')}" en Colombia.
 
 Responde SOLO JSON:
 {{
   "fuente": "Internet",
-  "titulo": "Cargo",
+  "titulo": "Cargo encontrado",
   "descripcion": "Breve descripción",
   "url": "https://ejemplo.com"
 }}"""
