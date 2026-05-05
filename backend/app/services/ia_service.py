@@ -8,57 +8,41 @@ from typing import Optional, List, Dict
 logger = logging.getLogger(__name__)
 
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "")
-HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "google/flan-t5-small")
+HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "HuggingFaceH4/zephyr-7b-beta")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
-
-HUGGINGFACE_API_URL = f"https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}"
 
 print(f"IA Service: HUGGINGFACE_API_KEY={'CONFIGURADA' if HUGGINGFACE_API_KEY else 'NO CONFIGURADA (usando gratis)'}")
 print(f"IA Service: HUGGINGFACE_MODEL={HUGGINGFACE_MODEL}")
 
 
 def call_huggingface(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
-    """Call Hugging Face Inference API (free, no credit card needed)."""
+    """Call Hugging Face using huggingface_hub InferenceClient (free tier)."""
     try:
         print(f"HuggingFace: llamando {HUGGINGFACE_MODEL}")
+        from huggingface_hub import InferenceClient
+        
+        client = InferenceClient(token=HUGGINGFACE_API_KEY if HUGGINGFACE_API_KEY else None)
+        
         # Convert messages to prompt
         prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages]) + "\nassistant:"
         
-        headers = {}
-        if HUGGINGFACE_API_KEY:
-            headers["Authorization"] = f"Bearer {HUGGINGFACE_API_KEY}"
-        
-        resp = requests.post(
-            HUGGINGFACE_API_URL,
-            headers=headers,
-            json={
-                "inputs": prompt,
-                "parameters": {
-                    "max_new_tokens": max_tokens,
-                    "temperature": temperature,
-                    "return_full_text": False,
-                }
-            },
-            timeout=60,
+        # Use text_generation
+        response = client.text_generation(
+            prompt,
+            model=HUGGINGFACE_MODEL,
+            max_new_tokens=max_tokens,
+            temperature=temperature,
+            return_full_text=False,
         )
-        if resp.ok:
-            data = resp.json()
-            # Handle different response formats
-            if isinstance(data, list) and len(data) > 0:
-                content = data[0].get("generated_text", "").strip()
-            elif isinstance(data, dict):
-                content = data.get("generated_text", "").strip()
-            else:
-                content = str(data).strip()
-            
-            if len(content) == 0:
-                print(f"HuggingFace: {HUGGINGFACE_MODEL} devolvio respuesta vacia")
-                return None
-            print(f"HuggingFace: OK, respuesta {len(content)} chars")
-            return content
-        else:
-            print(f"HuggingFace: HTTP {resp.status_code} - {resp.text[:200]}")
+        
+        content = response.strip() if response else ""
+        
+        if len(content) == 0:
+            print(f"HuggingFace: {HUGGINGFACE_MODEL} devolvio respuesta vacia")
             return None
+        
+        print(f"HuggingFace: OK, respuesta {len(content)} chars")
+        return content
     except Exception as e:
         print(f"HuggingFace: excepcion - {e}")
         return None
