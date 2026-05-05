@@ -2,83 +2,54 @@ import os
 import json
 import time
 import requests
-import logging
-from typing import Optional, List, Dict
 
-logger = logging.getLogger(__name__)
+# Configuration - Use Google Gemini API directly (FREE)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
 
-# Configuración OpenRouter - usar la API key original que funcionaba
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_API_KEY_2 = os.getenv("OPENROUTER_API_KEY_2", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-3.5-turbo")
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-print(f"IA Service: OPENROUTER_API_KEY={'OK' if OPENROUTER_API_KEY else 'NO'}")
-print(f"IA Service: OPENROUTER_API_KEY_2={'OK' if OPENROUTER_API_KEY_2 else 'NO'}")
-print(f"IA Service: MODEL={OPENROUTER_MODEL}")
+print(f"[IA] GEMINI_API_KEY: {'OK' if GEMINI_API_KEY else 'NO - GET FREE KEY AT: https://ai.google.dev/'}")
 
 
-def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 0.1, timeout: int = 60, use_secondary: bool = False) -> Optional[str]:
-    """Call OpenRouter API."""
+def call_ia(messages, max_tokens=1000, timeout=45):
+    """Call Google Gemini API directly (FREE tier)."""
+    if not GEMINI_API_KEY:
+        print("[IA] ERROR: No GEMINI_API_KEY! Get free key at https://ai.google.dev/")
+        return ""
+
     try:
-        api_key = OPENROUTER_API_KEY_2 if use_secondary else OPENROUTER_API_KEY
-        if not api_key:
-            return None
+        # Convert messages to Gemini format
+        contents = []
+        for m in messages:
+            role = "user" if m["role"] == "user" else "model"
+            contents.append({
+                "role": role,
+                "parts": [{"text": m["content"]}]
+            })
 
-        model = OPENROUTER_MODEL
-        print(f"OpenRouter: llamando {model} ({'SEC' if use_secondary else 'PRI'})")
-
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-
-        payload = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-
-        resp = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=timeout)
+        print(f"[IA] Calling Gemini...")
+        resp = requests.post(
+            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+            json={"contents": contents, "generationConfig": {"maxOutputTokens": max_tokens}},
+            timeout=timeout
+        )
 
         if resp.ok:
             data = resp.json()
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            content = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
             if content:
-                print(f"OpenRouter: OK, {len(content)} chars")
+                print(f"[IA] OK: {len(content)} chars")
                 return content
             else:
-                print("OpenRouter: respuesta vacía")
-                return None
+                print("[IA] Empty response")
         else:
-            print(f"OpenRouter: HTTP {resp.status_code} - {resp.text[:200]}")
-            return None
+            print(f"[IA] HTTP {resp.status_code}: {resp.text[:200]}")
     except Exception as e:
-        print(f"OpenRouter: Error - {e}")
-        return None
+        print(f"[IA] Error: {e}")
+    return ""
 
 
-def call_ia(messages: list, max_tokens: int = 800, temperature: float = 0.1, timeout: int = 60) -> Optional[str]:
-    """Intenta PRIMARY (original) primero, luego SECONDARY (nueva)."""
-    # PRIMARY (tu API key original que funcionaba)
-    if OPENROUTER_API_KEY:
-        content = call_openrouter(messages, max_tokens, temperature, timeout, use_secondary=False)
-        if content:
-            return content
-
-    # SECONDARY (tu nueva API key, por si la original falla)
-    if OPENROUTER_API_KEY_2:
-        content = call_openrouter(messages, max_tokens, temperature, timeout, use_secondary=True)
-        if content:
-            return content
-
-    print("call_ia: Ambas keys fallaron")
-    return None
-
-
-def extract_json(text: str) -> Optional[dict]:
-    """Extrae JSON de la respuesta."""
+def extract_json(text):
+    """Extract JSON from response."""
     if not text:
         return None
     try:
@@ -91,8 +62,8 @@ def extract_json(text: str) -> Optional[dict]:
         return None
 
 
-def extract_json_array(text: str) -> Optional[list]:
-    """Extrae array JSON de la respuesta."""
+def extract_json_array(text):
+    """Extract JSON array."""
     if not text:
         return None
     try:
@@ -109,86 +80,53 @@ def extract_json_array(text: str) -> Optional[list]:
 
 
 # ==========================================
-# HOMOLOGACIÓN CON IA
+# HOMOLOGACION
 # ==========================================
 
-def load_master_cargos(db) -> list:
-    """Carga los cargos maestros."""
+def load_master_cargos(db):
     from ..models import MasterDescription, MasterCargo
-
     masters = []
     for m in db.query(MasterDescription).all():
         if m.nombre_cargo:
-            masters.append({
-                "id": m.id,
-                "nombre": m.nombre_cargo.upper(),
-                "area": (m.area or "").upper(),
-            })
-
+            masters.append({"nombre": m.nombre_cargo.upper()})
     for m in db.query(MasterCargo).all():
         if m.nombre:
-            masters.append({
-                "id": m.id,
-                "nombre": m.nombre.upper(),
-                "area": f"{(m.area_general or '')} {(m.area_especifica or '')}".strip().upper(),
-            })
-
+            masters.append({"nombre": m.nombre.upper()})
     return masters
 
 
-def build_homologacion_prompt(cargos: list, masters: list) -> str:
-    """Construye el prompt para homologación."""
-    masters_text = "\n".join([f"- {m['nombre']}" for m in masters[:80]])
-
-    cargos_text = ""
-    for c in cargos:
-        nombre = (c.get("nombre_cargo") or "").upper()
-        area = (c.get("area") or "N/A").upper()
-        cargos_text += f"ID:{c.get('id')} | {nombre} | {area}\n"
-
-    prompt = f"""Eres experto en homologación de cargos en Colombia.
-
-CATÁLOGO MAESTRO:
-{masters_text}
-
-CARGOS A HOMOLOGAR:
-{cargos_text}
-
-INSTRUCCIONES:
-1. Para cada ID, busca el cargo más similar en el catálogo.
-2. Responde SOLO con un array JSON:
-[
-  {{"id": ID, "cargo_homologado": "NOMBRE_EXACTO", "justificacion": "razón", "confianza": 0.0 a 1.0}}
-]
-3. Si no hay coincidencia, usa "SIN COINCIDENCIA"."""
-
-    return prompt
-
-
-def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
-    """Homologa cargos usando OpenRouter IA."""
-
-    if not OPENROUTER_API_KEY and not OPENROUTER_API_KEY_2:
+def homologar_con_ia(db, cargos, masters=None):
+    if not GEMINI_API_KEY:
         return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key", "confianza": 0.0} for c in cargos]
 
     if masters is None:
         masters = load_master_cargos(db)
 
-    if not masters:
-        return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin catálogo", "confianza": 0.0} for c in cargos]
-
-    print(f"homologar_con_ia: Procesando {len(cargos)} cargos")
+    print(f"[homologar_con_ia] Processing {len(cargos)} cargos")
 
     resultados = []
-    batch_size = 8
+    for i in range(0, len(cargos), 8):
+        batch = cargos[i:i+8]
+        catalogo = "\n".join([f"- {m['nombre']}" for m in masters[:80]])
+        cargos_text = "\n".join([f"ID:{c.get('id')} | {c.get('nombre_cargo', '').upper()}" for c in batch])
 
-    for i in range(0, len(cargos), batch_size):
-        batch = cargos[i:i + batch_size]
-        prompt = build_homologacion_prompt(batch, masters)
+        prompt = f"""You are an expert in job classification in Colombia.
 
-        content = None
+CATALOG:
+{catalogo}
+
+JOBS TO MATCH:
+{cargos_text}
+
+INSTRUCTIONS:
+For each ID, find the most similar job in catalog.
+Return ONLY JSON array:
+[{"id": ID, "cargo_homologado": "EXACT_NAME", "justificacion": "reason", "confianza": 0.0 to 1.0}]
+If no match, use "SIN COINCIDENCIA"."""
+
+        content = ""
         for intento in range(2):
-            content = call_ia([{"role": "user", "content": prompt}], max_tokens=1500, timeout=60)
+            content = call_ia([{"role": "user", "content": prompt}], max_tokens=1500)
             if content:
                 break
             time.sleep(2)
@@ -203,54 +141,36 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
                 resultados.append({
                     "id": r.get("id"),
                     "cargo_homologado": r.get("cargo_homologado", "SIN COINCIDENCIA"),
-                    "justificacion": (r.get("justificacion") or "")[:60],
+                    "justificacion": str(r.get("justificacion", ""))[:60],
                     "confianza": float(r.get("confianza", 0.5)),
                 })
         else:
-            resultados.extend([{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Error parseo", "confianza": 0.0} for c in batch])
+            resultados.extend([{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Parse error", "confianza": 0.0} for c in batch])
 
     exitos = sum(1 for r in resultados if r["cargo_homologado"] != "SIN COINCIDENCIA")
-    print(f"homologar_con_ia: {exitos}/{len(cargos)} exitos")
+    print(f"[homologar_con_ia] Done: {exitos}/{len(cargos)} matched")
     return resultados
 
 
 # ==========================================
-# VALORACIÓN CON IA
+# VALORACION
 # ==========================================
 
-def valorar_con_ia(cargo: dict) -> dict:
-    """Valora cargo con IA."""
-    if not OPENROUTER_API_KEY and not OPENROUTER_API_KEY_2:
+def valorar_con_ia(cargo):
+    if not GEMINI_API_KEY:
         return {"error": "Sin API key"}
 
-    prompt = f"""Asigna niveles SHR/HAY para: {cargo.get('nombre_cargo', 'N/A')}
+    prompt = f"""Assign SHR/HAY levels for: {cargo.get('nombre_cargo', 'N/A')}
 
-Responde SOLO JSON:
-{{
-  "conocimientos": "A-H",
-  "experiencia": "--/-/o/+",
-  "habilidades": "I-VII",
-  "responsabilidad": "1-4",
-  "contacto": "A-C",
-  "frecuencia": "1-4",
-  "contraste": "I-V",
-  "complejidad": "1-5",
-  "iniciativa": "I-IV",
-  "autonomia": "A-G",
-  "magnitud": "0-14",
-  "impacto": "I-VII",
-  "justificacion": "breve"
-}}"""
+Return ONLY JSON:
+{"conocimientos":"A-H","experiencia":"--/-/o/+","habilidades":"I-VII","responsabilidad":"1-4","contacto":"A-C","frecuencia":"1-4","contraste":"I-V","complejidad":"1-5","iniciativa":"I-IV","autonomia":"A-G","magnitud":"0-14","impacto":"I-VII","justificacion":"brief"}"""
 
-    content = call_ia([{"role": "user", "content": prompt}], max_tokens=500, timeout=30)
-
+    content = call_ia([{"role": "user", "content": prompt}], max_tokens=500)
     if not content:
         return {"error": "Sin respuesta IA"}
-
     parsed = extract_json(content)
     if parsed and isinstance(parsed, dict):
         return parsed
-
     return {"error": "Error parseo"}
 
 
@@ -258,28 +178,20 @@ Responde SOLO JSON:
 # BUSCAR EN INTERNET
 # ==========================================
 
-def buscar_en_internet(cargo: dict) -> dict:
-    """Busca info del cargo via IA."""
-    if not OPENROUTER_API_KEY and not OPENROUTER_API_KEY_2:
+def buscar_en_internet(cargo):
+    if not GEMINI_API_KEY:
         return {"fuente": "Sin API key", "titulo": cargo.get("nombre_cargo", ""), "descripcion": "", "url": ""}
 
-    prompt = f"""Dame info breve del cargo "{cargo.get('nombre_cargo', '')}" en Colombia.
+    nombre = cargo.get("nombre_cargo", "")
+    prompt = f"""Info about job "{nombre}" in Colombia.
 
-Responde SOLO JSON:
-{{
-  "fuente": "Internet",
-  "titulo": "Cargo encontrado",
-  "descripcion": "Breve descripción",
-  "url": "https://ejemplo.com"
-}}"""
+Return ONLY JSON:
+{"fuente":"Internet","titulo":"Job","descripcion":"Brief","url":"https://example.com"}"""
 
-    content = call_ia([{"role": "user", "content": prompt}], max_tokens=400, timeout=30)
-
+    content = call_ia([{"role": "user", "content": prompt}], max_tokens=400)
     if not content:
-        return {"fuente": "Error", "titulo": cargo.get("nombre_cargo", ""), "descripcion": "Error IA", "url": ""}
-
+        return {"fuente": "Error", "titulo": nombre, "descripcion": "Error IA", "url": ""}
     parsed = extract_json(content)
     if parsed and isinstance(parsed, dict):
         return parsed
-
-    return {"fuente": "Error", "titulo": cargo.get("nombre_cargo", ""), "descripcion": "Error parseo", "url": ""}
+    return {"fuente": "Error", "titulo": nombre, "descripcion": "Parse error", "url": ""}
