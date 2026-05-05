@@ -7,13 +7,13 @@ from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+OPENCODE_API_KEY = os.getenv("OPENCODE_API_KEY", "free")
+OPENCODE_MODEL = os.getenv("OPENCODE_MODEL", "openchat/opencode-33b-v0.1:free")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENCODE_URL = "https://opencode.ai/api/v1/chat/completions"
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
 print(f"IA Service: OPENROUTER_API_KEY={'CONFIGURADA' if OPENROUTER_API_KEY else 'NO CONFIGURADA'}")
@@ -21,61 +21,37 @@ print(f"IA Service: OPENROUTER_MODEL={OPENROUTER_MODEL}")
 print(f"IA Service: OPENAI_API_KEY={'CONFIGURADA' if OPENAI_API_KEY else 'NO CONFIGURADA'}")
 
 
-def call_openrouter(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
-    if not OPENROUTER_API_KEY:
-        print("OpenRouter: API key no configurada")
-        return None
+def call_opencode(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
     try:
-        models_to_try = [
-            OPENROUTER_MODEL,
-            "google/gemini-2.0-flash-exp:free",
-            "qwen/qwen-2.5-72b-instruct:free",
-            "meta-llama/llama-3.1-8b-instruct:free",
-        ]
-        unique_models = list(dict.fromkeys(models_to_try))
-
-        for model in unique_models:
-            print(f"OpenRouter: probando modelo {model}")
-            resp = requests.post(
-                OPENROUTER_URL,
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": BACKEND_URL,
-                    "X-Title": "SHR Homologacion",
-                },
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": temperature,
-                },
-                timeout=45,
-            )
-            if resp.ok:
-                data = resp.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content") or ""
-                actual_model = data.get("model", model)
-                if len(content.strip()) == 0:
-                    print(f"OpenRouter: {actual_model} devolvio respuesta vacia, intentando otro modelo...")
-                    continue
-                print(f"OpenRouter: OK con {actual_model}, respuesta {len(content)} chars")
-                return content
-            elif resp.status_code == 401:
-                print(f"OpenRouter: ERROR 401 - API key invalida.")
+        print(f"OpenCode: probando modelo {OPENCODE_MODEL}")
+        resp = requests.post(
+            OPENCODE_URL,
+            headers={
+                "Authorization": f"Bearer {OPENCODE_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": OPENCODE_MODEL,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            },
+            timeout=60,
+        )
+        if resp.ok:
+            data = resp.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content") or ""
+            if len(content.strip()) == 0:
+                print(f"OpenCode: {OPENCODE_MODEL} devolvio respuesta vacia")
                 return None
-            elif resp.status_code in [400, 404]:
-                print(f"OpenRouter: {model} no disponible (HTTP {resp.status_code}), saltando...")
-                continue
-            else:
-                print(f"OpenRouter: {model} fallo HTTP {resp.status_code} - {resp.text[:150]}")
-
-        print("OpenRouter: TODOS los modelos gratuitos fallaron o devolvieron respuesta vacia")
-        return None
+            print(f"OpenCode: OK con {OPENCODE_MODEL}, respuesta {len(content)} chars")
+            return content
+        else:
+            print(f"OpenCode: HTTP {resp.status_code} - {resp.text[:200]}")
+            return None
     except Exception as e:
-        print(f"OpenRouter: excepcion - {e}")
-        logger.error(f"OpenRouter error: {e}")
-    return None
+        print(f"OpenCode: excepcion - {e}")
+        return None
 
 
 def call_openai(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
@@ -113,18 +89,18 @@ def call_openai(messages: list, max_tokens: int = 800, temperature: float = 0.1)
 
 
 def call_ia(messages: list, max_tokens: int = 800, temperature: float = 0.1, timeout: int = 60) -> Optional[str]:
-    """Intenta OpenRouter primero, fallback a OpenAI, con timeout."""
+    """Intenta OpenCode primero (gratuito, sin limite), fallback a OpenAI, con timeout."""
     import threading
     result = {"content": None}
 
     def _call():
         try:
-            content = call_openrouter(messages, max_tokens, temperature)
+            content = call_opencode(messages, max_tokens, temperature)
             if content:
                 result["content"] = content
                 return
-            print("OpenRouter fallo, intentando OpenAI fallback...")
-            logger.info("OpenRouter fallo, intentando OpenAI fallback...")
+            print("OpenCode fallo, intentando OpenAI fallback...")
+            logger.info("OpenCode fallo, intentando OpenAI fallback...")
             result["content"] = call_openai(messages, max_tokens, temperature)
         except Exception as e:
             print(f"call_ia error: {e}")
