@@ -588,7 +588,7 @@ def get_homologacion_status(upload_id: int, db: Session = Depends(get_db), curre
     return progress
 
 @app.get("/homologacion/results/{upload_id}")
-def get_homologacion_results(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_homologacion_results(upload_id: int, db: Session = Depends(get_db)):
     """Obtiene los cargos con sus homologaciones (para polling durante procesamiento)."""
     cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
     result = []
