@@ -470,81 +470,82 @@ def ejecutar_homologacion(
                             resultados = homologar_con_ia(thread_db, cargos_batch, masters)
                         except Exception as e:
                             print(f"Error en lote IA batch {batch_start}: {e}")
-                            # Mark all in this batch as error
                             resultados = [
                                 {"id": c["id"], "cargo_homologado": "SIN COINCIDENCIA", "justificacion": f"Error IA: {str(e)[:80]}", "confianza": 0.0}
                                 for c in cargos_batch
                             ]
 
-                    for res in resultados:
-                        cargo_id = res.get("id")
-                        if not cargo_id:
-                            continue
-                        cargo = next((c for c in unmatched if c.id == cargo_id), None)
-                        if not cargo:
-                            continue
+                        # Process results for this batch
+                        for res in resultados:
+                            cargo_id = res.get("id")
+                            if not cargo_id:
+                                continue
+                            cargo = next((c for c in unmatched if c.id == cargo_id), None)
+                            if not cargo:
+                                continue
 
-                        homo = cargo.homologacion
-                        if not homo:
-                            homo = Homologacion(cargo_id=cargo.id)
-                            thread_db.add(homo)
+                            homo = cargo.homologacion
+                            if not homo:
+                                homo = Homologacion(cargo_id=cargo.id)
+                                thread_db.add(homo)
 
-                        cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
-                        justificacion = res.get("justificacion", "")
-                        confianza = res.get("confianza", 0)
+                            cargo_homologado = res.get("cargo_homologado", "SIN COINCIDENCIA")
+                            justificacion = res.get("justificacion", "")
+                            confianza = res.get("confianza", 0)
 
-                        total_processed += 1
+                            total_processed += 1
 
-                        with _progress_lock:
-                            prog = _homologacion_progress.get(upload_id, {})
-                            prog["processed"] = total_processed
-                            prog["current_cargo"] = cargo.nombre_cargo
-
-                        if cargo_homologado and cargo_homologado != "SIN COINCIDENCIA":
-                            homo.cargo_homologado = cargo_homologado
-                            homo.justificacion = f"Sugerido IA: {justificacion} (confianza: {confianza})"
-                            homo.editado_manual = False
-                            cargo.estado = "SUGERIDO"
-                            ia_suggested += 1
-                            with _progress_lock:
-                                prog["ia_suggested"] = ia_suggested
-                                prog["recent_results"].append({
-                                    "id": cargo.id,
-                                    "nombre_cargo": cargo.nombre_cargo,
-                                    "cargo_homologado": cargo_homologado,
-                                    "estado": "sugerido",
-                                    "justificacion": f"Sugerido IA: {justificacion}",
-                                    "tipo": "ia",
-                                })
-                        else:
-                            homo.cargo_homologado = "SIN COINCIDENCIA"
-                            homo.justificacion = f"IA: {justificacion}" if justificacion else "Sin coincidencia"
-                            cargo.estado = "SIN_COINCIDENCIA"
                             with _progress_lock:
                                 prog = _homologacion_progress.get(upload_id, {})
-                                prog["not_matched"] = prog.get("not_matched", 0) + 1
-                                prog["recent_results"].append({
-                                    "id": cargo.id,
-                                    "nombre_cargo": cargo.nombre_cargo,
-                                    "cargo_homologado": "SIN COINCIDENCIA",
-                                    "estado": "sin_coincidencia",
-                                    "justificacion": justificacion or "Sin coincidencia",
-                                    "tipo": "sin_coincidencia",
-                                })
+                                prog["processed"] = total_processed
+                                prog["current_cargo"] = cargo.nombre_cargo
 
+                            if cargo_homologado and cargo_homologado != "SIN COINCIDENCIA":
+                                homo.cargo_homologado = cargo_homologado
+                                homo.justificacion = f"Sugerido IA: {justificacion} (confianza: {confianza})"
+                                homo.editado_manual = False
+                                cargo.estado = "SUGERIDO"
+                                ia_suggested += 1
+                                with _progress_lock:
+                                    prog["ia_suggested"] = ia_suggested
+                                    prog["recent_results"].append({
+                                        "id": cargo.id,
+                                        "nombre_cargo": cargo.nombre_cargo,
+                                        "cargo_homologado": cargo_homologado,
+                                        "estado": "sugerido",
+                                        "justificacion": f"Sugerido IA: {justificacion}",
+                                        "tipo": "ia",
+                                    })
+                            else:
+                                homo.cargo_homologado = "SIN COINCIDENCIA"
+                                homo.justificacion = f"IA: {justificacion}" if justificacion else "Sin coincidencia"
+                                cargo.estado = "SIN_COINCIDENCIA"
+                                with _progress_lock:
+                                    prog = _homologacion_progress.get(upload_id, {})
+                                    prog["not_matched"] = prog.get("not_matched", 0) + 1
+                                    prog["recent_results"].append({
+                                        "id": cargo.id,
+                                        "nombre_cargo": cargo.nombre_cargo,
+                                        "cargo_homologado": "SIN COINCIDENCIA",
+                                        "estado": "sin_coincidencia",
+                                        "justificacion": justificacion or "Sin coincidencia",
+                                        "tipo": "sin_coincidencia",
+                                    })
+
+                        # Trim recent results
                         with _progress_lock:
                             prog = _homologacion_progress.get(upload_id, {})
                             if len(prog.get("recent_results", [])) > 50:
                                 prog["recent_results"] = prog["recent_results"][-50:]
 
-                    # Commit after each batch so progress is saved even if next batch fails
-                    try:
-                        thread_db.commit()
-                    except Exception as e:
-                        thread_db.rollback()
-                        print(f"Error commit batch {batch_start}: {e}")
+                        # Commit after each batch so progress is saved even if next batch fails
+                        try:
+                            thread_db.commit()
+                        except Exception as e:
+                            thread_db.rollback()
+                            print(f"Error commit batch {batch_start}: {e}")
 
-                    print(f"Batch {batch_start//5 + 1} completado, total procesados: {total_processed}/{total_cargos}")
+                        print(f"Batch {batch_start//8 + 1} completado, total procesados: {total_processed}/{total_cargos}")
 
             with _progress_lock:
                 prog = _homologacion_progress.get(upload_id, {})
