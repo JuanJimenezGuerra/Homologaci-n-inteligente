@@ -7,47 +7,60 @@ from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
-OPENCODE_API_KEY = os.getenv("OPENCODE_API_KEY", "")
-OPENCODE_MODEL = os.getenv("OPENCODE_MODEL", "openchat/opencode-33b-v0.1:free")
+HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "")
+HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "microsoft/DialoGPT-medium")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
 
-OPENCODE_URL = "https://opencode.ai/api/v1/chat/completions"
+HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}"
 
-print(f"IA Service: OPENCODE_API_KEY={'CONFIGURADA' if OPENCODE_API_KEY else 'NO CONFIGURADA'}")
-print(f"IA Service: OPENCODE_MODEL={OPENCODE_MODEL}")
+print(f"IA Service: HUGGINGFACE_API_KEY={'CONFIGURADA' if HUGGINGFACE_API_KEY else 'NO CONFIGURADA (usando gratis)'}")
+print(f"IA Service: HUGGINGFACE_MODEL={HUGGINGFACE_MODEL}")
 
 
-def call_opencode(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
-    """Call OpenCode API directly with opencode-33b model (free, no limit)."""
+def call_huggingface(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
+    """Call Hugging Face Inference API (free, no credit card needed)."""
     try:
-        print(f"OpenCode: llamando {OPENCODE_MODEL}")
+        print(f"HuggingFace: llamando {HUGGINGFACE_MODEL}")
+        # Convert messages to prompt
+        prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages]) + "\nassistant:"
+        
+        headers = {}
+        if HUGGINGFACE_API_KEY:
+            headers["Authorization"] = f"Bearer {HUGGINGFACE_API_KEY}"
+        
         resp = requests.post(
-            OPENCODE_URL,
-            headers={
-                "Authorization": f"Bearer {OPENCODE_API_KEY}",
-                "Content-Type": "application/json",
-            },
+            HUGGINGFACE_API_URL,
+            headers=headers,
             json={
-                "model": OPENCODE_MODEL,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
+                "inputs": prompt,
+                "parameters": {
+                    "max_new_tokens": max_tokens,
+                    "temperature": temperature,
+                    "return_full_text": False,
+                }
             },
             timeout=60,
         )
         if resp.ok:
             data = resp.json()
-            content = data.get("choices", [{}])[0].get("message", {}).get("content") or ""
-            if len(content.strip()) == 0:
-                print(f"OpenCode: {OPENCODE_MODEL} devolvio respuesta vacia")
+            # Handle different response formats
+            if isinstance(data, list) and len(data) > 0:
+                content = data[0].get("generated_text", "").strip()
+            elif isinstance(data, dict):
+                content = data.get("generated_text", "").strip()
+            else:
+                content = str(data).strip()
+            
+            if len(content) == 0:
+                print(f"HuggingFace: {HUGGINGFACE_MODEL} devolvio respuesta vacia")
                 return None
-            print(f"OpenCode: OK, respuesta {len(content)} chars")
+            print(f"HuggingFace: OK, respuesta {len(content)} chars")
             return content
         else:
-            print(f"OpenCode: HTTP {resp.status_code} - {resp.text[:200]}")
+            print(f"HuggingFace: HTTP {resp.status_code} - {resp.text[:200]}")
             return None
     except Exception as e:
-        print(f"OpenCode: excepcion - {e}")
+        print(f"HuggingFace: excepcion - {e}")
         return None
 
 
