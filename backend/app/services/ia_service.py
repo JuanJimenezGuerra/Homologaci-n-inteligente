@@ -4,30 +4,32 @@ import time
 import requests
 
 # USA SOLO OPENROUTER CON MODELO GRATUITO
-API_KEY = os.getenv("OPENROUTER_API_KEY_2", "")  # Tu nueva key en Render
-MODEL = "meta-llama/llama-3.1-8b-instruct:free"  # Modelo 100% GRATUITO
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY2", "")  # Tu nueva key en Render
+OPENROUTER_MODEL = "meta-llama/llama-3.1-8b-instruct:free"  # Modelo 100% GRATUITO
+OPENAI_API_KEY = ""
+OPENAI_MODEL = ""
 URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Debug: mostrar TODAS las vars de entorno relacionadas
 print("=== ENV VARS DEBUG ===")
-print(f"OPENROUTER_API_KEY_2: {'OK' if os.getenv('OPENROUTER_API_KEY_2') else 'NO CONFIGURADA'}")
-print(f"API_KEY (lo que lee): {'OK' if API_KEY else 'VACIA'}")
-print(f"MODEL: {MODEL}")
+print(f"OPENROUTER_API_KEY2: {'OK' if os.getenv('OPENROUTER_API_KEY2') else 'NO CONFIGURADA'}")
+print(f"OPENROUTER_API_KEY (lo que lee): {'OK' if OPENROUTER_API_KEY else 'VACIA'}")
+print(f"OPENROUTER_MODEL: {OPENROUTER_MODEL}")
 print(f"Todas las vars: {[k for k in os.environ.keys() if 'API' in k or 'KEY' in k]}")
 
 
 def call_ia(messages, max_tokens=1000, timeout=45):
     """Llama a OpenRouter con modelo GRATUITO."""
-    if not API_KEY:
-        print("[IA] ERROR: No hay API_KEY")
+    if not OPENROUTER_API_KEY:
+        print("[IA] ERROR: No hay OPENROUTER_API_KEY")
         return ""
 
     try:
-        print(f"[IA] Llamando {MODEL}...")
+        print(f"[IA] Llamando {OPENROUTER_MODEL}...")
         resp = requests.post(
             URL,
-            headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
-            json={"model": MODEL, "messages": messages, "max_tokens": max_tokens},
+            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
+            json={"model": OPENROUTER_MODEL, "messages": messages, "max_tokens": max_tokens},
             timeout=timeout
         )
         if resp.ok:
@@ -92,7 +94,7 @@ def load_master_cargos(db):
 
 
 def homologar_con_ia(db, cargos, masters=None):
-    if not API_KEY:
+    if not OPENROUTER_API_KEY:
         return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key", "confianza": 0.0} for c in cargos]
 
     if masters is None:
@@ -153,7 +155,7 @@ INSTRUCCIONES:
 # ==========================================
 
 def valorar_con_ia(cargo):
-    if not API_KEY:
+    if not OPENROUTER_API_KEY:
         return {"error": "Sin API key"}
 
     prompt = f"""Asigna niveles SHR/HAY para: {cargo.get('nombre_cargo', 'N/A')}
@@ -175,7 +177,7 @@ Responde SOLO JSON:
 # ==========================================
 
 def buscar_en_internet(cargo):
-    if not API_KEY:
+    if not OPENROUTER_API_KEY:
         return {"fuente": "Sin API key", "titulo": cargo.get("nombre_cargo", ""), "descripcion": "", "url": ""}
 
     nombre = cargo.get("nombre_cargo", "")

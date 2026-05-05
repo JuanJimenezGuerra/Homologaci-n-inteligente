@@ -769,7 +769,7 @@ def ia_status(db: Session = Depends(get_db), current_user: User = Depends(get_cu
     if status["any_key"]:
         status["test"] = "OK - al menos una API key configurada"
     else:
-        status["test"] = "ERROR - Ninguna API key configurada. Agrega OPENROUTER_API_KEY en Render Environment Variables"
+        status["test"] = "ERROR - Ninguna API key configurada. Agrega OPENROUTER_API_KEY2 en Render Environment Variables"
 
     return status
 
