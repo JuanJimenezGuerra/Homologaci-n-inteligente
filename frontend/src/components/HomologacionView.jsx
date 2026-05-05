@@ -103,15 +103,18 @@ function HomologacionView({ empresaId, onComplete }) {
 
   const confirmarIrValoracion = () => {
     setShowConfirmValoracion(false);
-    // Descargar hoja de información
-    const link = document.createElement('a');
-    link.href = '/ejemplos/EXPLICACIÓN GENERAL ESCENARIOS DE PAGO-es-ES.docx';
-    link.download = 'EXPLICACIÓN GENERAL ESCENARIOS DE PAGO-es-ES.docx';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
     
-    // Guardar datos y pasar a valoración
+    // Guardar datos en localStorage para persistencia
+    try {
+      localStorage.setItem('shr_cargos_homologacion', JSON.stringify(cargos));
+      if (empresaData) {
+        localStorage.setItem('shr_empresa_data', JSON.stringify(empresaData));
+      }
+    } catch (e) {
+      console.warn('Error guardando datos para valoración:', e);
+    }
+    
+    // Guardar datos y pasar a valoración (sin descargar)
     if (onComplete) onComplete(cargos);
   };
 
@@ -407,7 +410,9 @@ function HomologacionView({ empresaId, onComplete }) {
               <Building2 className="text-white w-6 h-6" />
               <div>
                 <h2 className="text-lg font-bold text-white">{empresaData.nombre_empresa || 'Empresa'}</h2>
-                {empresaData.razon_social && <p className="text-xs text-white/70">{empresaData.razon_social}</p>}
+                {empresaData.razon_social && empresaData.razon_social !== empresaData.nombre_empresa && (
+                  <p className="text-xs text-white/70">{empresaData.razon_social}</p>
+                )}
               </div>
             </div>
           </div>
