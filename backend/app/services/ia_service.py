@@ -7,23 +7,20 @@ from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
-OPENCODE_API_KEY = os.getenv("OPENCODE_API_KEY", "free")
+OPENCODE_API_KEY = os.getenv("OPENCODE_API_KEY", "")
 OPENCODE_MODEL = os.getenv("OPENCODE_MODEL", "openchat/opencode-33b-v0.1:free")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
 
 OPENCODE_URL = "https://opencode.ai/api/v1/chat/completions"
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
-print(f"IA Service: OPENROUTER_API_KEY={'CONFIGURADA' if OPENROUTER_API_KEY else 'NO CONFIGURADA'}")
-print(f"IA Service: OPENROUTER_MODEL={OPENROUTER_MODEL}")
-print(f"IA Service: OPENAI_API_KEY={'CONFIGURADA' if OPENAI_API_KEY else 'NO CONFIGURADA'}")
+print(f"IA Service: OPENCODE_API_KEY={'CONFIGURADA' if OPENCODE_API_KEY else 'NO CONFIGURADA'}")
+print(f"IA Service: OPENCODE_MODEL={OPENCODE_MODEL}")
 
 
 def call_opencode(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
+    """Call OpenCode API directly with opencode-33b model (free, no limit)."""
     try:
-        print(f"OpenCode: probando modelo {OPENCODE_MODEL}")
+        print(f"OpenCode: llamando {OPENCODE_MODEL}")
         resp = requests.post(
             OPENCODE_URL,
             headers={
@@ -44,7 +41,7 @@ def call_opencode(messages: list, max_tokens: int = 800, temperature: float = 0.
             if len(content.strip()) == 0:
                 print(f"OpenCode: {OPENCODE_MODEL} devolvio respuesta vacia")
                 return None
-            print(f"OpenCode: OK con {OPENCODE_MODEL}, respuesta {len(content)} chars")
+            print(f"OpenCode: OK, respuesta {len(content)} chars")
             return content
         else:
             print(f"OpenCode: HTTP {resp.status_code} - {resp.text[:200]}")
@@ -54,54 +51,14 @@ def call_opencode(messages: list, max_tokens: int = 800, temperature: float = 0.
         return None
 
 
-def call_openai(messages: list, max_tokens: int = 800, temperature: float = 0.1) -> Optional[str]:
-    if not OPENAI_API_KEY:
-        print("OpenAI: API key no configurada")
-        return None
-    try:
-        print(f"OpenAI fallback: llamando con modelo {OPENAI_MODEL}")
-        resp = requests.post(
-            OPENAI_URL,
-            headers={
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": OPENAI_MODEL,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            },
-            timeout=60,
-        )
-        if resp.ok:
-            data = resp.json()
-            content = data.get("choices", [{}])[0].get("message", {}).get("content")
-            print(f"OpenAI fallback: OK, respuesta {len(content) if content else 0} chars")
-            return content
-        else:
-            print(f"OpenAI fallback: HTTP {resp.status_code} - {resp.text[:300]}")
-            logger.error(f"OpenAI HTTP {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:
-        print(f"OpenAI fallback: excepcion - {e}")
-        logger.error(f"OpenAI error: {e}")
-    return None
-
-
 def call_ia(messages: list, max_tokens: int = 800, temperature: float = 0.1, timeout: int = 60) -> Optional[str]:
-    """Intenta OpenCode primero (gratuito, sin limite), fallback a OpenAI, con timeout."""
+    """Usa OpenCode (gratuito, sin limite) como unico modelo."""
     import threading
     result = {"content": None}
 
     def _call():
         try:
-            content = call_opencode(messages, max_tokens, temperature)
-            if content:
-                result["content"] = content
-                return
-            print("OpenCode fallo, intentando OpenAI fallback...")
-            logger.info("OpenCode fallo, intentando OpenAI fallback...")
-            result["content"] = call_openai(messages, max_tokens, temperature)
+            result["content"] = call_opencode(messages, max_tokens, temperature)
         except Exception as e:
             print(f"call_ia error: {e}")
             result["content"] = None
