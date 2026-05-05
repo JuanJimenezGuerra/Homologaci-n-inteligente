@@ -4,9 +4,9 @@ import time
 import requests
 import re
 
-# Forzar modelo pequeño para respuestas cortas - low variant
+# Modelo Google Gemma 4 26B A4B (free) para respuestas cortas
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY2", "")
-OPENROUTER_MODEL = "meta-llama/llama-3.2-1b-instruct:free"
+OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 URL = "https://openrouter.ai/api/v1/chat/completions"
