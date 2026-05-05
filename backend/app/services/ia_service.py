@@ -8,10 +8,10 @@ from typing import Optional, List, Dict
 logger = logging.getLogger(__name__)
 
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "")
-HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "microsoft/DialoGPT-medium")
+HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "google/flan-t5-small")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://shr-backend-prod.onrender.com")
 
-HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}"
+HUGGINGFACE_API_URL = f"https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}"
 
 print(f"IA Service: HUGGINGFACE_API_KEY={'CONFIGURADA' if HUGGINGFACE_API_KEY else 'NO CONFIGURADA (usando gratis)'}")
 print(f"IA Service: HUGGINGFACE_MODEL={HUGGINGFACE_MODEL}")
@@ -65,13 +65,13 @@ def call_huggingface(messages: list, max_tokens: int = 800, temperature: float =
 
 
 def call_ia(messages: list, max_tokens: int = 800, temperature: float = 0.1, timeout: int = 60) -> Optional[str]:
-    """Usa OpenCode (gratuito, sin limite) como unico modelo."""
+    """Usa Hugging Face Inference API (free tier, no registration)."""
     import threading
     result = {"content": None}
 
     def _call():
         try:
-            result["content"] = call_opencode(messages, max_tokens, temperature)
+            result["content"] = call_huggingface(messages, max_tokens, temperature)
         except Exception as e:
             print(f"call_ia error: {e}")
             result["content"] = None
@@ -250,30 +250,23 @@ DESCRIPCION: {desc[:150]}
 ---
 """
 
-    prompt = f"""Eres un experto en clasificacion y homologacion de cargos en Colombia bajo metodologia SHR/HAY.
+    prompt = f"""Given the following master job catalog and company jobs, find the most similar master job for each company job.
 
-Tu tarea es encontrar el cargo maestro MAS similar para cada cargo de la empresa.
-
-=== CATALOGO MAESTRO DE CARGOS (referencia) ===
+MASTER JOBS:
 {masters_text}
 
-=== CARGOS A HOMOLOGAR ===
+COMPANY JOBS TO MATCH:
 {cargos_text}
 
-INSTRUCCIONES:
-1. Para cada cargo, selecciona el cargo maestro MAS similar del catalogo.
-2. Usa la DESCRIPCION y el AREA del cargo para mejorar la precision.
-3. Considera el nivel jerarquico (jefe, coordinador, analista, auxiliar) para seniority.
-4. Si NO hay ningun cargo similar en el catalogo, responde "SIN COINCIDENCIA".
-5. El nombre del cargo homologado debe ser EXACTAMENTE como aparece en el catalogo.
+For each company job, return the most similar master job name from the catalog. If no similar job exists, return "SIN COINCIDENCIA".
 
-Responde SOLO con un array JSON valido:
+Return ONLY a JSON array:
 [
   {{
-    "id": ID_NUMERICO,
-    "cargo_homologado": "NOMBRE EXACTO DEL CARGO MAESTRO O SIN COINCIDENCIA",
-    "justificacion": "Razon breve (max 60 chars)",
-    "confianza": 0.0 a 1.0
+    "id": JOB_ID,
+    "cargo_homologado": "MASTER_JOB_NAME or SIN COINCIDENCIA",
+    "justificacion": "brief reason",
+    "confianza": 0.0 to 1.0
   }}
 ]"""
 
@@ -284,10 +277,8 @@ def homologar_con_ia(db, cargos: list, masters: list = None) -> list:
     """Homologa un lote de cargos usando IA. Retorna lista de resultados."""
     ia_error = "sin_error"
 
-    if not OPENROUTER_API_KEY and not OPENAI_API_KEY:
-        print("homologar_con_ia: NO hay API key de IA configurada (ni OpenRouter ni OpenAI)")
-        ia_error = "Sin API key de IA configurada. Verifica OPENROUTER_API_KEY en Render."
-        return [{"id": c.get("id"), "cargo_homologado": "SIN_COINCIDENCIA", "justificacion": ia_error, "confianza": 0.0, "_ia_error": ia_error} for c in cargos]
+    if not HUGGINGFACE_API_KEY:
+        print("homologar_con_ia: Usando Hugging Face free tier (sin API key)")
 
     if masters is None:
         masters = load_master_cargos(db)
