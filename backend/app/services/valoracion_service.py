@@ -69,11 +69,28 @@ def _call_ia(prompt, max_tokens=600):
 
 
 def _extract_json(text):
-    if "```json" in text:
-        text = text.split("```json")[1].split("```")[0].strip()
-    elif "```" in text:
-        text = text.split("```")[1].split("```")[0].strip()
-    return json.loads(text)
+    """Extrae JSON de la respuesta de IA de forma robusta."""
+    if not text:
+        return None
+    try:
+        # Limpiar marcadores markdown
+        import re
+        text = re.sub(r'```json\s*', '', text)
+        text = re.sub(r'```\s*', '', text)
+        
+        # Intentar parseo directo
+        return json.loads(text.strip())
+    except:
+        # Buscar objeto JSON en el texto
+        try:
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start != -1 and end > start:
+                candidate = text[start:end]
+                return json.loads(candidate)
+        except:
+            pass
+    return None
 
 
 # ==========================================
@@ -296,7 +313,7 @@ VALORACION_PROMPT = """Eres experto en valoracion de cargos bajo metodologia HAY
 - Descripcion: {descripcion}
 - Cargo Homologado: {homologado}
 
-**FACTORES A EVALUAR (responde SOLO con JSON):**
+**FACTORES A EVALUAR:**
 
 Factor 1 - Conocimiento & Habilidad:
 - conocimientos: A-H (A=basico, H=experto)
@@ -325,26 +342,13 @@ Criticidad (0 o 1):
 - criterio_2: ¿Pertenece al core del negocio?
 - criterio_3: ¿Oferta limitada de personas?
 
-Responde SOLO con JSON:
-{{
-  "conocimientos": "C",
-  "experiencia": "o",
-  "habilidad_gerencial": "III",
-  "rol_cargo": "2",
-  "contacto": "B",
-  "frecuencia": "3",
-  "contenido_relaciones": "III",
-  "complejidad_conceptual": "3",
-  "tendencia_cc": "o",
-  "guias_apoyo": "D",
-  "tendencia_ga": "o",
-  "impacto": "II",
-  "autonomia": "D",
-  "magnitud": "5",
-  "criterio_1": 0,
-  "criterio_2": 1,
-  "criterio_3": 0
-}}"""
+INSTRUCCIONES ESTRICTAS:
+1. RESPONDE UNICAMENTE CON EL OBJETO JSON, SIN TEXTO ADICIONAL.
+2. NO incluyas explicaciones, markdown, ni codigo.
+3. NO uses comillas especiales, usa comillas dobles estandar.
+
+Formato exacto:
+{{"conocimientos": "C", "experiencia": "o", "habilidad_gerencial": "III", "rol_cargo": "2", "contacto": "B", "frecuencia": "3", "contenido_relaciones": "III", "complejidad_conceptual": "3", "tendencia_cc": "o", "guias_apoyo": "D", "tendencia_ga": "o", "impacto": "II", "autonomia": "D", "magnitud": "5", "criterio_1": 0, "criterio_2": 1, "criterio_3": 0}}"""
 
 
 def valorar_cargo_con_ia(

@@ -13,7 +13,8 @@ from ..models import (
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY2")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+# Modelo pequeño para respuestas cortas
+OPENROUTER_MODEL = "meta-llama/llama-3.2-1b-instruct:free"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
@@ -71,11 +72,28 @@ def _call_ia(prompt, max_tokens=500):
 
 
 def _extract_json(text):
-    if "```json" in text:
-        text = text.split("```json")[1].split("```")[0].strip()
-    elif "```" in text:
-        text = text.split("```")[1].split("```")[0].strip()
-    return json.loads(text)
+    """Extrae JSON de la respuesta de IA de forma robusta."""
+    if not text:
+        return None
+    try:
+        # Limpiar marcadores markdown
+        import re
+        text = re.sub(r'```json\s*', '', text)
+        text = re.sub(r'```\s*', '', text)
+        
+        # Intentar parseo directo
+        return json.loads(text.strip())
+    except:
+        # Buscar objeto JSON en el texto
+        try:
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start != -1 and end > start:
+                candidate = text[start:end]
+                return json.loads(candidate)
+        except:
+            pass
+    return None
 
 
 # ==========================================

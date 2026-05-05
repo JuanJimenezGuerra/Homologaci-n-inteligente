@@ -2,48 +2,87 @@ import os
 import json
 import time
 import requests
+import re
 
-# USA SOLO OPENROUTER CON MODELO GRATUITO
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY2", "")  # Tu nueva key en Render
-OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"  # Modelo 100% GRATUITO
-OPENAI_API_KEY = ""
-OPENAI_MODEL = ""
+# Forzar modelo pequeño para respuestas cortas - low variant
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY2", "")
+OPENROUTER_MODEL = "meta-llama/llama-3.2-1b-instruct:free"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# Debug: mostrar TODAS las vars de entorno relacionadas
 print("=== ENV VARS DEBUG ===")
-print(f"OPENROUTER_API_KEY2: {'OK' if os.getenv('OPENROUTER_API_KEY2') else 'NO CONFIGURADA'}")
-print(f"OPENROUTER_API_KEY (lo que lee): {'OK' if OPENROUTER_API_KEY else 'VACIA'}")
-print(f"OPENROUTER_MODEL: {OPENROUTER_MODEL}")
-print(f"Todas las vars: {[k for k in os.environ.keys() if 'API' in k or 'KEY' in k]}")
+key2 = os.getenv("OPENROUTER_API_KEY2")
+print("OPENROUTER_API_KEY2: " + ("OK" if key2 else "NO CONFIGURADA"))
+print("OPENROUTER_API_KEY (lo que lee): " + ("OK" if OPENROUTER_API_KEY else "VACIA"))
+print("OPENROUTER_MODEL: " + OPENROUTER_MODEL)
+api_vars = [k for k in os.environ.keys() if "API" in k or "KEY" in k]
+print("Todas las vars: " + str(api_vars))
 
 
-def call_ia(messages, max_tokens=1000, timeout=45):
-    """Llama a OpenRouter con modelo GRATUITO."""
+def call_ia(messages, max_tokens=300, timeout=30):
+    """Llama a OpenRouter con modelo pequeño para respuestas cortas."""
     if not OPENROUTER_API_KEY:
         print("[IA] ERROR: No hay OPENROUTER_API_KEY")
         return ""
 
-    try:
-        print(f"[IA] Llamando {OPENROUTER_MODEL}...")
-        resp = requests.post(
-            URL,
-            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
-            json={"model": OPENROUTER_MODEL, "messages": messages, "max_tokens": max_tokens},
-            timeout=timeout
-        )
-        if resp.ok:
-            content = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-            if content:
-                print(f"[IA] OK: {len(content)} caracteres")
-                return content
+    # Agregar mensaje de sistema para forzar respuesta corta
+    if messages and messages[0].get("role") == "user":
+        system_msg = {
+            "role": "system",
+            "content": "Eres un asistente que responde UNICAMENTE con JSON valido, sin texto adicional. Respuestas cortas y precisas. No expliques nada."
+        }
+        messages = [system_msg] + messages
+
+    for intento in range(2):
+        try:
+            print("[IA] Llamando " + OPENROUTER_MODEL + " (intento " + str(intento + 1) + ")...")
+            resp = requests.post(
+                URL,
+                headers={
+                    "Authorization": "Bearer " + OPENROUTER_API_KEY,
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": OPENROUTER_MODEL,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": 0.0
+                },
+                timeout=timeout
+            )
+            if resp.ok:
+                data = resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                if content:
+                    print("[IA] Respuesta recibida: " + str(len(content)) + " caracteres")
+                    return content
+                else:
+                    print("[IA] Respuesta vacia")
             else:
-                print("[IA] Respuesta vacía")
-        else:
-            print(f"[IA] HTTP {resp.status_code}: {resp.text[:150]}")
-    except Exception as e:
-        print(f"[IA] Error: {e}")
+                print("[IA] HTTP " + str(resp.status_code) + ": " + resp.text[:150])
+        except Exception as e:
+            print("[IA] Error: " + str(e))
+
+        if intento == 0:
+            time.sleep(2)
+
     return ""
+
+
+def _limpiar_json(text):
+    """Limpia el texto JSON antes del parseo."""
+    # Remover marcadores markdown si existen
+    text = re.sub(r'```json\s*', '', text)
+    text = re.sub(r'```\s*', '', text)
+    # Remover texto antes del primer { o [ y despues del ultimo } o ]
+    for start_char, end_char in [("{", "}"), ("[", "]")]:
+        start = text.find(start_char)
+        end = text.rfind(end_char) + 1
+        if start != -1 and end > start:
+            text = text[start:end]
+            break
+    return text.strip()
 
 
 def extract_json(text):
@@ -51,35 +90,59 @@ def extract_json(text):
     if not text:
         return None
     try:
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
-        return json.loads(text.strip())
+        # Limpiar texto
+        text = _limpiar_json(text)
+        # Intentar parseo directo
+        return json.loads(text)
     except:
-        return None
-
-
-def extract_json_array(text):
-    """Extrae array JSON."""
-    if not text:
-        return None
-    try:
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
-        text = text.strip()
-        if text.startswith("["):
-            return json.loads(text)
-    except:
-        pass
+        # Si falla, buscar objeto JSON en el texto
+        try:
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start != -1 and end > start:
+                candidate = text[start:end]
+                return json.loads(candidate)
+        except:
+            pass
     return None
 
 
-# ==========================================
-# HOMOLOGACION
-# ==========================================
+def extract_json_array(text):
+    """Extrae array JSON de la respuesta de la IA."""
+    if not text:
+        return None
+    try:
+        text = text.strip()
+
+        # Intentar parseo directo primero
+        try:
+            result = json.loads(text)
+            if isinstance(result, list):
+                return result
+        except:
+            pass
+
+        # Buscar array JSON con estrategia mejorada
+        start = text.find("[")
+        end = text.rfind("]") + 1
+        if start == -1 or end <= start:
+            print("[IA] No se encontro array JSON. Texto: " + text[:500])
+            return None
+
+        candidate = text[start:end]
+        # Limpiar caracteres problematicos antes del parseo
+        candidate = _limpiar_json(candidate)
+
+        print("[IA] Intentando parsear JSON array: " + candidate[:500] + "...")
+        result = json.loads(candidate)
+        if isinstance(result, list):
+            return result
+        else:
+            print("[IA] El parseo no dio una lista: " + str(type(result)))
+    except Exception as e:
+        print("[IA] Error parseando JSON array: " + str(e) + " | Texto original: " + text[:500])
+    return None
+
 
 def load_master_cargos(db):
     from ..models import MasterDescription, MasterCargo
@@ -100,31 +163,28 @@ def homologar_con_ia(db, cargos, masters=None):
     if masters is None:
         masters = load_master_cargos(db)
 
-    print(f"[HOMOLOGACION] Procesando {len(cargos)} cargos")
+    print("[HOMOLOGACION] Procesando " + str(len(cargos)) + " cargos")
 
     resultados = []
     for i in range(0, len(cargos), 8):
         batch = cargos[i:i+8]
-        catalogo = "\n".join([f"- {m['nombre']}" for m in masters[:80]])
-        cargos_txt = "\n".join([f"ID:{c.get('id')} | {c.get('nombre_cargo', '').upper()}" for c in batch])
+        catalogo = "\n".join(["- " + m["nombre"] for m in masters[:80]])
+        cargos_txt = "\n".join(["ID:" + str(c.get("id")) + " | " + str(c.get("nombre_cargo", "")).upper() for c in batch])
 
-        json_example = '[{"id": 1, "cargo_homologado": "NOMBRE", "justificacion": "razon", "confianza": 0.5}]'
-        prompt = f"""Eres experto en homologacion de cargos en Colombia.
-
-CATALOGO:
-{catalogo}
-
-CARGOS:
-{cargos_txt}
-
-INSTRUCCIONES:
-1. Para cada ID, busca el cargo mas similar en el catalogo.
-2. Responde SOLO con array JSON (ejemplo: {json_example})
-3. Si no hay coincidencia, usa "SIN COINCIDENCIA"."""
+        prompt = "Eres experto en homologacion de cargos en Colombia.\n\n"
+        prompt += "CATALOGO:\n" + catalogo + "\n\n"
+        prompt += "CARGOS:\n" + cargos_txt + "\n\n"
+        prompt += "INSTRUCCIONES ESTRICTAS:\n"
+        prompt += "1. Para cada ID, busca el cargo mas similar en el catalogo.\n"
+        prompt += "2. RESPONDE UNICAMENTE CON EL ARRAY JSON, SIN TEXTO ADICIONAL.\n"
+        prompt += '3. Formato exacto: [{"id": 1, "cargo_homologado": "NOMBRE", "justificacion": "razon", "confianza": 0.5}]\n'
+        prompt += '4. Si no hay coincidencia, usa "SIN COINCIDENCIA" como cargo_homologado.\n'
+        prompt += "5. NO incluyas explicaciones, solo el JSON.\n"
+        prompt += "6. NO uses markdown ni comillas especiales."
 
         content = ""
         for intento in range(2):
-            content = call_ia([{"role": "user", "content": prompt}], max_tokens=1500)
+            content = call_ia([{"role": "user", "content": prompt}], max_tokens=500)
             if content:
                 break
             time.sleep(2)
@@ -132,6 +192,8 @@ INSTRUCCIONES:
         if not content:
             resultados.extend([{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Error IA", "confianza": 0.0} for c in batch])
             continue
+
+        print("[HOMOLOGACION] Respuesta IA completa: " + content[:1000])
 
         parsed = extract_json_array(content)
         if parsed and isinstance(parsed, list):
@@ -146,24 +208,21 @@ INSTRUCCIONES:
             resultados.extend([{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Error parseo", "confianza": 0.0} for c in batch])
 
     exitos = sum(1 for r in resultados if r["cargo_homologado"] != "SIN COINCIDENCIA")
-    print(f"[HOMOLOGACION] {exitos}/{len(cargos)} exitos")
+    print("[HOMOLOGACION] " + str(exitos) + "/" + str(len(cargos)) + " exitos")
     return resultados
 
-
-# ==========================================
-# VALORACION
-# ==========================================
 
 def valorar_con_ia(cargo):
     if not OPENROUTER_API_KEY:
         return {"error": "Sin API key"}
 
-    prompt = f"""Asigna niveles SHR/HAY para: {cargo.get('nombre_cargo', 'N/A')}
+    prompt = "Asigna niveles SHR/HAY para el cargo: " + str(cargo.get("nombre_cargo", "N/A")) + "\n\n"
+    prompt += "INSTRUCCIONES ESTRICTAS:\n"
+    prompt += "1. Responde UNICAMENTE con el objeto JSON, sin texto adicional.\n"
+    prompt += "2. No uses markdown ni explicaciones.\n"
+    prompt += '3. Formato exacto: {"conocimientos":"A-H","experiencia":"--/-/o/+","habilidades":"I-VII","responsabilidad":"1-4","contacto":"A-C","frecuencia":"1-4","contraste":"I-V","complejidad":"1-5","iniciativa":"I-IV","autonomia":"A-G","magnitud":"0-14","impacto":"I-VII","justificacion":"breve"}'
 
-Responde SOLO JSON:
-{"conocimientos":"A-H","experiencia":"--/-/o/+","habilidades":"I-VII","responsabilidad":"1-4","contacto":"A-C","frecuencia":"1-4","contraste":"I-V","complejidad":"1-5","iniciativa":"I-IV","autonomia":"A-G","magnitud":"0-14","impacto":"I-VII","justificacion":"breve"}"""
-
-    content = call_ia([{"role": "user", "content": prompt}], max_tokens=500)
+    content = call_ia([{"role": "user", "content": prompt}], max_tokens=300)
     if not content:
         return {"error": "Sin respuesta IA"}
     parsed = extract_json(content)
@@ -172,21 +231,18 @@ Responde SOLO JSON:
     return {"error": "Error parseo"}
 
 
-# ==========================================
-# BUSCAR EN INTERNET
-# ==========================================
-
 def buscar_en_internet(cargo):
     if not OPENROUTER_API_KEY:
         return {"fuente": "Sin API key", "titulo": cargo.get("nombre_cargo", ""), "descripcion": "", "url": ""}
 
     nombre = cargo.get("nombre_cargo", "")
-    prompt = f"""Dame info del cargo "{nombre}" en Colombia.
+    prompt = 'Dame info del cargo "' + nombre + '" en Colombia.\n\n'
+    prompt += "INSTRUCCIONES ESTRICTAS:\n"
+    prompt += "1. Responde UNICAMENTE con el objeto JSON, sin texto adicional.\n"
+    prompt += "2. No uses markdown ni explicaciones.\n"
+    prompt += '3. Formato exacto: {"fuente":"Internet","titulo":"Cargo","descripcion":"Breve","url":"https://ejemplo.com"}'
 
-Responde SOLO JSON:
-{"fuente":"Internet","titulo":"Cargo","descripcion":"Breve","url":"https://ejemplo.com"}"""
-
-    content = call_ia([{"role": "user", "content": prompt}], max_tokens=400)
+    content = call_ia([{"role": "user", "content": prompt}], max_tokens=300)
     if not content:
         return {"fuente": "Error", "titulo": nombre, "descripcion": "Error IA", "url": ""}
     parsed = extract_json(content)
