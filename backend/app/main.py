@@ -1139,87 +1139,109 @@ def list_empresas(db: Session = Depends(get_db), current_user: User = Depends(ge
 
 @app.post("/analisis/curvas/upload/{upload_id}")
 def generar_curvas_upload(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    curvas = calcular_curvas_equidad(db, upload_id=upload_id)
-    return {"curvas_generadas": len(curvas)}
-
-@app.get("/analisis/reporte/upload/{upload_id}")
-def get_reporte_upload(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    from .services.ia_service import call_ia
+    """Generate salary curves and return curve data for frontend."""
+    from .services.analisis_service import _estimar_puntos
     from .models import Valoracion, Cargo
 
-    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
-    valoraciones = db.query(Valoracion).join(Cargo).filter(Cargo.upload_id == upload_id).all()
+    # Generate curves (saved to DB)
+    calcular_curvas_equidad(db, upload_id=upload_id)
 
-    subpago = 0
-    competitivo = 0
-    sobrepago = 0
-    detalles = []
-
-    for v in valoraciones:
-        cargo = next((c for c in cargos if c.id == v.cargo_id), None)
-        if not cargo:
-            continue
-
-        puntos_est = _estimar_puntos_totales(v)
-        salario_ref = puntos_est * 25000
-        salario_actual = float(v.magnitud or 0) * 100000 if v.magnitud else 0
-
-        if salario_actual > 0 and salario_ref > 0:
-            posicion = (salario_actual / salario_ref) * 100
-        else:
-            posicion = 100
-
-        if posicion < 80:
-            subpago += 1
-        elif posicion <= 120:
-            competitivo += 1
-        else:
-            sobrepago += 1
-
-        detalles.append({
-            "cargo": cargo.nombre_cargo,
-            "actual": salario_actual,
-            "referencia": salario_ref,
-            "posicion": round(posicion, 1),
-        })
-
-    total = len(detalles) if detalles else 1
+    # Get valuation data to return curve points
+    valoraciones = db.query(Valoracion).join(Cargo).filter(
+        Cargo.upload_id == upload_id
+    ).all()
 
     puntos_data = []
     for v in valoraciones:
-        cargo = next((c for c in cargos if c.id == v.cargo_id), None)
+        cargo = db.query(Cargo).filter(Cargo.id == v.cargo_id).first()
         if cargo:
-            pts = _estimar_puntos_totales(v)
+            pts = _estimar_puntos(v)
             salario_est = pts * 25000
-            puntos_data.append({"cargo": cargo.nombre_cargo, "puntos": pts, "valor": salario_est})
+            salario_actual = float(v.garantizado or v.basico or 0)
+            if salario_actual > 0:
+                puntos_data.append({
+                    "cargo": cargo.nombre_cargo,
+                    "puntos": pts,
+                    "valor": salario_actual,
+                })
 
     puntos_data.sort(key=lambda x: x["puntos"])
 
     return {
-        "equidad": {
-            "total": total,
-            "subpago": subpago,
-            "competitivo": competitivo,
-            "sobrepago": sobrepago,
-            "pct_subpago": round(subpago / total * 100, 1) if total > 0 else 0,
-            "pct_competitivo": round(competitivo / total * 100, 1) if total > 0 else 0,
-            "pct_sobrepago": round(sobrepago / total * 100, 1) if total > 0 else 0,
-            "detalles": detalles[:10],
-        },
+        "min": [{"puntos": d["puntos"], "valor": d["valor"] * 0.85, "cargo": d["cargo"]} for d in puntos_data],
+        "mid": [{"puntos": d["puntos"], "valor": d["valor"], "cargo": d["cargo"]} for d in puntos_data],
+        "max": [{"puntos": d["puntos"], "valor": d["valor"] * 1.3, "cargo": d["cargo"]} for d in puntos_data],
+    }
+
+@app.get("/analisis/reporte/upload/{upload_id}")
+def get_reporte_upload(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Generate consolidated analysis report using analisis_service."""
+    from .services.analisis_service import (
+        analizar_equidad,
+        calcular_costos_nivelacion,
+        reporte_consolidado,
+    )
+    from .services.ia_service import call_ia
+    from .models import Valoracion, Cargo
+
+    # Get equity analysis
+    equidad = analizar_equidad(db, upload_id=upload_id)
+
+    # Get nivelacion costs
+    nivelacion = calcular_costos_nivelacion(db, upload_id=upload_id)
+
+    # Get salary data for curves and competitividad
+    valoraciones = db.query(Valoracion).join(Cargo).filter(Cargo.upload_id == upload_id).all()
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+
+    puntos_data = []
+    competitividad_detalles = []
+
+    for v in valoraciones:
+        cargo = db.query(Cargo).filter(Cargo.id == v.cargo_id).first()
+        if not cargo:
+            continue
+
+        from .services.analisis_service import _estimar_puntos
+        pts = _estimar_puntos(v)
+        salario_est = pts * 25000
+        salario_actual = float(v.garantizado or v.basico or 0)
+
+        puntos_data.append({
+            "cargo": cargo.nombre_cargo,
+            "puntos": pts,
+            "valor": salario_est,
+            "salario_actual": salario_actual,
+        })
+
+        if salario_actual > 0 and salario_est > 0:
+            posicion = (salario_actual / salario_est) * 100
+        else:
+            posicion = 100
+
+        competitividad_detalles.append({
+            "cargo": cargo.nombre_cargo,
+            "actual": salario_actual,
+            "referencia": salario_est,
+            "posicion": round(posicion, 1),
+            "salario_empresa": salario_actual,
+            "mercado_p50": salario_est,
+            "diferencia_pct": round(posicion - 100, 1),
+        })
+
+    puntos_data.sort(key=lambda x: x["puntos"])
+
+    return {
+        "equidad": equidad,
         "curvas": {
-            "min": [{"puntos": d["puntos"], "valor": d["valor"] * 0.85} for d in puntos_data],
-            "mid": [{"puntos": d["puntos"], "valor": d["valor"]} for d in puntos_data],
-            "max": [{"puntos": d["puntos"], "valor": d["valor"] * 1.3} for d in puntos_data],
+            "min": [{"puntos": d["puntos"], "valor": d["valor"] * 0.85, "cargo": d["cargo"]} for d in puntos_data],
+            "mid": [{"puntos": d["puntos"], "valor": d["valor"], "cargo": d["cargo"]} for d in puntos_data],
+            "max": [{"puntos": d["puntos"], "valor": d["valor"] * 1.3, "cargo": d["cargo"]} for d in puntos_data],
         },
-        "nivelacion": {
-            f"target_{int(t * 100)}": {
-                "costo_anual": sum(max(0, d["referencia"] * t - d["actual"]) for d in detalles) * 12,
-            }
-            for t in [0.7, 0.8, 0.9, 1.0]
-        },
+        "nivelacion": nivelacion,
         "competitividad": {
-            "promedio": round(sum(d["posicion"] for d in detalles) / len(detalles), 1) if detalles else 0,
-            "cargos": detalles[:10],
+            "promedio": round(sum(d["posicion"] for d in competitividad_detalles) / len(competitividad_detalles), 1) if competitividad_detalles else 0,
+            "cargos": competitividad_detalles[:10],
         },
     }
 
