@@ -755,21 +755,17 @@ def reprocesar_homologacion(
 @app.get("/ia/status")
 def ia_status(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Diagnostico del servicio de IA."""
-    from .services.ia_service import OPENROUTER_API_KEY, OPENAI_API_KEY, OPENROUTER_MODEL, OPENAI_MODEL
-    import os
+    from .services.ia_service import OPENAI_API_KEY, OPENAI_MODEL
 
     status = {
-        "openrouter_key": "CONFIGURADA" if OPENROUTER_API_KEY else "NO CONFIGURADA",
-        "openrouter_model": OPENROUTER_MODEL,
         "openai_key": "CONFIGURADA" if OPENAI_API_KEY else "NO CONFIGURADA",
         "openai_model": OPENAI_MODEL,
-        "any_key": bool(OPENROUTER_API_KEY or OPENAI_API_KEY),
     }
 
-    if status["any_key"]:
-        status["test"] = "OK - al menos una API key configurada"
+    if OPENAI_API_KEY:
+        status["test"] = "OK - API key configurada"
     else:
-        status["test"] = "ERROR - Ninguna API key configurada. Agrega OPENROUTER_API_KEY2 en Render Environment Variables"
+        status["test"] = "ERROR - Ninguna API key configurada. Agrega OPENAI_API_KEY en Render Environment Variables"
 
     return status
 

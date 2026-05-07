@@ -1,29 +1,23 @@
 import os
 import json
 import time
-import requests
 import re
 
-# Modelos gratuitos: openrouter/free como principal, MiniMax como respaldo
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY2", "")
-OPENROUTER_MODELS = ["openrouter/free", "minimax/minimax-m2.5:free"]
+# OpenAI configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-URL = "https://openrouter.ai/api/v1/chat/completions"
 
 print("=== ENV VARS DEBUG ===")
-key2 = os.getenv("OPENROUTER_API_KEY2")
-print("OPENROUTER_API_KEY2: " + ("OK" if key2 else "NO CONFIGURADA"))
-print("OPENROUTER_API_KEY (lo que lee): " + ("OK" if OPENROUTER_API_KEY else "VACIA"))
-print("OPENROUTER_MODELS: " + str(OPENROUTER_MODELS))
+print("OPENAI_API_KEY: " + ("OK" if OPENAI_API_KEY else "NO CONFIGURADA"))
+print("OPENAI_MODEL: " + OPENAI_MODEL)
 api_vars = [k for k in os.environ.keys() if "API" in k or "KEY" in k]
 print("Todas las vars: " + str(api_vars))
 
 
 def call_ia(messages, max_tokens=300, timeout=30):
-    """Llama a OpenRouter usando openrouter/free y MiniMax como respaldo."""
-    if not OPENROUTER_API_KEY:
-        print("[IA] ERROR: No hay OPENROUTER_API_KEY")
+    """Llama a OpenAI API."""
+    if not OPENAI_API_KEY:
+        print("[IA] ERROR: No hay OPENAI_API_KEY")
         return ""
 
     # Agregar mensaje de sistema para forzar respuesta corta
@@ -34,46 +28,27 @@ def call_ia(messages, max_tokens=300, timeout=30):
         }
         messages = [system_msg] + messages
 
-    for model in OPENROUTER_MODELS:
-        for intento in range(3):
-            try:
-                print("[IA] Llamando " + model + " (intento " + str(intento + 1) + ")...")
-                resp = requests.post(
-                    URL,
-                    headers={
-                        "Authorization": "Bearer " + OPENROUTER_API_KEY,
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "max_tokens": max_tokens,
-                        "temperature": 0.0
-                    },
-                    timeout=timeout
-                )
-                if resp.ok:
-                    data = resp.json()
-                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                    if content:
-                        print("[IA] Respuesta recibida: " + str(len(content)) + " caracteres")
-                        return content
-                    else:
-                        print("[IA] Respuesta vacia")
-                elif resp.status_code == 429:
-                    wait = 2 ** intento
-                    print("[IA] Rate limit en " + model + ", esperando " + str(wait) + "s")
-                    time.sleep(wait)
-                    continue
-                else:
-                    print("[IA] HTTP " + str(resp.status_code) + ": " + resp.text[:150])
-                    break
-            except Exception as e:
-                print("[IA] Error: " + str(e))
-                if intento < 2:
-                    time.sleep(2)
+    try:
+        import openai
+        client = openai.OpenAI(api_key=OPENAI_API_KEY, timeout=timeout)
+        
+        print("[IA] Llamando " + OPENAI_MODEL + "...")
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=0.0
+        )
+        content = resp.choices[0].message.content.strip()
+        if content:
+            print("[IA] Respuesta recibida: " + str(len(content)) + " caracteres")
+            return content
+        else:
+            print("[IA] Respuesta vacia")
+    except Exception as e:
+        print("[IA] Error: " + str(e))
 
-    print("[IA] Todos los modelos fallaron")
+    print("[IA] OpenAI fallo")
     return ""
 
 
@@ -155,7 +130,7 @@ def load_master_cargos(db):
 
 
 def homologar_con_ia(db, cargos, masters=None):
-    if not OPENROUTER_API_KEY:
+    if not OPENAI_API_KEY:
         return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key", "confianza": 0.0} for c in cargos]
 
     if masters is None:
@@ -212,7 +187,7 @@ def homologar_con_ia(db, cargos, masters=None):
 
 
 def valorar_con_ia(cargo):
-    if not OPENROUTER_API_KEY:
+    if not OPENAI_API_KEY:
         return {"error": "Sin API key"}
 
     prompt = "Asigna niveles SHR/HAY para el cargo: " + str(cargo.get("nombre_cargo", "N/A")) + "\n\n"
@@ -232,7 +207,7 @@ def valorar_con_ia(cargo):
 
 def buscar_en_internet(cargo):
     """Busca informacion del cargo en internet para mejorar homologacion."""
-    if not OPENROUTER_API_KEY:
+    if not OPENAI_API_KEY:
         return {"fuente": "Sin API key", "titulo": cargo.get("nombre_cargo", ""), "descripcion": "", "url": ""}
 
     nombre = cargo.get("nombre_cargo", "")

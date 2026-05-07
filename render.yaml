@@ -8,10 +8,10 @@ services:
         value: SHR-Prod-Secret-2026-Homologacion-Inteligente
       - key: DATABASE_URL
         value: postgresql://postgres.mttizxynbskldwoxznva:shr2026SHR2020@aws-1-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require
-      - key: OPENROUTER_API_KEY
+      - key: OPENAI_API_KEY
         sync: false
-      - key: OPENROUTER_API_KEY2
-        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
       - key: BACKEND_URL
         value: https://shr-backend-prod.onrender.com
   

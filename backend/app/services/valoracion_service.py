@@ -1,8 +1,6 @@
 import os
 import json
 import logging
-import requests
-import time
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict
 from ..models import (
@@ -11,76 +9,31 @@ from ..models import (
 
 logger = logging.getLogger(__name__)
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY2")
-OPENROUTER_MODELS = ["openrouter/free", "minimax/minimax-m2.5:free"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-
 
 def _call_ia(prompt, max_tokens=600):
-    """Usa openrouter/free y MiniMax como respaldo."""
-    messages = [{"role": "user", "content": prompt}]
+    """Llama a OpenAI API."""
+    if not OPENAI_API_KEY:
+        logger.error("No hay OPENAI_API_KEY configurada")
+        return None
 
-    if OPENROUTER_API_KEY:
-        for model in OPENROUTER_MODELS:
-            for intento in range(3):
-                try:
-                    logger.info(f"IA: llamando {model} (intento {intento + 1})")
-                    resp = requests.post(
-                        OPENROUTER_URL,
-                        headers={
-                            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": model,
-                            "messages": messages,
-                            "max_tokens": max_tokens,
-                            "temperature": 0.1,
-                        },
-                        timeout=30,
-                    )
-                    if resp.ok:
-                        return resp.json()["choices"][0]["message"]["content"]
-                    elif resp.status_code == 429:
-                        wait = 2 ** intento
-                        logger.warning(f"Rate limit en {model}, esperando {wait}s")
-                        time.sleep(wait)
-                        continue
-                    else:
-                        logger.error(f"OpenRouter {model} HTTP {resp.status_code}: {resp.text[:100]}")
-                        break
-                except Exception as e:
-                    logger.error(f"OpenRouter {model} error: {e}")
-                    if intento < 2:
-                        time.sleep(2)
-        logger.warning("Todos los modelos OpenRouter fallaron")
-
-    if OPENAI_API_KEY:
-        try:
-            resp = requests.post(
-                OPENAI_URL,
-                headers={
-                    "Authorization": f"Bearer {OPENAI_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": OPENAI_MODEL,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": 0.1,
-                },
-                timeout=30,
-            )
-            if resp.ok:
-                return resp.json()["choices"][0]["message"]["content"]
-        except Exception as e:
-            logger.error(f"OpenAI error: {e}")
-
-    return None
+    try:
+        import openai
+        client = openai.OpenAI(api_key=OPENAI_API_KEY, timeout=30)
+        
+        logger.info(f"IA: llamando {OPENAI_MODEL}")
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=0.1,
+        )
+        return resp.choices[0].message.content
+    except Exception as e:
+        logger.error(f"OpenAI error: {e}")
+        return None
 
 
 def _extract_json(text):
@@ -375,8 +328,8 @@ def valorar_cargo_con_ia(
     if not cargo:
         raise ValueError(f"Cargo {cargo_empresa_id} no encontrado")
 
-    if not OPENROUTER_API_KEY and not OPENAI_API_KEY:
-        raise ValueError("No hay OPENROUTER_API_KEY ni OPENAI_API_KEY configurada")
+    if not OPENAI_API_KEY:
+        raise ValueError("No hay OPENAI_API_KEY configurada")
 
     prompt = VALORACION_PROMPT.format(
         nombre=cargo.nombre_cargo,
