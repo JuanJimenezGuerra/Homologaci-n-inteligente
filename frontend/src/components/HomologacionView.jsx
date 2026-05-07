@@ -368,13 +368,16 @@ function HomologacionView({ empresaId, onComplete }) {
     return `$${Number(val).toLocaleString('es-CO')}`;
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return null;
-    try { return new Date(dateStr).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' }); }
-    catch { return dateStr; }
-  };
+   const formatDate = (dateStr) => {
+     if (!dateStr) return null;
+     try { return new Date(dateStr).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' }); }
+     catch { return dateStr; }
+   };
 
-  if (loading && (!displayCargos || displayCargos.length === 0)) {
+   // Defensive: ensure displayCargos is an array
+   const safeDisplayCargos = Array.isArray(displayCargos) ? displayCargos : [];
+
+   if (loading && safeDisplayCargos.length === 0) {
     return (
       <div className="flex items-center justify-center py-20 gap-3 text-primary">
         <Loader2 className="animate-spin" size={24} />
@@ -383,7 +386,7 @@ function HomologacionView({ empresaId, onComplete }) {
     );
   }
 
-  if (!displayCargos || (displayCargos.length === 0 && !loading && !processing)) {
+  if (safeDisplayCargos.length === 0 && !loading && !processing) {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
@@ -714,7 +717,7 @@ function HomologacionView({ empresaId, onComplete }) {
               </tr>
             </thead>
                 <tbody>
-                {displayCargos.map((c, idx) => {
+                {safeDisplayCargos.map((c, idx) => {
                   const h = c.homologacion || {};
                   const isEditing = editingId === c.id;
                   const isSelected = selectedCargoIds.has(c.id);
@@ -795,7 +798,7 @@ function HomologacionView({ empresaId, onComplete }) {
               </tbody>
           </table>
         </div>
-        {displayCargos.length === 0 && <div className="p-8 text-center text-slate-400 text-sm">No hay cargos que coincidan con la busqueda</div>}
+        {safeDisplayCargos.length === 0 && <div className="p-8 text-center text-slate-400 text-sm">No hay cargos que coincidan con la busqueda</div>}
       </div>
 
       {/* ============ OBSERVACIONES + REPROCESAR ============ */}
