@@ -275,7 +275,7 @@ function HomologacionView({ empresaId, onComplete }) {
   };
 
   const selectAllReprocessable = () => {
-    const ids = safeDisplayCargos.filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado').map(c => c.id);
+    const ids = safeDisplayCargos.filter(item => item.estado !== 'HOMOLOGADO' && item.estado !== 'homologado').map(item => item.id);
     setSelectedCargoIds(new Set(ids));
   };
 
@@ -704,7 +704,7 @@ function HomologacionView({ empresaId, onComplete }) {
                 <th className="px-3 py-3 w-8">#</th>
                 {(processing || selectedCargoIds.size > 0) && (
                   <th className="px-3 py-3 w-8">
-                    <input type="checkbox" checked={selectedCargoIds.size > 0 && safeDisplayCargos.filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado').length > 0 && selectedCargoIds.size === safeDisplayCargos.filter(c => c.estado !== 'HOMOLOGADO' && c.estado !== 'homologado').length} onChange={e => { if (e.target.checked) selectAllReprocessable(); else clearSelection(); }} className="rounded border-slate-300 text-primary focus:ring-primary" />
+                    <input type="checkbox" checked={selectedCargoIds.size > 0 && safeDisplayCargos.filter(item => item.estado !== 'HOMOLOGADO' && item.estado !== 'homologado').length > 0 && selectedCargoIds.size === safeDisplayCargos.filter(item => item.estado !== 'HOMOLOGADO' && item.estado !== 'homologado').length} onChange={e => { if (e.target.checked) selectAllReprocessable(); else clearSelection(); }} className="rounded border-slate-300 text-primary focus:ring-primary" />
                   </th>
                 )}
                 {visibleCols.cargo && <th className="px-3 py-3 min-w-[200px]">Cargo</th>}
