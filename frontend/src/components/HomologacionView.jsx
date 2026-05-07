@@ -775,7 +775,7 @@ function HomologacionView({ empresaId, onComplete }) {
                         {salarioActual ? `$${Number(salarioActual).toLocaleString('es-CO')}` : '—'}
                       </td>}
                       {visibleCols.salario && <td className="px-3 py-2.5 text-xs text-emerald-600 font-medium">
-                        {salarioEsperado ? `$${Number(salarioEsperado).toLocaleString('es-CO')}` : '—'}
+                        {salarioActual ? `$${Number(salarioActual).toLocaleString('es-CO')}` : '—'}
                       </td>}
                       {visibleCols.acciones && <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1">
