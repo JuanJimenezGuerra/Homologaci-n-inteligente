@@ -337,7 +337,7 @@ function HomologacionView({ empresaId, onComplete }) {
     estado: true,
     homologado: true,
     justificacion: true,
-    salario: false, // Disabled - not used
+    salario: true, // Show salary from formulario data
     acciones: true,
   });
 
