@@ -802,21 +802,30 @@ function HomologacionView({ empresaId, onComplete }) {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-lg p-6 border border-purple-100">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 bg-purple-50 rounded-xl"><MessageSquare className="text-purple-600" size={20} /></div>
-          <div>
-            <h3 className="font-bold text-lg text-forest">Observaciones del Analista</h3>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-lg text-forest">Observaciones del Analista</h3>
+              <div className="group relative">
+                <AlertCircle size={14} className="text-slate-400 cursor-help" />
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 p-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                  Escribe instrucciones para que la IA reprocese las homologaciones. Usa los filtros rapidos para aplicar reglas comunes. Luego selecciona los cargos a reprocesar con los checkboxes en la tabla.
+                </div>
+              </div>
+            </div>
             <p className="text-xs text-slate-500">Describe ajustes o indicaciones para que la IA reprocese las homologaciones</p>
           </div>
         </div>
 
         <div className="space-y-4">
-          <div className="flex gap-2 flex-wrap text-xs">
-            <span className="text-slate-400">Filtros rapidos:</span>
-            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Los cargos de Produccion deben buscar en el area de Operaciones')} className="px-2 py-1 bg-slate-100 rounded hover:bg-slate-200 transition-colors">Produccion → Operaciones</button>
-            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Los cargos con "Jefe" o "Coordinador" deben tener nivel jerarquico superior')} className="px-2 py-1 bg-slate-100 rounded hover:bg-slate-200 transition-colors">Jefe/Coordinador → nivel superior</button>
-            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Los cargos administrativos no deben aparecer en areas tecnicas')} className="px-2 py-1 bg-slate-100 rounded hover:bg-slate-200 transition-colors">Administrativo ≠ Tecnico</button>
+          <div className="flex gap-2 flex-wrap text-xs items-center">
+            <span className="text-slate-400 font-medium">Filtros rapidos:</span>
+            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Produccion → Operaciones: Los cargos de PRODUCCION deben buscarse en el area de OPERACIONES')} className="px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors border border-blue-200 text-[11px]">🔄 Produccion → Operaciones</button>
+            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Jefe/Coordinador → nivel superior: Los cargos con JEFE o COORDINADOR deben tener nivel jerarquico superior (GERENTE)')} className="px-2 py-1 bg-purple-50 text-purple-700 rounded hover:bg-purple-100 transition-colors border border-purple-200 text-[11px]">⬆️ Jefe/Coord → Nivel Sup.</button>
+            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Administrativo ≠ Tecnico: Los cargos ADMINISTRATIVOS no deben coincidir con cargos TECNICOS')} className="px-2 py-1 bg-amber-50 text-amber-700 rounded hover:bg-amber-100 transition-colors border border-amber-200 text-[11px]">⚠️ Admin ≠ Tecnico</button>
+            <button onClick={() => setObservaciones(prev => prev + (prev ? '\n' : '') + 'Buscar SIN COINCIDENCIA en internet y dar sugerencia de homologacion')} className="px-2 py-1 bg-cyan-50 text-cyan-700 rounded hover:bg-cyan-100 transition-colors border border-cyan-200 text-[11px]">🌐 Buscar SIN COINCIDENCIA</button>
           </div>
 
-          <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ejemplo: Los cargos del area de Logistica deben homologarse con cargos del area de Cadena de Suministro..." rows={4} className="w-full border border-purple-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-purple-50/30" />
+          <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ejemplo: Los cargos del area de Logistica deben homologarse con cargos del area de Cadena de Suministro. Jefe de Produccion debe ir a Gerencia de Operaciones..." rows={4} className="w-full border border-purple-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-purple-50/30" />
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -828,6 +837,13 @@ function HomologacionView({ empresaId, onComplete }) {
             <button onClick={reprocesarHomologacion} disabled={reprocessing || !observaciones.trim()} className="flex items-center gap-2 bg-purple-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">
               {reprocessing ? <><Loader2 size={16} className="animate-spin" /> Reprocesando...</> : <><RefreshCw size={16} /> {selectedCargoIds.size > 0 ? `Reprocesar ${selectedCargoIds.size} seleccionados` : 'Reprocesar con IA'}</>}
             </button>
+          </div>
+
+          <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl">
+            <p className="text-[11px] text-purple-700 flex items-start gap-2">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <span><strong className="font-bold">Recordatorio:</strong> Selecciona los cargos a reprocesar usando los checkboxes en la tabla. Luego escribe tus observaciones y haz clic en "Reprocesar con IA". Los filtros rapidos agregan instrucciones que la IA interpretara automaticamente.</span>
+            </p>
           </div>
         </div>
       </motion.div>

@@ -267,12 +267,81 @@ def buscar_en_internet_y_homologar(cargo_dict, db):
     }
 
 
-def homologar_con_ia_observaciones(db, cargos_batch, masters, observaciones):
-    """Homologa cargos usando IA con observaciones del analista."""
+def parse_quick_filters(observaciones):
+    """Parse quick filter rules from observations text."""
+    filters = {
+        "produccion_a_operaciones": False,
+        "jefe_coordinador_nivel_superior": False,
+        "administrativo_no_tecnico": False,
+        "buscar_sin_coincidencia_internet": False,
+    }
+
+    obs_upper = observaciones.upper()
+
+    if "PRODUCCION" in obs_upper and "OPERACION" in obs_upper:
+        filters["produccion_a_operaciones"] = True
+    if "JEFE" in obs_upper or "COORDINADOR" in obs_upper:
+        if "NIVEL" in obs_upper or "SUPERIOR" in obs_upper:
+            filters["jefe_coordinador_nivel_superior"] = True
+    if "ADMINISTRATIVO" in obs_upper and "TECNICO" in obs_upper:
+        filters["administrativo_no_tecnico"] = True
+    if "SIN COINCIDENCIA" in obs_upper and "INTERNET" in obs_upper:
+        filters["buscar_sin_coincidencia_internet"] = True
+
+    return filters
+
+
+def apply_produccion_operaciones(nombre_cargo, masters):
+    """Change PRODUCCION to OPERACIONES in cargo name before matching."""
+    nombre_upper = nombre_cargo.upper()
+    if "PRODUCCION" in nombre_upper:
+        nuevo_nombre = nombre_upper.replace("PRODUCCION", "OPERACIONES")
+        return nuevo_nombre
+    return nombre_upper
+
+
+def apply_jefe_coordinador_nivel_superior(nombre_cargo, masters):
+    """Map JEFE/COORDINADOR to higher level positions."""
+    nombre_upper = nombre_cargo.upper()
+    if "JEFE" in nombre_upper or "COORDINADOR" in nombre_upper:
+        for m in masters:
+            m_nombre = m["nombre"].upper()
+            if "GERENTE" in m_nombre and any(word in nombre_upper for word in ["JEFE", "COORDINADOR"]):
+                return m["nombre"]
+    return None
+
+
+def apply_administrativo_no_tecnico(nombre_cargo, cargo_homologado):
+    """Ensure ADMINISTRATIVO is not matched with TECNICO."""
+    nombre_upper = nombre_cargo.upper()
+    homologado_upper = cargo_homologado.upper() if cargo_homologado else ""
+
+    if "ADMINISTRATIV" in nombre_upper and "TECNIC" in homologado_upper:
+        return False
+    return True
+
+
+def homologar_con_ia_observaciones(db, cargos_batch, masters, observaciones, selected_ids=None):
+    """Homologa cargos usando IA con observaciones del analista.
+
+    Args:
+        selected_ids: Lista de IDs de cargos seleccionados con checkbox.
+                      Si es None, procesa todos.
+    """
     if not OPENAI_API_KEY:
         return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key", "confianza": 0.0} for c in cargos_batch]
 
+    # Filtrar por IDs seleccionados si se proporcionan
+    if selected_ids is not None:
+        cargos_batch = [c for c in cargos_batch if c.get("id") in selected_ids]
+        if not cargos_batch:
+            return []
+
     print("[HOMOLOGACION] Reprocesando " + str(len(cargos_batch)) + " cargos con observaciones")
+
+    # Parse quick filters
+    filters = parse_quick_filters(observaciones)
+    print("[HOMOLOGACION] Filtros activos: " + str(filters))
 
     resultados = []
     for cargo in cargos_batch:
@@ -281,17 +350,40 @@ def homologar_con_ia_observaciones(db, cargos_batch, masters, observaciones):
         descripcion = cargo.get("descripcion_empresa", "")
         homologado_actual = cargo.get("cargo_homologado_actual", "")
 
+        # Apply quick filters to nombre_cargo
+        nombre_modificado = nombre
+        if filters["produccion_a_operaciones"]:
+            nombre_modificado = apply_produccion_operaciones(nombre, masters)
+            if nombre_modificado != nombre.upper():
+                print("[FILTRO] PRODUCCION->OPERACIONES: " + nombre + " -> " + nombre_modificado)
+
+        # Check JEFE/COORDINADOR nivel superior
+        sugerencia_nivel_superior = None
+        if filters["jefe_coordinador_nivel_superior"]:
+            sugerencia_nivel_superior = apply_jefe_coordinador_nivel_superior(nombre, masters)
+
         catalogo = "\n".join(["- " + m["nombre"] for m in masters[:50]])
 
         prompt = "Eres experto en homologacion de cargos en Colombia.\n\n"
-        prompt += "CARGO A HOMOLOGAR: " + nombre + "\n"
+        prompt += "CARGO A HOMOLOGAR: " + nombre_modificado + "\n"
         prompt += "AREA: " + area + "\n"
         prompt += "DESCRIPCION: " + descripcion + "\n"
         prompt += "HOMOLOGADO ACTUAL: " + homologado_actual + "\n\n"
-        prompt += "OBSERVACIONES DEL ANALISTA: " + observaciones + "\n\n"
+
+        # Add quick filter instructions
+        if filters["produccion_a_operaciones"]:
+            prompt += "FILTRO ACTIVO: Trata 'PRODUCCION' como 'OPERACIONES'.\n"
+        if filters["jefe_coordinador_nivel_superior"] and sugerencia_nivel_superior:
+            prompt += "FILTRO ACTIVO: 'JEFE/COORDINADOR' debe ir a nivel superior (ej. GERENTE). Sugerencia: " + sugerencia_nivel_superior + "\n"
+        if filters["administrativo_no_tecnico"]:
+            prompt += "FILTRO ACTIVO: ADMINISTRATIVO no debe coincidir con TECNICO.\n"
+        if filters["buscar_sin_coincidencia_internet"]:
+            prompt += "FILTRO ACTIVO: Para 'SIN COINCIDENCIA', busca en internet sugerencias.\n"
+
+        prompt += "\nOBSERVACIONES DEL ANALISTA: " + observaciones + "\n\n"
         prompt += "CATALOGO (primeros 50):\n" + catalogo + "\n\n"
         prompt += "INSTRUCCIONES:\n"
-        prompt += "1. Usa las observaciones del analista para mejorar la homologacion.\n"
+        prompt += "1. Usa las observaciones y filtros para mejorar la homologacion.\n"
         prompt += '2. Responde UNICAMENTE con JSON: {"cargo_homologado": "NOMBRE", "justificacion": "razon", "confianza": 0.5}\n'
         prompt += '3. Si no hay coincidencia usa "SIN COINCIDENCIA".'
 
@@ -299,11 +391,22 @@ def homologar_con_ia_observaciones(db, cargos_batch, masters, observaciones):
         if content:
             parsed = extract_json(content)
             if parsed and isinstance(parsed, dict):
+                cargo_homologado = parsed.get("cargo_homologado", "SIN COINCIDENCIA")
+                justificacion = str(parsed.get("justificacion", ""))[:60]
+                confianza = float(parsed.get("confianza", 0.5))
+
+                # Apply administrativo != tecnico filter
+                if filters["administrativo_no_tecnico"]:
+                    if not apply_administrativo_no_tecnico(nombre, cargo_homologado):
+                        cargo_homologado = "SIN COINCIDENCIA"
+                        justificacion = "Filtro: Administrativo != Tecnico"
+                        confianza = 0.0
+
                 resultados.append({
                     "id": cargo.get("id"),
-                    "cargo_homologado": parsed.get("cargo_homologado", "SIN COINCIDENCIA"),
-                    "justificacion": str(parsed.get("justificacion", ""))[:60],
-                    "confianza": float(parsed.get("confianza", 0.5)),
+                    "cargo_homologado": cargo_homologado,
+                    "justificacion": justificacion,
+                    "confianza": confianza,
                 })
                 continue
 

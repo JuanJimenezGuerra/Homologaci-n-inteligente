@@ -674,7 +674,7 @@ def reprocesar_homologacion(
             } for c in cargos_thread]
 
             results_count = 0
-            resultados = homologar_con_ia_observaciones(thread_db, cargos_batch, masters, observaciones_text)
+            resultados = homologar_con_ia_observaciones(thread_db, cargos_batch, masters, observaciones_text, selected_ids=cargo_ids_to_reprocess if req.cargo_ids else None)
 
             for res in resultados:
                 cargo_id = res.get("id")
