@@ -724,8 +724,8 @@ function HomologacionView({ empresaId, onComplete }) {
                   const isSearching = searchingIds.has(c.id);
                   
                    // Datos salariales del cargo (si existen en la empresa)
-                  const salarioActual = c.homologacion?.datos_excel?.real_pagado || 
-                                  c.homologacion?.datos_excel?.basico || null;
+                   const salarioActual = c?.homologacion?.datos_excel?.real_pagado ||
+                                   c?.homologacion?.datos_excel?.basico || null;
                   
                   return (
                     <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-purple-50/60' : isBuscadorInternet ? 'bg-cyan-50/40' : c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' : isSinCoincidencia ? 'bg-amber-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
