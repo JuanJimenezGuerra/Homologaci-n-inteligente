@@ -3,7 +3,7 @@ import React from 'react';
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorInfo: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -12,6 +12,7 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught:', error, errorInfo);
+    this.setState({ errorInfo });
   }
 
   render() {
@@ -19,12 +20,17 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="p-8 bg-red-50 border border-red-200 rounded-2xl m-8">
           <h2 className="text-xl font-bold text-red-700 mb-4">Error en el componente</h2>
-          <pre className="text-sm text-red-600 bg-white p-4 rounded overflow-auto">
+          <pre className="text-sm text-red-600 bg-white p-4 rounded overflow-auto mb-4">
             {this.state.error?.toString()}
           </pre>
+          {this.state.errorInfo && (
+            <pre className="text-xs text-red-500 bg-white p-4 rounded overflow-auto mb-4">
+              {this.state.errorInfo.componentStack}
+            </pre>
+          )}
           <button
-            onClick={() => this.setState({ hasError: false, error: null })}
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg"
+            onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg"
           >
             Reintentar
           </button>
