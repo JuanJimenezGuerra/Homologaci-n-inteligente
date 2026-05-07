@@ -594,6 +594,20 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
     }
 
     setProcessAll(false);
+
+    // Recargar valoraciones del backend después del proceso
+    if (uploadId) {
+      try {
+        const vals = await fetchValoracionesFromUpload(uploadId);
+        const map = {};
+        vals.forEach(v => { if (v.valoracion) map[v.id] = v.valoracion; });
+        setValoraciones(map);
+        try { localStorage.setItem('shr_valoraciones', JSON.stringify(map)); } catch {}
+        if (onValoracionesChange) onValoracionesChange(map);
+      } catch (e) {
+        console.error('Error recargando valoraciones:', e);
+      }
+    }
   };
 
   const updateCriterio = (cargoId, field, value) => {
