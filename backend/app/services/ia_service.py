@@ -20,18 +20,18 @@ def call_ia(messages, max_tokens=300, timeout=30):
         print("[IA] ERROR: No hay OPENAI_API_KEY")
         return ""
 
-    # Agregar mensaje de sistema para forzar respuesta corta
+    # Add system message to force short response
     if messages and messages[0].get("role") == "user":
         system_msg = {
             "role": "system",
-            "content": "Eres un asistente que responde UNICAMENTE con JSON valido, sin texto adicional. Respuestas cortas y precisas. No expliques nada."
+            "content": "Eres un asistente que responde UNICAMENTE con JSON valido, sin texto adicional. Todos los pares clave-valor deben estar separados por comas, comillas dobles estandar. El JSON debe ser parseable por json.loads de Python. No expliques nada, no uses markdown."
         }
         messages = [system_msg] + messages
 
     try:
         import openai
         client = openai.OpenAI(api_key=OPENAI_API_KEY, timeout=timeout)
-        
+
         print("[IA] Llamando " + OPENAI_MODEL + "...")
         resp = client.chat.completions.create(
             model=OPENAI_MODEL,
@@ -52,16 +52,14 @@ def call_ia(messages, max_tokens=300, timeout=30):
     return ""
 
 
-def _limpiar_json(text):
-    """Limpia el texto JSON antes del parseo."""
-    text = re.sub(r'```json\s*', '', text)
-    text = re.sub(r'```\s*', '', text)
-    for start_char, end_char in [("{", "}"), ("[", "]")]:
-        start = text.find(start_char)
-        end = text.rfind(end_char) + 1
-        if start != -1 and end > start:
-            text = text[start:end]
-            break
+def _fix_json_commas(text):
+    """Fix missing commas in JSON text."""
+    # Fix missing commas between number and quote: 123 "key" -> 123, "key"
+    text = re.sub(r'(\d+)\s+(")', r'\1, \2', text)
+    # Fix missing commas between quote and quote: "value" "key" -> "value", "key"
+    text = re.sub(r'(")\s+(")', r'\1, \2', text)
+    # Fix missing commas between objects in array: } { -> }, {
+    text = re.sub(r'}\s*{', '}, {', text)
     return text.strip()
 
 
@@ -70,17 +68,21 @@ def extract_json(text):
     if not text:
         return None
     try:
-        text = _limpiar_json(text)
+        # Try direct parse first
         return json.loads(text)
     except:
-        try:
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            if start != -1 and end > start:
-                candidate = text[start:end]
-                return json.loads(candidate)
-        except:
-            pass
+        pass
+
+    # Try to extract JSON object from text
+    try:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start != -1 and end > start:
+            candidate = text[start:end]
+            candidate = _fix_json_commas(candidate)
+            return json.loads(candidate)
+    except:
+        pass
     return None
 
 
@@ -88,15 +90,17 @@ def extract_json_array(text):
     """Extrae array JSON de la respuesta de la IA."""
     if not text:
         return None
-    try:
-        text = text.strip()
-        try:
-            result = json.loads(text)
-            if isinstance(result, list):
-                return result
-        except:
-            pass
 
+    # First try direct parse
+    try:
+        result = json.loads(text)
+        if isinstance(result, list):
+            return result
+    except:
+        pass
+
+    # Extract array from text
+    try:
         start = text.find("[")
         end = text.rfind("]") + 1
         if start == -1 or end <= start:
@@ -104,7 +108,7 @@ def extract_json_array(text):
             return None
 
         candidate = text[start:end]
-        candidate = _limpiar_json(candidate)
+        candidate = _fix_json_commas(candidate)
 
         print("[IA] Intentando parsear JSON array: " + candidate[:500] + "...")
         result = json.loads(candidate)
@@ -113,7 +117,7 @@ def extract_json_array(text):
         else:
             print("[IA] El parseo no dio una lista: " + str(type(result)))
     except Exception as e:
-        print("[IA] Error parseando JSON array: " + str(e) + " | Texto original: " + text[:500])
+        print("[IA] Error parseando JSON array: " + str(e) + " | Texto: " + text[:500])
     return None
 
 
@@ -139,9 +143,9 @@ def homologar_con_ia(db, cargos, masters=None):
     print("[HOMOLOGACION] Procesando " + str(len(cargos)) + " cargos")
 
     resultados = []
-    for i in range(0, len(cargos), 5):  # Reducir batch a 5 para mejor precision
-        batch = cargos[i:i+5]
-        # Enviar hasta 150 cargos del catalogo para mejor cobertura
+    batch_size = 5
+    for i in range(0, len(cargos), batch_size):
+        batch = cargos[i:i+batch_size]
         catalogo = "\n".join(["- " + m["nombre"] for m in masters[:150]])
         cargos_txt = "\n".join(["ID:" + str(c.get("id")) + " | " + str(c.get("nombre_cargo", "")).upper() + " | Area:" + str(c.get("area", "")) for c in batch])
 
@@ -154,7 +158,8 @@ def homologar_con_ia(db, cargos, masters=None):
         prompt += "3. RESPONDE UNICAMENTE CON EL ARRAY JSON, SIN TEXTO ADICIONAL.\n"
         prompt += '4. Formato: [{"id": 1, "cargo_homologado": "NOMBRE_EXACTO_CATALOGO", "justificacion": "similitud", "confianza": 0.8}]\n'
         prompt += '5. Si no hay similitud usa "SIN COINCIDENCIA". Confianza: 0.0-1.0.\n'
-        prompt += "6. NO expliques, SOLO JSON."
+        prompt += "6. NO expliques, SOLO JSON.\n"
+        prompt += "7. CADA PAR CLAVE-VALOR SEPARADO POR COMAS.\n"
 
         content = ""
         for intento in range(2):
@@ -194,7 +199,7 @@ def valorar_con_ia(cargo):
     prompt += "INSTRUCCIONES ESTRICTAS:\n"
     prompt += "1. Responde UNICAMENTE con el objeto JSON, sin texto adicional.\n"
     prompt += "2. No uses markdown ni explicaciones.\n"
-    prompt += '3. Formato exacto: {"conocimientos":"A-H","experiencia":"--/-/o/+","habilidades":"I-VII","responsabilidad":"1-4","contacto":"A-C","frecuencia":"1-4","contraste":"I-V","complejidad":"1-5","iniciativa":"I-IV","autonomia":"A-G","magnitud":"0-14","impacto":"I-VII","justificacion":"breve"}'
+    prompt += '3. Formato exacto: {"conocimientos":"A-H","experiencia":"--/-/o/+","habilidad":"I-VII","responsabilidad":"1-4","contacto":"A-C","frecuencia":"1-4","contraste":"I-V","complejidad":"1-5","iniciativa":"I-IV","autonomia":"A-G","magnitud":"0-14","impacto":"I-VII","justificacion":"breve"}'
 
     content = call_ia([{"role": "user", "content": prompt}], max_tokens=300)
     if not content:
@@ -228,15 +233,12 @@ def buscar_en_internet(cargo):
 
 def buscar_en_internet_y_homologar(cargo_dict, db):
     """Busca info en internet y luego homologa el cargo."""
-    # Primero buscar en internet
     info = buscar_en_internet(cargo_dict)
-    
-    # Luego usar esa info para mejorar la homologacion
     masters = load_master_cargos(db)
-    
+
     nombre = cargo_dict.get("nombre_cargo", "")
     descripcion = info.get("descripcion", "")
-    
+
     prompt = "Eres experto en homologacion de cargos en Colombia.\n\n"
     prompt += "CARGO A HOMOLOGAR: " + nombre + "\n"
     prompt += "INFO ENCONTRADA: " + descripcion + "\n\n"
@@ -263,3 +265,50 @@ def buscar_en_internet_y_homologar(cargo_dict, db):
         "justificacion": "Error en busqueda y homologacion",
         "url_busqueda": info.get("url", "https://duckduckgo.com/?q=" + nombre.replace(" ", "+")),
     }
+
+
+def homologar_con_ia_observaciones(db, cargos_batch, masters, observaciones):
+    """Homologa cargos usando IA con observaciones del analista."""
+    if not OPENAI_API_KEY:
+        return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key", "confianza": 0.0} for c in cargos_batch]
+
+    print("[HOMOLOGACION] Reprocesando " + str(len(cargos_batch)) + " cargos con observaciones")
+
+    resultados = []
+    for cargo in cargos_batch:
+        nombre = cargo.get("nombre_cargo", "")
+        area = cargo.get("area", "")
+        descripcion = cargo.get("descripcion_empresa", "")
+        homologado_actual = cargo.get("cargo_homologado_actual", "")
+
+        catalogo = "\n".join(["- " + m["nombre"] for m in masters[:50]])
+
+        prompt = "Eres experto en homologacion de cargos en Colombia.\n\n"
+        prompt += "CARGO A HOMOLOGAR: " + nombre + "\n"
+        prompt += "AREA: " + area + "\n"
+        prompt += "DESCRIPCION: " + descripcion + "\n"
+        prompt += "HOMOLOGADO ACTUAL: " + homologado_actual + "\n\n"
+        prompt += "OBSERVACIONES DEL ANALISTA: " + observaciones + "\n\n"
+        prompt += "CATALOGO (primeros 50):\n" + catalogo + "\n\n"
+        prompt += "INSTRUCCIONES:\n"
+        prompt += "1. Usa las observaciones del analista para mejorar la homologacion.\n"
+        prompt += '2. Responde UNICAMENTE con JSON: {"cargo_homologado": "NOMBRE", "justificacion": "razon", "confianza": 0.5}\n'
+        prompt += '3. Si no hay coincidencia usa "SIN COINCIDENCIA".'
+
+        content = call_ia([{"role": "user", "content": prompt}], max_tokens=300)
+        if content:
+            parsed = extract_json(content)
+            if parsed and isinstance(parsed, dict):
+                resultados.append({
+                    "id": cargo.get("id"),
+                    "cargo_homologado": parsed.get("cargo_homologado", "SIN COINCIDENCIA"),
+                    "justificacion": str(parsed.get("justificacion", ""))[:60],
+                    "confianza": float(parsed.get("confianza", 0.5)),
+                })
+                continue
+
+        resultados.append({"id": cargo.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Error IA", "confianza": 0.0})
+
+    exitos = sum(1 for r in resultados if r["cargo_homologado"] != "SIN COINCIDENCIA")
+    print("[HOMOLOGACION] Reproceso: " + str(exitos) + "/" + str(len(cargos_batch)) + " exitos")
+    return resultados
