@@ -28,6 +28,7 @@ const ValuacionView = ({ uploadId, onBack }) => {
   const [cargos, setCargos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [processingId, setProcessingId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editField, setEditField] = useState(null);
   const [editValue, setEditValue] = useState('');
@@ -52,19 +53,34 @@ const ValuacionView = ({ uploadId, onBack }) => {
     setProcessing(true);
     try {
       await apiPost(`/procesar-valoracion/${uploadId}`, {});
-      // Poll cada 5 segundos
+      // Poll cada 3 segundos hasta que todos tengan valoracion
       const interval = setInterval(async () => {
         const res = await api(`/uploads/${uploadId}/valoraciones`);
         setCargos(res.data);
         const allDone = res.data.every(c => c.valoracion && c.valoracion.conocimientos);
-        if (allDone) {
+        const anyProcessing = res.data.some(c => c.valoracion === null);
+        if (allDone || !anyProcessing) {
           clearInterval(interval);
           setProcessing(false);
         }
-      }, 5000);
+      }, 3000);
     } catch (e) {
       console.error(e);
       setProcessing(false);
+    }
+  };
+
+  const handleIAIndividual = async (cargoId) => {
+    setProcessingId(cargoId);
+    try {
+      const res = await apiPost(`/valoracion/${cargoId}/evaluar-ia`, {});
+      // Actualizar el cargo especifico en la lista
+      setCargos(prev => prev.map(c => c.id === cargoId ? { ...c, valoracion: res.data.valoracion } : c));
+    } catch (e) {
+      console.error(e);
+      alert('Error al valorar el cargo con IA');
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -191,6 +207,16 @@ const ValuacionView = ({ uploadId, onBack }) => {
                         <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${val.criterio_3 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-400'}`}>
                           {val.criterio_3 || 0}
                         </span>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <button
+                          onClick={() => handleIAIndividual(c.id)}
+                          disabled={processingId === c.id}
+                          className="flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-1 rounded hover:bg-primary/20 transition-colors disabled:opacity-50"
+                          title="Valorar con IA"
+                        >
+                          {processingId === c.id ? <Loader2 size={12} className="animate-spin" /> : 'IA'}
+                        </button>
                       </td>
                     </tr>
                   );

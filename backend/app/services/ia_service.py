@@ -191,17 +191,30 @@ def homologar_con_ia(db, cargos, masters=None):
     return resultados
 
 
-def valorar_con_ia(cargo):
+def valorar_cargo_con_ia(cargo):
+    """Valora un cargo usando IA siguiendo metodologia SHR/HAY."""
     if not OPENAI_API_KEY:
         return {"error": "Sin API key"}
 
-    prompt = "Asigna niveles SHR/HAY para el cargo: " + str(cargo.get("nombre_cargo", "N/A")) + "\n\n"
-    prompt += "INSTRUCCIONES ESTRICTAS:\n"
+    nombre = cargo.get("nombre_cargo", "N/A")
+    homologado = cargo.get("cargo_homologado", "")
+    descripcion = cargo.get("descripcion_empresa", "")
+
+    prompt = "Eres experto en valoracion de cargos SHR/HAY en Colombia.\n\n"
+    prompt += "CARGO A VALORAR: " + nombre + "\n"
+    if homologado:
+        prompt += "CARGO HOMOLOGADO: " + homologado + "\n"
+    if descripcion:
+        prompt += "DESCRIPCION: " + descripcion + "\n"
+    prompt += "\nINSTRUCCIONES ESTRICTAS:\n"
     prompt += "1. Responde UNICAMENTE con el objeto JSON, sin texto adicional.\n"
     prompt += "2. No uses markdown ni explicaciones.\n"
-    prompt += '3. Formato exacto: {"conocimientos":"A-H","experiencia":"--/-/o/+","habilidad":"I-VII","responsabilidad":"1-4","contacto":"A-C","frecuencia":"1-4","contraste":"I-V","complejidad":"1-5","iniciativa":"I-IV","autonomia":"A-G","magnitud":"0-14","impacto":"I-VII","justificacion":"breve"}'
+    prompt += "3. Asigna niveles SHR/HAY para cada factor.\n"
+    prompt += '4. Formato exacto: {"conocimientos":"A-H","experiencia":"--/-/o/+","habilidad_gerencial":"I-VII","rol_cargo":"1-4","contacto":"A-C","frecuencia":"1-4","contenido_relaciones":"I-V","complejidad_conceptual":"1-5","tendencia_cc":"--/-/+","guias_apoyo":"A-H","tendencia_ga":"--/-/+","impacto":"I-IV","autonomia":"A-G","magnitud":"1-14","criterio_1":0,"criterio_2":0,"criterio_3":0,"justificacion":"breve"}\n'
+    prompt += "5. Criterios: 0=Sin info, 1=Bajo, 2=Medio, 3=Alto.\n"
+    prompt += "6. magnitud: 1=Hasta 50M, 14=Mas de 500,000M."
 
-    content = call_ia([{"role": "user", "content": prompt}], max_tokens=300)
+    content = call_ia([{"role": "user", "content": prompt}], max_tokens=400)
     if not content:
         return {"error": "Sin respuesta IA"}
     parsed = extract_json(content)
