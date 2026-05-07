@@ -354,6 +354,9 @@ function HomologacionView({ empresaId, onComplete }) {
     return matchSearch && matchFilter;
   });
 
+  // Defensive: ensure displayCargos is an array
+  const safeDisplayCargos = Array.isArray(displayCargos) ? displayCargos : [];
+
   const stats = {
     total: safeDisplayCargos.length,
     homologados: safeDisplayCargos.filter(item => (item.estado || '').toLowerCase() === 'homologado').length,
@@ -373,9 +376,6 @@ function HomologacionView({ empresaId, onComplete }) {
      try { return new Date(dateStr).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' }); }
      catch { return dateStr; }
    };
-
-   // Defensive: ensure displayCargos is an array
-   const safeDisplayCargos = Array.isArray(displayCargos) ? displayCargos : [];
 
    if (loading && safeDisplayCargos.length === 0) {
     return (
