@@ -355,12 +355,12 @@ function HomologacionView({ empresaId, onComplete }) {
   });
 
   const stats = {
-    total: (processing && liveCargos.length > 0 ? liveCargos : cargos).length,
-    homologados: (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => (c.estado || '').toLowerCase() === 'homologado').length,
-    sugeridos: (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => (c.estado || '').toLowerCase() === 'sugerido').length,
-    pendientes: (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => ['pendiente', 'procesando'].includes((c.estado || '').toLowerCase())).length,
-    sin_coincidencia: (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => (c.estado || '').toLowerCase().includes('sin_coincidencia')).length,
-    buscados_internet: (processing && liveCargos.length > 0 ? liveCargos : cargos).filter(c => (c.estado || '').toLowerCase().includes('buscado_en_internet')).length,
+    total: safeDisplayCargos.length,
+    homologados: safeDisplayCargos.filter(item => (item.estado || '').toLowerCase() === 'homologado').length,
+    sugeridos: safeDisplayCargos.filter(item => (item.estado || '').toLowerCase() === 'sugerido').length,
+    pendientes: safeDisplayCargos.filter(item => ['pendiente', 'procesando'].includes((item.estado || '').toLowerCase())).length,
+    sin_coincidencia: safeDisplayCargos.filter(item => (item.estado || '').toLowerCase().includes('sin_coincidencia')).length,
+    buscados_internet: safeDisplayCargos.filter(item => (item.estado || '').toLowerCase().includes('buscado_en_internet')).length,
   };
 
   const formatCurrency = (val) => {
