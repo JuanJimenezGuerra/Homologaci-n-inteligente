@@ -8,6 +8,7 @@ import FormularioView from './components/FormularioView';
 import HomologacionView from './components/HomologacionView';
 import AnalisisView from './components/AnalisisView';
 import EquidadView from './components/EquidadView';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
 
@@ -85,53 +86,67 @@ function App() {
       user={{ email: userEmail }}
       onLogout={handleLogout}
     >
-      {activeTab === 'formulario' && (
-        <FormularioView
-          key={empresaId || 'new'}
-          empresaId={empresaId}
-          onEmpresaCreated={handleEmpresaCreada}
-        />
-      )}
-      {activeTab === 'homologacion' && (
-        <HomologacionView
-          key={empresaId || 'new'}
-          empresaId={empresaId}
-          onComplete={handleHomologacionCompleta}
-        />
-      )}
-      {activeTab === 'valoracion' && (
-        <ValuacionView
-          key={empresaId || 'new'}
-          uploadId={empresaId}
-          cargosIniciales={cargosHomologacion}
-          valoracionesIniciales={valoracionesData}
-          onCargosChange={(cargos) => {
-            setCargosHomologacion(cargos);
-            try { localStorage.setItem('shr_cargos_homologacion', JSON.stringify(cargos)); } catch {}
-          }}
-          onValoracionesChange={(vals) => {
-            setValoracionesData(vals);
-            try { localStorage.setItem('shr_valoraciones', JSON.stringify(vals)); } catch {}
-          }}
-          onComplete={handleValoracionCompleta}
-          onBack={() => setActiveTab('homologacion')}
-        />
-      )}
-      {activeTab === 'analisis' && (
-        <AnalisisView
-          key={empresaId || 'new'}
-          empresaId={empresaId}
-          onBack={() => setActiveTab('valoracion')}
-          onNext={handleAnalisisCompleta}
-        />
-      )}
-      {activeTab === 'equidad' && (
-        <EquidadView
-          key={empresaId || 'new'}
-          uploadData={empresaId}
-          onBack={() => setActiveTab('analisis')}
-        />
-      )}
+      <ErrorBoundary>
+        {activeTab === 'formulario' && (
+          <FormularioView
+            key={empresaId || 'new'}
+            empresaId={empresaId}
+            onEmpresaCreated={handleEmpresaCreada}
+          />
+        )}
+      </ErrorBoundary>
+
+      <ErrorBoundary>
+        {activeTab === 'homologacion' && (
+          <HomologacionView
+            key={empresaId || 'new'}
+            empresaId={empresaId}
+            onComplete={handleHomologacionCompleta}
+          />
+        )}
+      </ErrorBoundary>
+
+      <ErrorBoundary>
+        {activeTab === 'valoracion' && (
+          <ValuacionView
+            key={empresaId || 'new'}
+            uploadId={empresaId}
+            cargosIniciales={cargosHomologacion}
+            valoracionesIniciales={valoracionesData}
+            onCargosChange={(cargos) => {
+              setCargosHomologacion(cargos);
+              try { localStorage.setItem('shr_cargos_homologacion', JSON.stringify(cargos)); } catch {}
+            }}
+            onValoracionesChange={(vals) => {
+              setValoracionesData(vals);
+              try { localStorage.setItem('shr_valoraciones', JSON.stringify(vals)); } catch {}
+            }}
+            onComplete={handleValoracionCompleta}
+            onBack={() => setActiveTab('homologacion')}
+          />
+        )}
+      </ErrorBoundary>
+
+      <ErrorBoundary>
+        {activeTab === 'analisis' && (
+          <AnalisisView
+            key={empresaId || 'new'}
+            empresaId={empresaId}
+            onBack={() => setActiveTab('valoracion')}
+            onNext={handleAnalisisCompleta}
+          />
+        )}
+      </ErrorBoundary>
+
+      <ErrorBoundary>
+        {activeTab === 'equidad' && (
+          <EquidadView
+            key={empresaId || 'new'}
+            uploadData={empresaId}
+            onBack={() => setActiveTab('analisis')}
+          />
+        )}
+      </ErrorBoundary>
     </Layout>
   );
 }
