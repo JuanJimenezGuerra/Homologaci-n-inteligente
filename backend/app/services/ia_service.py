@@ -210,7 +210,7 @@ def valorar_cargo_con_ia(cargo):
     prompt += "1. Responde UNICAMENTE con el objeto JSON, sin texto adicional.\n"
     prompt += "2. No uses markdown ni explicaciones.\n"
     prompt += "3. Asigna niveles SHR/HAY para cada factor.\n"
-    prompt += '4. Formato exacto: {"conocimientos":"A-H","experiencia":"--/-/o/+","habilidad_gerencial":"I-VII","rol_cargo":"1-4","contacto":"A-C","frecuencia":"1-4","contenido_relaciones":"I-V","complejidad_conceptual":"1-5","tendencia_cc":"--/-/+","guias_apoyo":"A-H","tendencia_ga":"--/-/+","impacto":"I-IV","autonomia":"A-G","magnitud":"1-14","criterio_1":0,"criterio_2":0,"criterio_3":0,"justificacion":"breve"}\n'
+    prompt += '4. Formato exacto: {"conocimientos":"A-H","experiencia":"--/-/o/+","habilidadGerencial":"I-VII","rolCargo":"1-4","contacto":"A-C","frecuenciaContacto":"1-4","contenidoRelaciones":"I-V","complejidadConceptual":"1-5","tendenciaCC":"--/-/+","guiasApoyo":"A-H","tendenciaGA":"--/-/+","impacto":"I-IV","autonomia":"A-G","magnitud":"1-14","criterio1":0,"criterio2":0,"criterio3":0,"justificacion":"breve"}\n'
     prompt += "5. Criterios: 0=Sin info, 1=Bajo, 2=Medio, 3=Alto.\n"
     prompt += "6. magnitud: 1=Hasta 50M, 14=Mas de 500,000M."
 
