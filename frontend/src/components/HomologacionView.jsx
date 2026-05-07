@@ -374,7 +374,7 @@ function HomologacionView({ empresaId, onComplete }) {
     catch { return dateStr; }
   };
 
-  if (loading && displayCargos.length === 0) {
+  if (loading && (!displayCargos || displayCargos.length === 0)) {
     return (
       <div className="flex items-center justify-center py-20 gap-3 text-primary">
         <Loader2 className="animate-spin" size={24} />
@@ -383,7 +383,7 @@ function HomologacionView({ empresaId, onComplete }) {
     );
   }
 
-  if (displayCargos.length === 0 && !loading && !processing) {
+  if (!displayCargos || (displayCargos.length === 0 && !loading && !processing)) {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
