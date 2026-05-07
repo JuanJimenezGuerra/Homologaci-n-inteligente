@@ -38,6 +38,18 @@ def _call_ia(prompt, max_tokens=500):
         return None
 
 
+def _fix_json_commas(text):
+    """Fix missing commas in JSON text."""
+    import re
+    # Fix missing commas between number and quote: 123 "key" -> 123, "key"
+    text = re.sub(r'(\d+)\s+(")', r'\1, \2', text)
+    # Fix missing commas between quote and quote: "value" "key" -> "value", "key"
+    text = re.sub(r'(")\s+(")', r'\1, \2', text)
+    # Fix missing commas between objects in array: } { -> }, {
+    text = re.sub(r'}\s*{', '}, {', text)
+    return text.strip()
+
+
 def _extract_json(text):
     """Extrae JSON de la respuesta de IA de forma robusta."""
     if not text:
@@ -57,6 +69,7 @@ def _extract_json(text):
             end = text.rfind("}") + 1
             if start != -1 and end > start:
                 candidate = text[start:end]
+                candidate = _fix_json_commas(candidate)
                 return json.loads(candidate)
         except:
             pass
