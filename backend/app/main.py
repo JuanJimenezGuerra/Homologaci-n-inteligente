@@ -840,7 +840,7 @@ def buscar_internet_lote(body: dict = Body(...), db: Session = Depends(get_db)):
         return {"resultados": [], "mensaje": "No hay cargos para buscar"}
     
     from .services.ia_service import buscar_en_internet_y_homologar
-
+    
     resultados = []
     errores = 0
     procesados = 0
@@ -850,29 +850,29 @@ def buscar_internet_lote(body: dict = Body(...), db: Session = Depends(get_db)):
             if not cargo:
                 resultados.append({"cargo_id": cargo_id, "error": "Cargo no encontrado"})
                 continue
-
+            
             hom = db.query(Homologacion).filter(Homologacion.cargo_id == cargo.id).first()
             if not hom:
                 hom = Homologacion(cargo_id=cargo.id)
                 db.add(hom)
-
+            
             cargo_dict = {
                 "id": cargo.id,
                 "nombre_cargo": cargo.nombre_cargo,
                 "area": cargo.area,
                 "descripcion_empresa": cargo.descripcion_empresa or "",
             }
-
+            
             resultado = buscar_en_internet_y_homologar(cargo_dict, db)
-
-            hom.cargo_homologado = resultado["cargo_homologado"]
-            hom.justificacion = resultado["justificacion"]
+            
+            hom.cargo_homologado = resultado.get("cargo_homologado", "SIN COINCIDENCIA")
+            hom.justificacion = resultado.get("justificacion", "")
             hom.busqueda_internet_url = resultado.get("url_busqueda", "")
             hom.estado_busqueda = "BUSCADO_EN_INTERNET"
             cargo.estado = "BUSCADO_EN_INTERNET"
             db.commit()
             procesados += 1
-
+            
             resultados.append({
                 "cargo_id": cargo_id,
                 "cargo_homologado": resultado.get("cargo_homologado", "SIN COINCIDENCIA"),
@@ -880,7 +880,7 @@ def buscar_internet_lote(body: dict = Body(...), db: Session = Depends(get_db)):
                 "url_busqueda": resultado.get("url_busqueda", ""),
                 "estado": "BUSCADO_EN_INTERNET",
             })
-            time.sleep(2)  # Delay entre cargos para evitar rate limiting
+            time.sleep(1.5)  # Delay entre cargos para evitar rate limiting
         except Exception as e:
             db.rollback()
             errores += 1

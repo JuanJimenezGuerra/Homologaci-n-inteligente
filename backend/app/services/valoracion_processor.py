@@ -70,6 +70,7 @@ def _process_with_ia(cargos: list, db):
                 val = Valoracion(cargo_id=cargo.id)
                 db.add(val)
 
+            # Map fields from ia_service.py response to Valoracion model
             val.conocimientos = resultado.get("conocimientos")
             val.experiencia = resultado.get("experiencia")
             val.habilidad_gerencial = resultado.get("habilidadGerencial")
@@ -88,11 +89,6 @@ def _process_with_ia(cargos: list, db):
             val.criterio_2 = int(resultado.get("criterio2", 0))
             val.criterio_3 = int(resultado.get("criterio3", 0))
             val.justificacion_ia = resultado.get("justificacion", "")
-            val.basico = resultado.get("garantizado")
-            val.real_pagado = resultado.get("garantizadoVariable")
-            val.garantizado = resultado.get("garantizado")
-            val.garantizado_variable = resultado.get("garantizadoVariable")
-            val.compensacion_total = resultado.get("compensacionTotal")
             val.editado_manual = False
 
             db.commit()
