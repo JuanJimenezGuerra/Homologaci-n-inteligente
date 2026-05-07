@@ -1,85 +1,93 @@
 import logging
 from sqlalchemy.orm import Session
 from typing import List, Dict, Optional
-from ..models import (
-    CargoEmpresa, ValoracionCargo, Curva, Colaborador
-)
+from ..models import Valoracion, Cargo, Curva
 
 logger = logging.getLogger(__name__)
 
+def _estimar_puntos(v) -> float:
+    """Calculate total points from valuation factors."""
+    pts_c = {"A": 20, "B": 40, "C": 60, "D": 80, "E": 100, "F": 120, "G": 140, "H": 160}
+    mult_e = {"-": 0.8, "o": 1.0, "+": 1.2}
+    pts_h = {"I": 10, "II": 20, "III": 30, "IV": 40, "V": 50, "VI": 60, "VII": 70}
+    pts_r = {"1": 10, "2": 15, "3": 25, "4": 35}
+    pts_contacto = {"A": 5, "B": 10, "C": 15}
+    pts_freq = {"1": 2, "2": 4, "3": 6, "4": 8}
+    pts_cont = {"I": 5, "II": 10, "III": 15, "IV": 20, "V": 25}
+    pts_cc = {"1": 10, "2": 20, "3": 30, "4": 40, "5": 50}
+    mult_t = {"-": 0.85, "o": 1.0, "+": 1.15}
+    pts_g = {"A": 10, "B": 20, "C": 30, "D": 40, "E": 50, "F": 60, "G": 70, "H": 80}
+    pts_imp = {"I": 10, "II": 20, "III": 30, "IV": 40}
+    pts_aut = {"A": 10, "B": 20, "C": 30, "D": 40, "E": 50, "F": 60, "G": 70}
+    pts_mag = {str(i): i * 5 for i in range(15)}
 
-def calcular_curvas_equidad(db: Session, empresa_id: int = None, upload_id: int = None) -> List[Curva]:
-    from ..models import Valoracion, Cargo
+    f1 = (pts_c.get(v.conocimientos, 60) * mult_e.get(v.experiencia, 1.0) +
+          pts_h.get(v.habilidad_gerencial, 30) + pts_r.get(str(v.rol_cargo or ""), 15))
+    f2 = (pts_contacto.get(v.contacto, 10) + pts_freq.get(str(v.frecuencia or ""), 4) +
+          pts_cont.get(v.contenido_relaciones, 10))
+    f3 = (pts_cc.get(str(v.complejidad_conceptual or ""), 20) * mult_t.get(v.tendencia_cc, 1.0) +
+          pts_g.get(v.guias_apoyo, 30) * mult_t.get(v.tendencia_ga, 1.0))
+    f4 = (pts_imp.get(v.impacto, 20) + pts_aut.get(v.autonomia, 30) +
+          pts_mag.get(str(v.magnitud or ""), 0))
 
-    if upload_id:
-        valoraciones = db.query(Valoracion).join(Cargo).filter(
-            Cargo.upload_id == upload_id,
-            Valoracion.g.isnot(None)
-        ).all()
-    elif empresa_id:
-        valoraciones = db.query(ValoracionCargo).join(CargoEmpresa).filter(
-            CargoEmpresa.empresa_id == empresa_id,
-            ValoracionCargo.g.isnot(None)
-        ).all()
-    else:
+    crit = (int(v.criterio_1 or 0) + int(v.criterio_2 or 0) + int(v.criterio_3 or 0))
+    raw = f1 + f2 + f3 + f4
+    return raw * (1 + crit * 0.05)
+
+
+def calcular_curvas_equidad(db: Session, upload_id: int) -> List[Curva]:
+    """Calculate salary curves based on valuation points."""
+    valoraciones = db.query(Valoracion).join(Cargo).filter(
+        Cargo.upload_id == upload_id,
+        Valoracion.garantizado.isnot(None)
+    ).all()
+
+    if not valoraciones or len(valoraciones) < 3:
         return []
 
-    if not valoraciones:
+    # Sort by points
+    valoraciones_ordenadas = sorted(valoraciones, key=lambda v: _estimar_puntos(v))
+    n = len(valoraciones_ordenadas)
+
+    qi_idx = n // 4
+    med_idx = n // 2
+    qiii_idx = 3 * n // 4
+
+    # Calculate salary at each quartile
+    garantizados = sorted([float(v.garantizado or 0) for v in valoraciones if v.garantizado])
+
+    if len(garantizados) < 3:
         return []
 
-    por_categoria = {0: valoraciones}
+    curva = Curva(
+        upload_id=upload_id,
+        qi_garantizado=garantizados[qi_idx] if qi_idx < len(garantizados) else garantizados[-1],
+        qi_g_v=0,
+        qi_ct=0,
+        med_garantizado=garantizados[med_idx] if med_idx < len(garantizados) else garantizados[-1],
+        med_g_v=0,
+        med_ct=0,
+        qiii_garantizado=garantizados[qiii_idx] if qiii_idx < len(garantizados) else garantizados[-1],
+        qiii_g_v=0,
+        qiii_ct=0,
+    )
 
-    curvas = []
-    for cat, vals in por_categoria.items():
-        if len(vals) < 3:
-            continue
-
-        garantizados = sorted([v.g or 0 for v in vals if v.g])
-        g_v = sorted([v.g_v or 0 for v in vals if hasattr(v, 'g_v') and v.g_v])
-        ct = sorted([v.ct or 0 for v in vals if hasattr(v, 'ct') and v.ct])
-
-        n = len(garantizados)
-        qi_idx = n // 4
-        med_idx = n // 2
-        qiii_idx = 3 * n // 4
-
-        curva = Curva(
-            categoria=cat,
-            qi_garantizado=garantizados[qi_idx] if qi_idx < n else garantizados[-1],
-            qi_g_v=g_v[qi_idx] if qi_idx < len(g_v) else g_v[-1],
-            qi_ct=ct[qi_idx] if qi_idx < len(ct) else ct[-1],
-            med_garantizado=garantizados[med_idx],
-            med_g_v=g_v[med_idx] if med_idx < len(g_v) else g_v[-1],
-            med_ct=ct[med_idx] if med_idx < len(ct) else ct[-1],
-            qiii_garantizado=garantizados[qiii_idx] if qiii_idx < n else garantizados[-1],
-            qiii_g_v=g_v[qiii_idx] if qiii_idx < len(g_v) else g_v[-1],
-            qiii_ct=ct[qiii_idx] if qiii_idx < len(ct) else ct[-1],
-        )
-
-        db.add(curva)
-        curvas.append(curva)
-
+    # Remove old curves for this upload
+    db.query(Curva).filter(Curva.upload_id == upload_id).delete()
+    db.add(curva)
     db.commit()
-    return curvas
+    return [curva]
 
 
-def analizar_equidad(db: Session, empresa_id: int = None, upload_id: int = None) -> Dict:
-    from ..models import Valoracion, Cargo
-
-    if upload_id:
-        valoraciones = db.query(Valoracion).join(Cargo).filter(
-            Cargo.upload_id == upload_id
-        ).all()
-    elif empresa_id:
-        valoraciones = db.query(ValoracionCargo).join(CargoEmpresa).filter(
-            CargoEmpresa.empresa_id == empresa_id,
-            ValoracionCargo.g.isnot(None)
-        ).all()
-    else:
-        return {"total": 0}
+def analizar_equidad(db: Session, upload_id: int) -> Dict:
+    """Analyze salary equity: subpago/competitivo/sobrepago."""
+    valoraciones = db.query(Valoracion).join(Cargo).filter(
+        Cargo.upload_id == upload_id
+    ).all()
 
     if not valoraciones:
-        return {"total": 0}
+        return {"total": 0, "subpago": 0, "competitivo": 0, "sobrepago": 0,
+                "pct_subpago": 0, "pct_competitivo": 0, "pct_sobrepago": 0, "detalles": []}
 
     subpago = 0
     competitivo = 0
@@ -87,25 +95,37 @@ def analizar_equidad(db: Session, empresa_id: int = None, upload_id: int = None)
     detalles = []
 
     for v in valoraciones:
-        cargo_name = v.cargo if hasattr(v, 'cargo') and v.cargo else "N/A"
-        actual = v.g or 0
-        referencia = actual * 1.1
+        cargo = db.query(Cargo).filter(Cargo.id == v.cargo_id).first()
+        if not cargo:
+            continue
 
-        if referencia > 0:
-            posicion = (actual / referencia) * 100
-            if posicion < 80:
-                subpago += 1
-            elif posicion <= 120:
-                competitivo += 1
-            else:
-                sobrepago += 1
+        # Get actual salary
+        salario_actual = float(v.garantizado or v.basico or 0)
+        if salario_actual == 0:
+            continue
 
-            detalles.append({
-                "cargo": cargo_name,
-                "actual": actual,
-                "referencia": referencia,
-                "posicion": round(posicion, 1),
-            })
+        # Calculate reference: points * 25000
+        puntos = _estimar_puntos(v)
+        salario_ref = puntos * 25000
+
+        if salario_ref > 0:
+            posicion = (salario_actual / salario_ref) * 100
+        else:
+            posicion = 100
+
+        if posicion < 80:
+            subpago += 1
+        elif posicion <= 120:
+            competitivo += 1
+        else:
+            sobrepago += 1
+
+        detalles.append({
+            "cargo": cargo.nombre_cargo,
+            "actual": salario_actual,
+            "referencia": salario_ref,
+            "posicion": round(posicion, 1),
+        })
 
     total = len(detalles) if detalles else 1
 
@@ -114,38 +134,32 @@ def analizar_equidad(db: Session, empresa_id: int = None, upload_id: int = None)
         "subpago": subpago,
         "competitivo": competitivo,
         "sobrepago": sobrepago,
-        "pct_subpago": round(subpago / total * 100, 1),
-        "pct_competitivo": round(competitivo / total * 100, 1),
-        "pct_sobrepago": round(sobrepago / total * 100, 1),
+        "pct_subpago": round(subpago / total * 100, 1) if total > 0 else 0,
+        "pct_competitivo": round(competitivo / total * 100, 1) if total > 0 else 0,
+        "pct_sobrepago": round(sobrepago / total * 100, 1) if total > 0 else 0,
         "detalles": detalles[:10],
     }
 
 
-def calcular_nivelacion(db: Session, empresa_id: int = None, upload_id: int = None, target: float = 1.0) -> Dict:
-    from ..models import Valoracion, Cargo
-
-    if upload_id:
-        valoraciones = db.query(Valoracion).join(Cargo).filter(Cargo.upload_id == upload_id).all()
-    elif empresa_id:
-        valoraciones = db.query(ValoracionCargo).join(CargoEmpresa).filter(
-            CargoEmpresa.empresa_id == empresa_id,
-            ValoracionCargo.g.isnot(None)
-        ).all()
-    else:
-        return {"total": 0}
+def calcular_nivelacion(db: Session, upload_id: int, target: float = 1.0) -> Dict:
+    """Calculate salary adjustment cost to reach target equity."""
+    valoraciones = db.query(Valoracion).join(Cargo).filter(
+        Cargo.upload_id == upload_id
+    ).all()
 
     if not valoraciones:
-        return {"total": 0}
+        return {"total": 0, "costo_total_anual": 0, "costo_mensual": 0}
 
     costo_total = 0
-    criticos = []
 
     for v in valoraciones:
-        actual = v.g or 0
-        target_g = actual * target
-        diferencia = max(0, target_g - actual)
-        costo_mensual = diferencia * 12
-        costo_total += costo_mensual
+        salario_actual = float(v.garantizado or v.basico or 0)
+        if salario_actual == 0:
+            continue
+
+        target_salary = salario_actual * target
+        diferencia = max(0, target_salary - salario_actual)
+        costo_total += diferencia * 12  # Annual cost
 
     return {
         "target": target,
@@ -154,11 +168,12 @@ def calcular_nivelacion(db: Session, empresa_id: int = None, upload_id: int = No
     }
 
 
-def calcular_costos_nivelacion(db: Session, empresa_id: int = None, upload_id: int = None, bandas: List[float] = None) -> Dict:
+def calcular_costos_nivelacion(db: Session, upload_id: int, bandas: List[float] = None) -> Dict:
+    """Calculate adjustment costs for multiple target bands."""
     bandas = bandas or [0.7, 0.8, 0.9, 1.0]
     costos = {}
     for target in bandas:
-        calculo = calcular_nivelacion(db, empresa_id, upload_id, target)
+        calculo = calcular_nivelacion(db, upload_id, target)
         costos[f"target_{int(target*100)}"] = {
             "costo_anual": calculo["costo_total_anual"],
             "costo_mensual": calculo["costo_mensual"],
@@ -166,23 +181,17 @@ def calcular_costos_nivelacion(db: Session, empresa_id: int = None, upload_id: i
     return costos
 
 
-def resumen_valoracion(db: Session, empresa_id: int = None, upload_id: int = None) -> dict:
-    from ..models import Valoracion, Cargo
-
-    if upload_id:
-        valoraciones = db.query(Valoracion).join(Cargo).filter(Cargo.upload_id == upload_id).all()
-    elif empresa_id:
-        valoraciones = db.query(ValoracionCargo).join(CargoEmpresa).filter(
-            CargoEmpresa.empresa_id == empresa_id
-        ).all()
-    else:
-        return {"total": 0}
+def resumen_valoracion(db: Session, upload_id: int) -> dict:
+    """Get summary of valuations for an upload."""
+    valoraciones = db.query(Valoracion).join(Cargo).filter(
+        Cargo.upload_id == upload_id
+    ).all()
 
     if not valoraciones:
-        return {"total": 0}
+        return {"total": 0, "puntos_promedio": 0}
 
     total = len(valoraciones)
-    puntos_promedio = sum(v.puntos or 0 for v in valoraciones) / total if total > 0 else 0
+    puntos_promedio = sum(_estimar_puntos(v) for v in valoraciones) / total if total > 0 else 0
 
     return {
         "total": total,
@@ -190,25 +199,22 @@ def resumen_valoracion(db: Session, empresa_id: int = None, upload_id: int = Non
     }
 
 
-def reporte_consolidado(db: Session, empresa_id: int = None, upload_id: int = None) -> Dict:
-    from ..models import Valoracion, Cargo
+def reporte_consolidado(db: Session, upload_id: int) -> Dict:
+    """Generate consolidated report with all analysis."""
+    # Count cargos
+    total_cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).count()
+    homologados = db.query(Cargo).filter(
+        Cargo.upload_id == upload_id,
+        Cargo.estado == "HOMOLOGADO"
+    ).count()
 
-    if upload_id:
-        total_cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).count()
-        homologados = db.query(Cargo).filter(Cargo.upload_id == upload_id, Cargo.estado == "HOMOLOGADO").count()
-    elif empresa_id:
-        total_cargos = db.query(CargoEmpresa).filter(CargoEmpresa.empresa_id == empresa_id).count()
-        homologados = db.query(CargoEmpresa).filter(CargoEmpresa.empresa_id == empresa_id, CargoEmpresa.estado == "HOMOLOGADO").count()
-    else:
-        return {}
-
-    resumen_val = resumen_valoracion(db, empresa_id, upload_id)
-    equidad = analizar_equidad(db, empresa_id, upload_id)
-    nivelacion = calcular_costos_nivelacion(db, empresa_id, upload_id)
+    resumen_val = resumen_valoracion(db, upload_id)
+    equidad = analizar_equidad(db, upload_id)
+    nivelacion = calcular_costos_nivelacion(db, upload_id)
 
     return {
-        "empresa_id": empresa_id,
-        "Resumen_proceso": {
+        "upload_id": upload_id,
+        "resumen_proceso": {
             "total_cargos": total_cargos,
             "homologados": homologados,
             "valoraciones": resumen_val.get("total", 0),
