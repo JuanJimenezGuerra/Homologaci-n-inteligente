@@ -85,20 +85,23 @@ function App() {
       user={{ email: userEmail }}
       onLogout={handleLogout}
     >
-      <div style={{ display: activeTab === 'formulario' ? 'block' : 'none' }}>
+      {activeTab === 'formulario' && (
         <FormularioView
+          key={empresaId || 'new'}
           empresaId={empresaId}
           onEmpresaCreated={handleEmpresaCreada}
         />
-      </div>
-      <div style={{ display: activeTab === 'homologacion' ? 'block' : 'none' }}>
+      )}
+      {activeTab === 'homologacion' && (
         <HomologacionView
+          key={empresaId || 'new'}
           empresaId={empresaId}
           onComplete={handleHomologacionCompleta}
         />
-      </div>
-      <div style={{ display: activeTab === 'valoracion' ? 'block' : 'none' }}>
+      )}
+      {activeTab === 'valoracion' && (
         <ValuacionView
+          key={empresaId || 'new'}
           uploadId={empresaId}
           cargosIniciales={cargosHomologacion}
           valoracionesIniciales={valoracionesData}
@@ -113,20 +116,22 @@ function App() {
           onComplete={handleValoracionCompleta}
           onBack={() => setActiveTab('homologacion')}
         />
-      </div>
-      <div style={{ display: activeTab === 'analisis' ? 'block' : 'none' }}>
+      )}
+      {activeTab === 'analisis' && (
         <AnalisisView
+          key={empresaId || 'new'}
           empresaId={empresaId}
           onBack={() => setActiveTab('valoracion')}
           onNext={handleAnalisisCompleta}
         />
-      </div>
-      <div style={{ display: activeTab === 'equidad' ? 'block' : 'none' }}>
+      )}
+      {activeTab === 'equidad' && (
         <EquidadView
+          key={empresaId || 'new'}
           uploadData={empresaId}
           onBack={() => setActiveTab('analisis')}
         />
-      </div>
+      )}
     </Layout>
   );
 }

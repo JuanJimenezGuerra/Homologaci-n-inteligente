@@ -11,6 +11,7 @@ function FormularioView({ empresaId, onEmpresaCreated }) {
         <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
           <CheckCircle className="w-16 h-16 text-emerald-600 mx-auto mb-4" />
           <h2 className="text-xl font-bold">Datos ya cargados</h2>
+          <p className="text-slate-500 mb-4">Empresa ID: {empresaId}</p>
           <button onClick={() => onEmpresaCreated(empresaId)} className="btn-primary mt-4">
             Ir a Homologación
           </button>
