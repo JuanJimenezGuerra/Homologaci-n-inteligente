@@ -11,13 +11,23 @@ def extract_text_from_pdf(file_bytes):
     pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
     text = ""
     for page in pdf_reader.pages:
-        text += page.extract_text()
+        text += page.extract_text() + "\n"
     return text
 
 def extract_text_from_docx(file_bytes):
     doc = docx.Document(io.BytesIO(file_bytes))
-    text = "\n".join([para.text for para in doc.paragraphs])
-    return text
+    # Extract text from all paragraphs
+    paragraphs = []
+    for para in doc.paragraphs:
+        if para.text.strip():
+            paragraphs.append(para.text)
+    # Also extract from tables
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                if cell.text.strip():
+                    paragraphs.append(cell.text)
+    return "\n".join(paragraphs)
 
 def process_extra_descriptions(upload_id: int, files: list, db: Session):
     """
