@@ -568,7 +568,10 @@ const ValuacionView = ({ uploadId, onValoracionesChange, onComplete, onBack }) =
   useEffect(() => {
     const loadData = async () => {
       const uploadIdNum = Number(uploadId);
+      console.log('ValuacionView: loading with uploadId:', uploadId, 'parsed:', uploadIdNum);
+      
       if (!uploadIdNum || isNaN(uploadIdNum)) {
+        console.log('ValuacionView: no valid uploadId, skipping');
         setLoading(false);
         return;
       }
@@ -581,7 +584,9 @@ const ValuacionView = ({ uploadId, onValoracionesChange, onComplete, onBack }) =
       
       try {
         // Load extra descriptions (cargos with descriptions) from backend
+        console.log('ValuacionView: fetching extra descriptions...');
         const extraCargos = await fetchExtraDescriptions(uploadIdNum);
+        console.log('ValuacionView: got extraCargos:', extraCargos);
         
         if (extraCargos && extraCargos.length > 0) {
           // Use the cargos from extra descriptions directly
@@ -591,6 +596,7 @@ const ValuacionView = ({ uploadId, onValoracionesChange, onComplete, onBack }) =
         } else {
           setCargos([]);
           setHasExtraFiles(false);
+          console.log('ValuacionView: no extra cargos found');
         }
 
         // Load existing valoraciones from API
@@ -602,6 +608,7 @@ const ValuacionView = ({ uploadId, onValoracionesChange, onComplete, onBack }) =
           } catch {}
         }
       } catch (e) {
+        console.error('ValuacionView: error loading data:', e);
         console.warn('Error loading data:', e.message);
         setError('Error cargando datos. Sube archivos de descripción anexos primero.');
       } finally {

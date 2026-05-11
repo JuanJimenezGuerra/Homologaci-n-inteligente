@@ -236,7 +236,8 @@ async def upload_extra_descriptions(
 ):
     """Upload extra description files (PDF, DOCX, XLSX) for cargo descriptions.
     
-    The filename (without extension) will be matched to cargo names using fuzzy matching.
+    The filename (without extension) will be the cargo name.
+    Each file creates ONE cargo marked with area='DESCRIPCION_ANEXA'.
     """
     from .services.file_extractor import process_extra_descriptions
     
@@ -256,9 +257,11 @@ async def upload_extra_descriptions(
         file_obj = FileObj(f.filename, io.BytesIO(content))
         file_objs.append(file_obj)
     
+    print(f"Uploading {len(file_objs)} extra description files for upload {upload_id}")
     mapped_count = process_extra_descriptions(upload_id, file_objs, db)
+    print(f"Created {mapped_count} cargos from extra descriptions")
     
-    return {"message": f"Se procesaron {mapped_count} archivos de descripción", "mapped": mapped_count}
+    return {"message": f"Se procesaron {mapped_count} archivos de descripción", "mapped": mapped_count, "count": mapped_count}
 
 
 @app.get("/uploads/{upload_id}/extra-descriptions")
