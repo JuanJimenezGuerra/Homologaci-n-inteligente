@@ -835,17 +835,22 @@ def buscar_internet_homologar(cargo_id: int, db: Session = Depends(get_db)):
     }
 
 @app.post("/homologacion/buscar-internet-lote")
-def buscar_internet_lote(body: dict = Body(...), db: Session = Depends(get_db)):
-    """Busqueda en internet para multiple cargos SIN_COINCIDENCIA."""
+def buscar_internet_lote(
+    body: dict = Body(...),
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None
+):
+    """Inicia busqueda en internet para multiple cargos SIN_COINCIDENCIA."""
     cargo_ids = body.get("cargo_ids", [])
     if not cargo_ids:
-        return {"resultados": [], "mensaje": "No hay cargos para buscar"}
+        return {"resultados": [], "mensaje": "No hay cargos para buscar", "procesados": 0, "errores": 0, "total": 0}
     
     from .services.ia_service import buscar_en_internet_y_homologar
     
     resultados = []
     errores = 0
     procesados = 0
+    
     for cargo_id in cargo_ids:
         try:
             cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
@@ -882,7 +887,7 @@ def buscar_internet_lote(body: dict = Body(...), db: Session = Depends(get_db)):
                 "url_busqueda": resultado.get("url_busqueda", ""),
                 "estado": "BUSCADO_EN_INTERNET",
             })
-            time.sleep(1.5)  # Delay entre cargos para evitar rate limiting
+            time.sleep(0.5)
         except Exception as e:
             db.rollback()
             errores += 1

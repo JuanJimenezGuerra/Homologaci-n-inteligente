@@ -154,53 +154,89 @@ def _get_level_from_name(nombre):
 
 
 def _is_level_allowed(original_name, homologado_name):
-    """Check if homologado level is allowed for original level."""
+    """Check if homologado level is allowed for original level.
+    
+    Rules:
+    - Cada nivel solo puede homologarse a su propio nivel o superior (1 nivel max)
+    - No se permite bajar de nivel (profesional -> operativo = NO)
+    - Excepciones: vice/director pueden bajar 1 nivel a director/gerente
+    """
     orig_level = _get_level_from_name(original_name)
     homo_level = _get_level_from_name(homologado_name)
     
-    allowed = {
-        "vice": ["vice", "director"],
-        "director": ["director", "gerente"],
-        "gerente": ["gerente", "coordinador"],
-        "coordinador": ["coordinador", "profesional"],
-        "profesional": ["profesional", "operativo"],
-        "operativo": ["operativo"],
-        "unknown": ["vice", "director", "gerente", "coordinador", "profesional", "operativo"],
-    }
+    orig_n = original_name.upper()
+    homo_n = homologado_name.upper()
     
-    if orig_level in allowed:
-        return homo_level in allowed[orig_level]
-    return True
+    if orig_level == "vice" or orig_level == "director":
+        return homo_level in ["vice", "director"]
+    if orig_level == "gerente":
+        return homo_level in ["gerente", "director", "vice"]
+    if orig_level == "coordinador":
+        return homo_level in ["coordinador", "gerente"]
+    if orig_level == "profesional":
+        return homo_level in ["profesional"]
+    if orig_level == "operativo":
+        return homo_level in ["operativo", "profesional"]
+    
+    return orig_level == homo_level
 
 
 def _find_homolog_by_level(nombre, area, masters, max_level_up=0):
-    """Find homologado that matches level of original or is within max_level_up."""
+    """Find homologado that matches level of original.
+    
+    Strategy:
+    1. First try exact level match with area
+    2. Then exact level match without area
+    3. Only if no match, try one level up (NOT down)
+    """
     orig_level = _get_level_from_name(nombre)
     nombre_upper = nombre.upper()
     area_upper = area.upper() if area else ""
     
-    candidates = []
-    for m in masters:
+    def score_cargo(m):
         m_nombre = m["nombre"]
         m_level = _get_level_from_name(m_nombre)
+        s = 0
         
-        if _is_level_allowed(nombre, m_nombre):
-            score = 0
-            if area_upper and area_upper in m_nombre:
-                score += 10
-            if any(word in m_nombre for word in ["DE", "DEL"]):
-                if any(word in nombre_upper for word in ["DE", "DEL"]):
-                    orig_words = set(nombre_upper.split())
-                    m_words = set(m_nombre.split())
-                    common = orig_words & m_words
-                    if common:
-                        score += len(common)
-            candidates.append((score, m_level, m))
+        if m_level == orig_level:
+            s += 100
+        elif orig_level == "profesional" and m_level in ["coordinador"]:
+            s += 50
+        else:
+            return -1
+        
+        if area_upper:
+            if area_upper in m_nombre:
+                s += 20
+            area_lower = area_upper.lower()
+            if any(w in m_nombre.lower() for w in area_lower.split()):
+                s += 10
+        
+        common_words = set(nombre_upper.split()) & set(m_nombre.split())
+        if common_words:
+            s += len(common_words) * 2
+        
+        return s
     
-    candidates.sort(key=lambda x: (-x[0], _level_priority(x[1])))
+    scored = [(score_cargo(m), m) for m in masters]
+    scored = [(s, m) for s, m in scored if s >= 0]
+    scored.sort(key=lambda x: -x[0])
     
-    if candidates:
-        return candidates[0][2]["nombre"]
+    if scored:
+        return scored[0][1]["nombre"]
+    
+    if orig_level == "profesional" and area_upper:
+        scored_up = []
+        for m in masters:
+            m_nombre = m["nombre"]
+            m_level = _get_level_from_name(m_nombre)
+            if m_level == "coordinador" and area_upper in m_nombre:
+                common = set(nombre_upper.split()) & set(m_nombre.split())
+                scored_up.append((len(common), m))
+        if scored_up:
+            scored_up.sort(key=lambda x: -x[0])
+            return scored_up[0][1]["nombre"]
+    
     return "SIN COINCIDENCIA"
 
 
