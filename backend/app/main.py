@@ -266,15 +266,17 @@ def get_extra_descriptions(upload_id: int, db: Session = Depends(get_db), curren
     """Get all extra descriptions mapped from uploaded files.
     
     Returns a list of cargo objects with their descriptions.
+    Only returns cargos created FROM extra description files (marked as DESCRIPCION_ANEXA).
     """
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
     if not upload:
         raise HTTPException(status_code=404, detail="Upload no encontrado")
     
-    # Get all cargos that have descriptions from extra files
-    # These are cargos where descripcion_empresa is set (from extra description files)
+    # Get ONLY cargos that have descriptions from extra files
+    # These are marked with area='DESCRIPCION_ANEXA'
     cargos = db.query(Cargo).filter(
         Cargo.upload_id == upload_id,
+        Cargo.area == 'DESCRIPCION_ANEXA',
         Cargo.descripcion_empresa.isnot(None),
         Cargo.descripcion_empresa != ''
     ).all()
@@ -285,7 +287,7 @@ def get_extra_descriptions(upload_id: int, db: Session = Depends(get_db), curren
         result.append({
             "id": c.id,
             "nombre_cargo": c.nombre_cargo,
-            "area": c.area or 'General',
+            "area": c.area or 'DESCRIPCION_ANEXA',
             "descripcion": c.descripcion_empresa,
         })
     

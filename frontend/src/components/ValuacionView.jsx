@@ -354,7 +354,7 @@ function calcTotalPoints(v) {
 
   const f4 = (POINTS_IMPACTO[v.impacto] || 0) + (POINTS_AUTONOMIA[v.autonomia] || 0) + (POINTS_MAGNITUD[v.magnitud] || 0);
 
-  const criticidad = ((v.criterio1 === '1' ? 1 : 0) + (v.criterio2 === '1' ? 1 : 0) + (v.criterio3 === '1' ? 1 : 0));
+  const criticidad = ((parseInt(v.criterio1) === 1 ? 1 : 0) + (parseInt(v.criterio2) === 1 ? 1 : 0) + (parseInt(v.criterio3) === 1 ? 1 : 0));
 
   const raw = f1 + f2 + f3 + f4;
   const total = raw * (1 + criticidad * 0.15);
@@ -448,9 +448,9 @@ const CriterioChip = ({ name, value, onChange, editing }) => {
   if (!def) return null;
   const [open, setOpen] = useState(false);
 
-  const tooltipText = value && def.descriptions[value] 
-    ? `Valor actual: ${value}\n\n${def.descriptions[value]}`
-    : def.options.map(opt => `${opt}: ${def.descriptions[opt]?.substring(0, 80)}...`).join('\n');
+  const tooltipText = def.options.map(opt => 
+    `${opt}: ${def.descriptions[opt] || ''}`
+  ).join('\n');
 
   if (!editing) {
     return (
@@ -480,15 +480,15 @@ const CriterioChip = ({ name, value, onChange, editing }) => {
         <ChevronDown size={10}/>
       </button>
       {open && (
-        <div className="absolute top-full left-0 z-50 mt-1 bg-white border border-emerald-200 rounded-xl shadow-xl min-w-[280px] py-1 max-h-64 overflow-y-auto">
+        <div className="absolute top-full left-0 z-50 mt-1 bg-white border border-emerald-200 rounded-xl shadow-xl min-w-[320px] py-1 max-h-72 overflow-y-auto">
           {def.options.map(opt => (
             <button
               key={opt}
               onClick={() => { onChange(name, opt); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 flex items-start gap-2 ${value === opt ? 'bg-emerald-100 text-primary font-bold' : 'text-slate-700'}`}
+              className={`w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 flex items-start gap-3 ${value === opt ? 'bg-emerald-100 text-primary font-bold' : 'text-slate-700'}`}
             >
-              <span className="font-bold shrink-0 text-forest w-6 text-center">{opt}</span>
-              <span className="text-slate-600 text-[10px] leading-tight">{def.descriptions[opt]}</span>
+              <span className="font-bold shrink-0 text-forest w-6 text-center bg-slate-100 rounded px-1">{opt}</span>
+              <span className="text-[10px] leading-relaxed">{def.descriptions[opt]}</span>
             </button>
           ))}
         </div>

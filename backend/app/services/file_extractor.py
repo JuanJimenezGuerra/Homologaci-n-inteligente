@@ -23,6 +23,7 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
     """
     Processes multiple files (PDF, DOCX, XLSX) and creates NEW cargos from them.
     The filename (without extension) becomes the cargo name.
+    These cargos are marked with area='DESCRIPCION_ANEXA' to distinguish them from requirements cargos.
     """
     mapped_count = 0
     created_cargos = []
@@ -63,12 +64,15 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
             if existing:
                 # Update existing cargo description
                 existing.descripcion_empresa = text
+                # Mark as from extra description if not already
+                if existing.area == 'PENDIENTE' or not existing.area:
+                    existing.area = 'DESCRIPCION_ANEXA'
             else:
                 # Create new cargo from extra description file
                 new_cargo = Cargo(
                     upload_id=upload_id,
                     nombre_cargo=cargo_nombre,
-                    area='General',
+                    area='DESCRIPCION_ANEXA',  # Mark as from extra description
                     descripcion_empresa=text,
                     estado='PENDIENTE'
                 )
