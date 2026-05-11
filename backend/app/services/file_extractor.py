@@ -21,26 +21,23 @@ def extract_text_from_docx(file_bytes):
 
 def process_extra_descriptions(upload_id: int, files: list, db: Session):
     """
-    Processes multiple files (PDF, DOCX, XLSX) and tries to map them
-    to existing cargos in the upload.
+    Processes multiple files (PDF, DOCX, XLSX) and creates NEW cargos from them.
+    The filename (without extension) becomes the cargo name.
     """
-    # Get all cargos for this upload
-    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
-    if not cargos:
-        return 0
-    
-    cargo_names = {c.id: c.nombre_cargo for c in cargos}
     mapped_count = 0
+    created_cargos = []
 
     for file_obj in files:
         filename = file_obj.filename
-        # Leer el contenido del stream (FastAPI streams se consumen)
         content = file_obj.file.read()
         
-        # 1. Extract text based on extension
-        text = ""
         ext = os.path.splitext(filename)[1].lower()
+        if ext not in ['.pdf', '.docx', '.doc', '.xlsx', '.xls']:
+            continue
+
         try:
+            # Extract text based on extension
+            text = ""
             if ext == '.pdf':
                 text = extract_text_from_pdf(content)
             elif ext in ['.docx', '.doc']:
@@ -52,19 +49,33 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
             if not text.strip():
                 continue
 
-            # 2. Map filename to cargo name using fuzzy matching
-            # We strip extension for better matching
-            clean_filename = os.path.splitext(filename)[0]
-            best_match = process.extractOne(clean_filename, list(cargo_names.values()))
-            
-            if best_match and best_match[1] > 80: # 80% similarity threshold
-                # Find the cargo by name
-                matched_name = best_match[0]
-                cargo_id = next((cid for cid, name in cargo_names.items() if name == matched_name), None)
-                if cargo_id:
-                    cargo = db.query(Cargo).get(cargo_id)
-                    cargo.descripcion_empresa = text
-                    mapped_count += 1
+            # Use filename (without extension) as cargo name
+            cargo_nombre = os.path.splitext(filename)[0].strip()
+            if not cargo_nombre:
+                continue
+
+            # Check if cargo already exists for this upload with same name
+            existing = db.query(Cargo).filter(
+                Cargo.upload_id == upload_id,
+                Cargo.nombre_cargo == cargo_nombre
+            ).first()
+
+            if existing:
+                # Update existing cargo description
+                existing.descripcion_empresa = text
+            else:
+                # Create new cargo from extra description file
+                new_cargo = Cargo(
+                    upload_id=upload_id,
+                    nombre_cargo=cargo_nombre,
+                    area='General',
+                    descripcion_empresa=text,
+                    estado='PENDIENTE'
+                )
+                db.add(new_cargo)
+                created_cargos.append(cargo_nombre)
+
+            mapped_count += 1
                     
         except Exception as e:
             print(f"Error processing file {filename}: {e}")

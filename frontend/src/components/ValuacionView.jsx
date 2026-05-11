@@ -521,9 +521,9 @@ const fetchExtraDescriptions = async (uploadId) => {
   const res = await fetch(`${API_BASE}/uploads/${uploadId}/extra-descriptions`, {
     headers: { Authorization: `Bearer ${getToken()}` }
   });
-  if (!res.ok) return {};
+  if (!res.ok) return [];
   const data = await res.json();
-  return data.extra_descriptions || {};
+  return data.cargos || [];
 };
 
 const uploadExtraDescriptions = async (uploadId, files) => {
@@ -576,26 +576,17 @@ const ValuacionView = ({ uploadId, onValoracionesChange, onComplete, onBack }) =
       setLoading(true);
       setError(null);
       try {
-        // Load extra descriptions from backend
-        const extras = await fetchExtraDescriptions(uploadIdNum);
-        setExtraDescriptions(extras);
-
-        // Create cargos from extra descriptions
-        const descKeys = Object.keys(extras);
-        setHasExtraFiles(descKeys.length > 0);
-
-        if (descKeys.length > 0) {
-          // Create cargo objects from extra descriptions
-          const cargosFromDesc = descKeys.map((nombre, idx) => ({
-            id: `desc_${idx}`,
-            nombre_cargo: nombre,
-            area: 'General',
-            descripcion: extras[nombre],
-          }));
-          setCargos(cargosFromDesc);
-          try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(cargosFromDesc)); } catch {}
+        // Load extra descriptions (cargos with descriptions) from backend
+        const extraCargos = await fetchExtraDescriptions(uploadIdNum);
+        
+        if (extraCargos && extraCargos.length > 0) {
+          // Use the cargos from extra descriptions directly
+          setCargos(extraCargos);
+          setHasExtraFiles(true);
+          try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(extraCargos)); } catch {}
         } else {
           setCargos([]);
+          setHasExtraFiles(false);
         }
 
         // Load existing valoraciones

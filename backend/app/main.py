@@ -265,23 +265,31 @@ async def upload_extra_descriptions(
 def get_extra_descriptions(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get all extra descriptions mapped from uploaded files.
     
-    Returns a dict with filename (without extension) as key and extracted text as value.
+    Returns a list of cargo objects with their descriptions.
     """
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
     if not upload:
         raise HTTPException(status_code=404, detail="Upload no encontrado")
     
-    # Get all cargos with their descriptions from extra files
-    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    # Get all cargos that have descriptions from extra files
+    # These are cargos where descripcion_empresa is set (from extra description files)
+    cargos = db.query(Cargo).filter(
+        Cargo.upload_id == upload_id,
+        Cargo.descripcion_empresa.isnot(None),
+        Cargo.descripcion_empresa != ''
+    ).all()
     
-    # Build a dict: cargo_name -> description
-    extra_descriptions = {}
+    # Return as array of objects with id, name, and description
+    result = []
     for c in cargos:
-        if c.descripcion_empresa and c.descripcion_empresa.strip():
-            # Use the filename pattern that was matched
-            extra_descriptions[c.nombre_cargo] = c.descripcion_empresa
+        result.append({
+            "id": c.id,
+            "nombre_cargo": c.nombre_cargo,
+            "area": c.area or 'General',
+            "descripcion": c.descripcion_empresa,
+        })
     
-    return {"extra_descriptions": extra_descriptions}
+    return {"cargos": result, "count": len(result)}
 
 
 @app.get("/uploads")
@@ -1005,7 +1013,7 @@ def buscar_internet_lote(
 # ==========================================
 
 @app.post("/valoracion/{cargo_id}/evaluar-ia")
-def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db)):
+def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), request_data: dict = None):
     """Evalua un cargo con IA y guarda la valoracion."""
     from .services.ia_service import valorar_cargo_con_ia
 
@@ -1013,12 +1021,76 @@ def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db)):
     if not cargo:
         raise HTTPException(status_code=404, detail="Cargo no encontrado")
 
+    # Get description from request body or cargo
+    descripcion = ""
+    if request_data:
+        descripcion = request_data.get("descripcion_cargo", "")
+    if not descripcion:
+        descripcion = cargo.descripcion_empresa or ""
+
     cargo_dict = {
         "id": cargo.id,
         "nombre_cargo": cargo.nombre_cargo,
         "area": cargo.area,
-        "descripcion_empresa": cargo.descripcion_empresa,
+        "descripcion_empresa": descripcion,
         "cargo_homologado": cargo.homologacion.cargo_homologado if cargo.homologacion else "",
+    }
+
+    resultado = valorar_cargo_con_ia(cargo_dict)
+
+    val = db.query(Valoracion).filter(Valoracion.cargo_id == cargo.id).first()
+    if not val:
+        val = Valoracion(cargo_id=cargo.id)
+        db.add(val)
+
+    val.conocimientos = resultado.get("conocimientos")
+    val.experiencia = resultado.get("experiencia")
+    val.habilidad_gerencial = resultado.get("habilidadGerencial")
+    val.rol_cargo = resultado.get("rolCargo")
+    val.contacto = resultado.get("contacto")
+    val.frecuencia = resultado.get("frecuenciaContacto")
+    val.contenido_relaciones = resultado.get("contenidoRelaciones")
+    val.complejidad_conceptual = resultado.get("complejidadConceptual")
+    val.tendencia_cc = resultado.get("tendenciaCC")
+    val.guias_apoyo = resultado.get("guiasApoyo")
+    val.tendencia_ga = resultado.get("tendenciaGA")
+    val.impacto = resultado.get("impacto")
+    val.autonomia = resultado.get("autonomia")
+    val.magnitud = resultado.get("magnitud")
+    val.criterio_1 = int(resultado.get("criterio1", 0))
+    val.criterio_2 = int(resultado.get("criterio2", 0))
+    val.criterio_3 = int(resultado.get("criterio3", 0))
+    val.justificacion_ia = resultado.get("justificacion", "")
+    val.basico = resultado.get("garantizado")
+    val.real_pagado = resultado.get("garantizadoVariable")
+    val.garantizado = resultado.get("garantizado")
+    val.garantizado_variable = resultado.get("garantizadoVariable")
+    val.compensacion_total = resultado.get("compensacionTotal")
+    val.editado_manual = False
+    db.commit()
+    db.refresh(val)
+
+    return {
+        "valoracion": {
+            "conocimientos": val.conocimientos,
+            "experiencia": val.experiencia,
+            "habilidadGerencial": val.habilidad_gerencial,
+            "rolCargo": val.rol_cargo,
+            "contacto": val.contacto,
+            "frecuenciaContacto": val.frecuencia,
+            "contenidoRelaciones": val.contenido_relaciones,
+            "complejidadConceptual": val.complejidad_conceptual,
+            "tendenciaCC": val.tendencia_cc,
+            "guiasApoyo": val.guias_apoyo,
+            "tendenciaGA": val.tendencia_ga,
+            "impacto": val.impacto,
+            "autonomia": val.autonomia,
+            "magnitud": val.magnitud,
+            "criterio1": str(val.criterio_1),
+            "criterio2": str(val.criterio_2),
+            "criterio3": str(val.criterio_3),
+        },
+        "justificacion_ia": val.justificacion_ia
     }
 
     resultado = valorar_cargo_con_ia(cargo_dict)
