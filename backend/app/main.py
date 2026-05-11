@@ -13,6 +13,8 @@ from .services.master_data import process_master_excel
 from .services.matcher import start_batch_processing
 from .services.excel_formulario_service import procesar_excel_formulario, guardar_en_db
 from .services.analisis_service import calcular_curvas_equidad, analizar_equidad, calcular_nivelacion, reporte_consolidado
+import logging
+logger = logging.getLogger(__name__)
 import os
 import shutil
 import threading
