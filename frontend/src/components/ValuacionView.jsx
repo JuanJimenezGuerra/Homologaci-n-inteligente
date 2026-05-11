@@ -575,6 +575,10 @@ const ValuacionView = ({ uploadId, onValoracionesChange, onComplete, onBack }) =
 
       setLoading(true);
       setError(null);
+      
+      // Clear old localStorage data
+      try { localStorage.removeItem('shr_valoracion_cargos'); } catch {}
+      
       try {
         // Load extra descriptions (cargos with descriptions) from backend
         const extraCargos = await fetchExtraDescriptions(uploadIdNum);
@@ -589,7 +593,7 @@ const ValuacionView = ({ uploadId, onValoracionesChange, onComplete, onBack }) =
           setHasExtraFiles(false);
         }
 
-        // Load existing valoraciones
+        // Load existing valoraciones from API
         const savedValoraciones = localStorage.getItem('shr_valoraciones');
         if (savedValoraciones) {
           try {

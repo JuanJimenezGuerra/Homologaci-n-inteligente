@@ -92,7 +92,7 @@ function CargaDirecta({ onSuccess }) {
         const extraForm = new FormData();
         extraFiles.forEach(f => extraForm.append('files', f));
         try {
-          await fetch(`${API}/uploads/${newUploadId}/manuales`, {
+          await fetch(`${API}/uploads/${newUploadId}/extra-descriptions`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             body: extraForm,
