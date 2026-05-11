@@ -71,27 +71,7 @@ const handleEmpresaCreada = (empId) => {
     setActiveTab('analisis');
   };
 
-  const handleAnalisisCompleta = () => {
-    setActiveTab('equidad');
-  };
-
-  const handleValoracionCompleta = (valoraciones) => {
-    if (valoraciones) {
-      setValoracionesData(valoraciones);
-      try { localStorage.setItem('shr_valoraciones', JSON.stringify(valoraciones)); } catch {}
-    }
-    setActiveTab('homologacion');
-  };
-
-  const handleHomologacionCompleta = (cargos) => {
-    if (cargos) {
-      setCargosHomologacion(cargos);
-      try { localStorage.setItem('shr_cargos_homologacion', JSON.stringify(cargos)); } catch {}
-    }
-    setActiveTab('analisis');
-  };
-
-  const handleAnalisisCompleta = () => {
+const handleAnalisisCompleta = () => {
     setActiveTab('equidad');
   };
 
