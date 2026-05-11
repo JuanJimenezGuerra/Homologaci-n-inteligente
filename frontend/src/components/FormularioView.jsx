@@ -92,12 +92,20 @@ function CargaDirecta({ onSuccess }) {
         const extraForm = new FormData();
         extraFiles.forEach(f => extraForm.append('files', f));
         try {
-          await fetch(`${API}/uploads/${newUploadId}/extra-descriptions`, {
+          const extraRes = await fetch(`${API}/uploads/${newUploadId}/extra-descriptions`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             body: extraForm,
           });
-        } catch {}
+          if (extraRes.ok) {
+            const extraData = await extraRes.json();
+            console.log('Extra files uploaded:', extraData);
+          } else {
+            console.error('Error uploading extra files:', await extraRes.text());
+          }
+        } catch (e) {
+          console.error('Error uploading extra files:', e);
+        }
       }
 
       onSuccess(newUploadId);
