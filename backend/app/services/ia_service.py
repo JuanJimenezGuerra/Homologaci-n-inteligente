@@ -154,40 +154,28 @@ def _get_level_from_name(nombre):
 
 
 def _is_level_allowed(original_name, homologado_name):
-    """Check if homologado level is allowed for original level.
+    """Check if homologado level matches original level EXACTLY.
     
-    Rules:
-    - Cada nivel solo puede homologarse a su propio nivel o superior (1 nivel max)
-    - No se permite bajar de nivel (profesional -> operativo = NO)
-    - Excepciones: vice/director pueden bajar 1 nivel a director/gerente
+    RULE: El nivel jerarquico se CONSERVA siempre, nunca cambia.
+    - COORDINADOR -> COORDINADOR (NO gerente, NO profesional)
+    - GERENTE -> GERENTE (NO director, NO coordinador)
+    - DIRECTOR -> DIRECTOR (NO gerente, NO VP)
+    - PROFESIONAL -> PROFESIONAL (NO operativo, NO coordinador)
+    - OPERATIVO -> OPERATIVO (NO profesional)
+    - AUXILIAR -> AUXILIAR (mantiene su nivel)
     """
     orig_level = _get_level_from_name(original_name)
     homo_level = _get_level_from_name(homologado_name)
     
-    orig_n = original_name.upper()
-    homo_n = homologado_name.upper()
-    
-    if orig_level == "vice" or orig_level == "director":
-        return homo_level in ["vice", "director"]
-    if orig_level == "gerente":
-        return homo_level in ["gerente", "director", "vice"]
-    if orig_level == "coordinador":
-        return homo_level in ["coordinador", "gerente"]
-    if orig_level == "profesional":
-        return homo_level in ["profesional"]
-    if orig_level == "operativo":
-        return homo_level in ["operativo", "profesional"]
-    
     return orig_level == homo_level
 
 
-def _find_homolog_by_level(nombre, area, masters, max_level_up=0):
-    """Find homologado that matches level of original.
+def _find_homolog_by_level(nombre, area, masters):
+    """Find homologado that matches EXACT level of original.
     
-    Strategy:
-    1. First try exact level match with area
-    2. Then exact level match without area
-    3. Only if no match, try one level up (NOT down)
+    RULE: Solo busca cargos del MISMO nivel jerárquico.
+    - COORDINADOR busca solo COORDINADORES en el catálogo
+    - GERENTE busca solo GERENTES en el catálogo
     """
     orig_level = _get_level_from_name(nombre)
     nombre_upper = nombre.upper()
@@ -196,46 +184,26 @@ def _find_homolog_by_level(nombre, area, masters, max_level_up=0):
     def score_cargo(m):
         m_nombre = m["nombre"]
         m_level = _get_level_from_name(m_nombre)
-        s = 0
         
-        if m_level == orig_level:
-            s += 100
-        elif orig_level == "profesional" and m_level in ["coordinador"]:
-            s += 50
-        else:
+        if m_level != orig_level:
             return -1
         
-        if area_upper:
-            if area_upper in m_nombre:
-                s += 20
-            area_lower = area_upper.lower()
-            if any(w in m_nombre.lower() for w in area_lower.split()):
-                s += 10
+        s = 100
+        
+        if area_upper and area_upper in m_nombre:
+            s += 50
         
         common_words = set(nombre_upper.split()) & set(m_nombre.split())
-        if common_words:
-            s += len(common_words) * 2
+        s += len(common_words) * 3
         
         return s
     
     scored = [(score_cargo(m), m) for m in masters]
-    scored = [(s, m) for s, m in scored if s >= 0]
+    scored = [(s, m) for s, m in scored if s > 0]
     scored.sort(key=lambda x: -x[0])
     
     if scored:
         return scored[0][1]["nombre"]
-    
-    if orig_level == "profesional" and area_upper:
-        scored_up = []
-        for m in masters:
-            m_nombre = m["nombre"]
-            m_level = _get_level_from_name(m_nombre)
-            if m_level == "coordinador" and area_upper in m_nombre:
-                common = set(nombre_upper.split()) & set(m_nombre.split())
-                scored_up.append((len(common), m))
-        if scored_up:
-            scored_up.sort(key=lambda x: -x[0])
-            return scored_up[0][1]["nombre"]
     
     return "SIN COINCIDENCIA"
 
