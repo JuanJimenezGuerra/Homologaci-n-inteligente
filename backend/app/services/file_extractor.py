@@ -62,10 +62,6 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
             
             print(f"Extracted text length for {filename}: {len(text)} chars")
             
-            if not text or not text.strip():
-                print(f"Skipping file {filename}: no text extracted (empty)")
-                continue
-
             # Use filename (without extension) as cargo name
             cargo_nombre = os.path.splitext(filename)[0].strip()
             if not cargo_nombre:
@@ -73,6 +69,11 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
                 continue
 
             print(f"Creating cargo: '{cargo_nombre}' from file {filename}")
+            print(f"Text content preview: {text[:200]}...")
+
+            # If text is empty, use a placeholder
+            if not text or not text.strip():
+                text = f"Descripción del cargo: {cargo_nombre}"
 
             # Check if cargo already exists for this upload with same name
             existing = db.query(Cargo).filter(
