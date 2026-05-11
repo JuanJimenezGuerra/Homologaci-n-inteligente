@@ -33,7 +33,10 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
         content = file_obj.file.read()
         
         ext = os.path.splitext(filename)[1].lower()
+        print(f"Processing extra file: {filename}, extension: {ext}")
+        
         if ext not in ['.pdf', '.docx', '.doc', '.xlsx', '.xls']:
+            print(f"Skipping file {filename}: invalid extension")
             continue
 
         try:
@@ -47,13 +50,19 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
                 df = pd.read_excel(io.BytesIO(content))
                 text = df.to_string()
             
-            if not text.strip():
+            print(f"Extracted text length for {filename}: {len(text)} chars")
+            
+            if not text or not text.strip():
+                print(f"Skipping file {filename}: no text extracted (empty)")
                 continue
 
             # Use filename (without extension) as cargo name
             cargo_nombre = os.path.splitext(filename)[0].strip()
             if not cargo_nombre:
+                print(f"Skipping file {filename}: no cargo name from filename")
                 continue
+
+            print(f"Creating cargo: '{cargo_nombre}' from file {filename}")
 
             # Check if cargo already exists for this upload with same name
             existing = db.query(Cargo).filter(
@@ -67,6 +76,7 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
                 # Mark as from extra description if not already
                 if existing.area == 'PENDIENTE' or not existing.area:
                     existing.area = 'DESCRIPCION_ANEXA'
+                print(f"Updated existing cargo: {cargo_nombre}")
             else:
                 # Create new cargo from extra description file
                 new_cargo = Cargo(
@@ -78,12 +88,16 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
                 )
                 db.add(new_cargo)
                 created_cargos.append(cargo_nombre)
+                print(f"Created new cargo: {cargo_nombre}")
 
             mapped_count += 1
                     
         except Exception as e:
             print(f"Error processing file {filename}: {e}")
+            import traceback
+            traceback.print_exc()
             continue
             
     db.commit()
+    print(f"Total extra description cargos created: {mapped_count}")
     return mapped_count
