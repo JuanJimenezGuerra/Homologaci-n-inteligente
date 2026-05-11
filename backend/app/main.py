@@ -98,6 +98,8 @@ def startup_event():
                 print(f"Error al inicializar base maestra: {e}")
         else:
             print(f"No se encontro el archivo maestro en {master_path}")
+    else:
+        print(f"Base maestra ya cargada: {master_count} cargos")
 
 # ==========================================
 # AUTH
@@ -887,10 +889,9 @@ def buscar_internet_lote(body: dict = Body(...), db: Session = Depends(get_db)):
             logger.error(f"Error en busqueda para cargo {cargo_id}: {e}")
             resultados.append({"cargo_id": cargo_id, "error": str(e)})
     
-    logger.info(f"Busqueda masiva completada: {procesados} exitosos, {errores} errores de {len(cargo_ids)} totales")
+logger.info(f"Busqueda masiva completada: {procesados} exitosos, {errores} errores de {len(cargo_ids)} totales")
     return {"resultados": resultados, "procesados": procesados, "errores": errores, "total": len(cargo_ids)}
 
-    return {"resultados": resultados}
 
 # ==========================================
 # VALORACION CON IA

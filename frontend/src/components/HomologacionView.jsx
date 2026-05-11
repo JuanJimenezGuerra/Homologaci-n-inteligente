@@ -299,7 +299,7 @@ function HomologacionView({ empresaId, onComplete }) {
   };
 
   const buscarInternetLote = async () => {
-    const sinCoincidenciaIds = cargos.filter(c =>
+    const sinCoincidenciaIds = safeDisplayCargos.filter(c =>
       (c.estado || '').toLowerCase().includes('sin_coincidencia')
     ).map(c => c.id);
 
@@ -308,24 +308,30 @@ function HomologacionView({ empresaId, onComplete }) {
       return;
     }
 
-    setSearchingInternet(true);
+    console.log('[Internet] Iniciando busqueda para', sinCoincidenciaIds.length, 'cargos');
+    setSearchInternet(true);
     setSearchingIds(new Set(sinCoincidenciaIds));
+    setError('');
+    setMensaje('');
     try {
       const res = await fetch(`${API}/homologacion/buscar-internet-lote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cargo_ids: sinCoincidenciaIds }),
       });
+      const data = await res.json();
+      console.log('[Internet] Resultado:', data);
       if (res.ok) {
+        setMensaje(`Busqueda completada: ${data.procesados} procesados, ${data.errores} errores`);
         await loadData();
       } else {
-        const text = await res.text();
-        setError(`Error en busqueda masiva: ${text.slice(0, 200)}`);
+        setError(`Error en busqueda masiva: ${data.detail || 'Error desconocido'}`);
       }
     } catch (e) {
+      console.error('[Internet] Error:', e);
       setError('Error: ' + e.message);
     } finally {
-      setSearchingInternet(false);
+      setSearchInternet(false);
       setSearchingIds(new Set());
     }
   };

@@ -133,6 +133,83 @@ def load_master_cargos(db):
     return masters
 
 
+def _get_level_from_name(nombre):
+    """Extract expected level from cargo name."""
+    n = nombre.upper()
+    if "VICEPRESIDENTE" in n or "VP" in n:
+        return "vice"
+    if "DIRECTOR" in n:
+        return "director"
+    if "GERENTE" in n or "SUBGERENTE" in n:
+        return "gerente"
+    if "COORDINADOR" in n or "JEFE DE AREA" in n or "SUPERVISOR" in n:
+        return "coordinador"
+    if "LIDER" in n or "PROGRAMADOR" in n or "ESPECIALISTA" in n:
+        return "profesional"
+    if "ANALISTA" in n or "TECNICO" in n or "TECNOLOGO" in n:
+        return "profesional"
+    if "AUXILIAR" in n or "ASISTENTE" in n or "APOYO" in n:
+        return "operativo"
+    return "unknown"
+
+
+def _is_level_allowed(original_name, homologado_name):
+    """Check if homologado level is allowed for original level."""
+    orig_level = _get_level_from_name(original_name)
+    homo_level = _get_level_from_name(homologado_name)
+    
+    allowed = {
+        "vice": ["vice", "director"],
+        "director": ["director", "gerente"],
+        "gerente": ["gerente", "coordinador"],
+        "coordinador": ["coordinador", "profesional"],
+        "profesional": ["profesional", "operativo"],
+        "operativo": ["operativo"],
+        "unknown": ["vice", "director", "gerente", "coordinador", "profesional", "operativo"],
+    }
+    
+    if orig_level in allowed:
+        return homo_level in allowed[orig_level]
+    return True
+
+
+def _find_homolog_by_level(nombre, area, masters, max_level_up=0):
+    """Find homologado that matches level of original or is within max_level_up."""
+    orig_level = _get_level_from_name(nombre)
+    nombre_upper = nombre.upper()
+    area_upper = area.upper() if area else ""
+    
+    candidates = []
+    for m in masters:
+        m_nombre = m["nombre"]
+        m_level = _get_level_from_name(m_nombre)
+        
+        if _is_level_allowed(nombre, m_nombre):
+            score = 0
+            if area_upper and area_upper in m_nombre:
+                score += 10
+            if any(word in m_nombre for word in ["DE", "DEL"]):
+                if any(word in nombre_upper for word in ["DE", "DEL"]):
+                    orig_words = set(nombre_upper.split())
+                    m_words = set(m_nombre.split())
+                    common = orig_words & m_words
+                    if common:
+                        score += len(common)
+            candidates.append((score, m_level, m))
+    
+    candidates.sort(key=lambda x: (-x[0], _level_priority(x[1])))
+    
+    if candidates:
+        return candidates[0][2]["nombre"]
+    return "SIN COINCIDENCIA"
+
+
+def _level_priority(level):
+    """Priority for sorting (lower = more preferred)."""
+    order = {"operativo": 1, "profesional": 2, "coordinador": 3, "gerente": 4, "director": 5, "vice": 6, "unknown": 7}
+    return order.get(level, 10)
+
+
 def homologar_con_ia(db, cargos, masters=None):
     if not OPENAI_API_KEY:
         return [{"id": c.get("id"), "cargo_homologado": "SIN COINCIDENCIA", "justificacion": "Sin API key", "confianza": 0.0} for c in cargos]
@@ -197,10 +274,24 @@ def homologar_con_ia(db, cargos, masters=None):
 
         parsed = extract_json_array(content)
         if parsed and isinstance(parsed, list):
+            cargo_map = {str(c.get("id")): c for c in batch}
             for r in parsed:
+                cargo_id = r.get("id")
+                ai_homologado = r.get("cargo_homologado", "SIN COINCIDENCIA")
+                orig_cargo = cargo_map.get(str(cargo_id))
+                
+                if orig_cargo and ai_homologado != "SIN COINCIDENCIA":
+                    orig_name = orig_cargo.get("nombre_cargo", "")
+                    if not _is_level_allowed(orig_name, ai_homologado):
+                        print(f"[HOMOLOGACION] IA violo jerarquia: {orig_name} -> {ai_homologado}, buscando nivel correcto...")
+                        nivel_final = _get_level_from_name(orig_name)
+                        nuevo_homologado = _find_homolog_by_level(orig_name, orig_cargo.get("area", ""), masters)
+                        ai_homologado = nuevo_homologado
+                        print(f"[HOMOLOGACION] Corregido a: {nuevo_homologado}")
+                
                 resultados.append({
-                    "id": r.get("id"),
-                    "cargo_homologado": r.get("cargo_homologado", "SIN COINCIDENCIA"),
+                    "id": cargo_id,
+                    "cargo_homologado": ai_homologado,
                     "justificacion": str(r.get("justificacion", ""))[:60],
                     "confianza": float(r.get("confianza", 0.5)),
                 })
@@ -301,12 +392,19 @@ def buscar_en_internet_y_homologar(cargo_dict, db):
     if content:
         parsed = extract_json(content)
         if parsed and isinstance(parsed, dict):
-            resultado = {
-                "cargo_homologado": parsed.get("cargo_homologado", "SIN COINCIDENCIA"),
-                "justificacion": parsed.get("justificacion", "Info de internet"),
+            ai_homologado = parsed.get("cargo_homologado", "SIN COINCIDENCIA")
+            justificacion = parsed.get("justificacion", "Info de internet")
+            
+            if ai_homologado != "SIN COINCIDENCIA" and not _is_level_allowed(nombre, ai_homologado):
+                print(f"[HOMOLOGACION] Internet: IA violo jerarquia {nombre} -> {ai_homologado}, corrigiendo...")
+                ai_homologado = _find_homolog_by_level(nombre, area, masters)
+                justificacion = "corregido_nivel"
+            
+            return {
+                "cargo_homologado": ai_homologado,
+                "justificacion": justificacion,
                 "url_busqueda": info.get("url", "https://duckduckgo.com/?q=" + nombre.replace(" ", "+")),
             }
-            return resultado
 
     return {
         "cargo_homologado": "SIN COINCIDENCIA",
@@ -452,20 +550,25 @@ def homologar_con_ia_observaciones(db, cargos_batch, masters, observaciones, sel
         if content:
             parsed = extract_json(content)
             if parsed and isinstance(parsed, dict):
-                cargo_homologado = parsed.get("cargo_homologado", "SIN COINCIDENCIA")
+                ai_homologado = parsed.get("cargo_homologado", "SIN COINCIDENCIA")
                 justificacion = str(parsed.get("justificacion", ""))[:60]
                 confianza = float(parsed.get("confianza", 0.5))
 
-                # Apply administrativo != tecnico filter
                 if filters["administrativo_no_tecnico"]:
-                    if not apply_administrativo_no_tecnico(nombre, cargo_homologado):
-                        cargo_homologado = "SIN COINCIDENCIA"
+                    if not apply_administrativo_no_tecnico(nombre, ai_homologado):
+                        ai_homologado = "SIN COINCIDENCIA"
                         justificacion = "Filtro: Administrativo != Tecnico"
                         confianza = 0.0
 
+                if ai_homologado != "SIN COINCIDENCIA" and not _is_level_allowed(nombre, ai_homologado):
+                    print(f"[HOMOLOGACION] IA violo jerarquia obs: {nombre} -> {ai_homologado}, corrigiendo...")
+                    ai_homologado = _find_homolog_by_level(nombre, area, masters)
+                    confianza = 0.6
+                    justificacion = "corregido_nivel"
+
                 resultados.append({
                     "id": cargo.get("id"),
-                    "cargo_homologado": cargo_homologado,
+                    "cargo_homologado": ai_homologado,
                     "justificacion": justificacion,
                     "confianza": confianza,
                 })
