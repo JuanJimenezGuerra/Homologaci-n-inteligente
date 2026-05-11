@@ -7,12 +7,6 @@ import re
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-print("=== ENV VARS DEBUG ===")
-print("OPENAI_API_KEY: " + ("OK" if OPENAI_API_KEY else "NO CONFIGURADA"))
-print("OPENAI_MODEL: " + OPENAI_MODEL)
-api_vars = [k for k in os.environ.keys() if "API" in k or "KEY" in k]
-print("Todas las vars: " + str(api_vars))
-
 
 def call_ia(messages, max_tokens=300, timeout=30):
     """Llama a OpenAI API."""

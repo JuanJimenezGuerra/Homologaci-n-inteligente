@@ -817,12 +817,12 @@ def reprocesar_homologacion(
                     homo.cargo_homologado = cargo_homologado
                     homo.justificacion = f"Reproceso IA (obs. analista): {justificacion}"
                     homo.editado_manual = False
-                    cargo.estado = "SUGERIDO"
+                    cargo.estado = "SUGERIDO_ANALISTA" if req.cargo_ids else "SUGERIDO"
                     with _progress_lock:
                         prog["ia_suggested"] = results_count
                         prog["recent_results"].append({
                             "id": cargo.id, "nombre_cargo": cargo.nombre_cargo,
-                            "cargo_homologado": cargo_homologado, "estado": "sugerido",
+                            "cargo_homologado": cargo_homologado, "estado": "sugerido_analista" if req.cargo_ids else "sugerido",
                             "justificacion": f"Reproceso: {justificacion}", "tipo": "reproceso",
                         })
                 else:
@@ -1075,7 +1075,10 @@ def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), request_d
     db.commit()
     db.refresh(val)
 
+    pts = _estimar_puntos_totales(val)
+
     return {
+        "cargo_id": cargo_id,
         "valoracion": {
             "conocimientos": val.conocimientos,
             "experiencia": val.experiencia,
@@ -1095,51 +1098,8 @@ def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), request_d
             "criterio2": str(val.criterio_2),
             "criterio3": str(val.criterio_3),
         },
-        "justificacion_ia": val.justificacion_ia
-    }
-
-    resultado = valorar_cargo_con_ia(cargo_dict)
-
-    val = db.query(Valoracion).filter(Valoracion.cargo_id == cargo.id).first()
-    if not val:
-        val = Valoracion(cargo_id=cargo.id)
-        db.add(val)
-
-    val.conocimientos = resultado.get("conocimientos")
-    val.experiencia = resultado.get("experiencia")
-    val.habilidad_gerencial = resultado.get("habilidadGerencial")
-    val.rol_cargo = resultado.get("rolCargo")
-    val.contacto = resultado.get("contacto")
-    val.frecuencia = resultado.get("frecuenciaContacto")
-    val.contenido_relaciones = resultado.get("contenidoRelaciones")
-    val.complejidad_conceptual = resultado.get("complejidadConceptual")
-    val.tendencia_cc = resultado.get("tendenciaCC")
-    val.guias_apoyo = resultado.get("guiasApoyo")
-    val.tendencia_ga = resultado.get("tendenciaGA")
-    val.impacto = resultado.get("impacto")
-    val.autonomia = resultado.get("autonomia")
-    val.magnitud = resultado.get("magnitud")
-    val.criterio_1 = int(resultado.get("criterio1", 0))
-    val.criterio_2 = int(resultado.get("criterio2", 0))
-    val.criterio_3 = int(resultado.get("criterio3", 0))
-    val.justificacion_ia = resultado.get("justificacion", "")
-    val.basico = resultado.get("garantizado")
-    val.real_pagado = resultado.get("garantizadoVariable")
-    val.garantizado = resultado.get("garantizado")
-    val.garantizado_variable = resultado.get("garantizadoVariable")
-    val.compensacion_total = resultado.get("compensacionTotal")
-    val.editado_manual = False
-    db.commit()
-
-    # Calcular puntos totales
-    from .services.ia_service import valorar_cargo_con_ia
-    pts = _estimar_puntos_totales(val)
-
-    return {
-        "cargo_id": cargo_id,
-        "valoracion": resultado,
         "puntos_totales": pts,
-        "justificacion_ia": resultado.get("justificacion", ""),
+        "justificacion_ia": val.justificacion_ia,
         "estado": "valorado"
     }
 

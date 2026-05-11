@@ -203,18 +203,9 @@ const CRITERIA_DEFS = {
   },
 };
 
-// ─── Point calculation placeholders (TODO: Update from Excel) ──────────────────
-//
-// Para actualizar, extraer datos de la pestaña "Plantilla de Valoración" del Excel
-//
-// FORMATO ESPERADO:
-// POINTS_CONOCIMIENTOS = { A: ?, B: ?, C: ?, D: ?, E: ?, F: ?, G: ?, H: ? }
-// POINTS_EXPERIENCIA = { '-': ?, 'o': ?, '+': ? }
-// POINTS_HABILIDAD = { I: ?, II: ?, III: ?, IV: ?, V: ?, VI: ?, VII: ? }
-// ... (todos los factores)
-//
-// CATEGORY_RANGES: extraer de pestaña "Categorías" del Excel
-// [TODO] Verificar rangos correctos del archivo Excel
+// ─── Point calculation tables (SHR/HAY methodology) ──────────────────────────
+// Sincronizados con backend analisis_service._estimar_puntos
+
 const CATEGORY_RANGES = [
   { cat: 1, min: 87, max: 100 },
   { cat: 2, min: 101, max: 115 },
@@ -243,60 +234,44 @@ const CATEGORY_RANGES = [
   { cat: 25, min: 2488, max: 2860 },
 ];
 
-// ─── Point calculation tables (SHR/HAY methodology) - PLACEHOLDER VALUES ──────
-// [TODO] Reemplazar con valores exactos del Excel
-
 // Factor 1: Conocimientos (A-H)
-// [TODO] Extraer de columna "Conocimiento" de Plantilla de Valoración
-const POINTS_CONOCIMIENTOS = { A: 112, B: 129, C: 147, D: 165, E: 184, F: 208, G: 240, H: 275 };
+const POINTS_CONOCIMIENTOS = { A: 20, B: 40, C: 60, D: 80, E: 100, F: 120, G: 140, H: 160 };
 
-// Factor 1: Experiencia Específica
-// [TODO] Extraer de columna "Experiencia" de Plantilla de Valoración
-const POINTS_EXPERIENCIA = { '-': 0.87, 'o': 1.0, '+': 1.15 };
+// Factor 1: Experiencia Específica (multiplicador)
+const POINTS_EXPERIENCIA = { '-': 0.8, 'o': 1.0, '+': 1.2 };
 
 // Factor 1: Habilidad Gerencial (I-VII)
-// [TODO] Extraer de columna "Habilidad Gerencial" de Plantilla de Valoración
-const POINTS_HABILIDAD = { I: 19, II: 38, III: 57, IV: 76, V: 95, VI: 114, VII: 133 };
+const POINTS_HABILIDAD = { I: 10, II: 20, III: 30, IV: 40, V: 50, VI: 60, VII: 70 };
 
 // Factor 1: Rol del Cargo (1-4)
-// [TODO] Extraer de columna "Rol del Cargo" de Plantilla de Valoración
-const POINTS_ROL = { '1': 14, '2': 29, '3': 43, '4': 57 };
+const POINTS_ROL = { '1': 10, '2': 15, '3': 25, '4': 35 };
 
 // Factor 2: Contacto (A-C)
-// [TODO] Extraer de columna "Contacto" de Plantilla de Valoración
-const POINTS_CONTACTO = { A: 14, B: 29, C: 43 };
+const POINTS_CONTACTO = { A: 5, B: 10, C: 15 };
 
 // Factor 2: Frecuencia de Contacto (1-4)
-// [TODO] Extraer de columna "Frecuencia" de Plantilla de Valoración
-const POINTS_FRECUENCIA = { '1': 5, '2': 19, '3': 33, '4': 47 };
+const POINTS_FRECUENCIA = { '1': 2, '2': 4, '3': 6, '4': 8 };
 
 // Factor 2: Contenido de las Relaciones (I-V)
-// [TODO] Extraer de columna "Contenido" de Plantilla de Valoración
-const POINTS_CONTENIDO = { I: 9, II: 22, III: 38, IV: 57, V: 76 };
+const POINTS_CONTENIDO = { I: 5, II: 10, III: 15, IV: 20, V: 25 };
 
 // Factor 3: Complejidad Conceptual (1-5)
-// [TODO] Extraer de columna "Complejidad" de Plantilla de Valoración
-const POINTS_COMPLEJIDAD = { '1': 22, '2': 43, '3': 67, '4': 95, '5': 122 };
+const POINTS_COMPLEJIDAD = { '1': 10, '2': 20, '3': 30, '4': 40, '5': 50 };
 
 // Factor 3: Tendencia (multiplicador)
-// [TODO] Extraer de columna "Tendencia" de Plantilla de Valoración
-const POINTS_TENDENCIA = { '-': 0.87, 'o': 1.0, '+': 1.15 };
+const POINTS_TENDENCIA = { '-': 0.85, 'o': 1.0, '+': 1.15 };
 
 // Factor 3: Guías de Apoyo (A-H)
-// [TODO] Extraer de columna "Guías" de Plantilla de Valoración
-const POINTS_GUIAS = { A: 10, B: 19, C: 29, D: 43, E: 57, F: 71, G: 90, H: 108 };
+const POINTS_GUIAS = { A: 10, B: 20, C: 30, D: 40, E: 50, F: 60, G: 70, H: 80 };
 
 // Factor 4: Impacto (I-IV)
-// [TODO] Extraer de columna "Impacto" de Plantilla de Valoración
-const POINTS_IMPACTO = { I: 14, II: 29, III: 43, IV: 57 };
+const POINTS_IMPACTO = { I: 10, II: 20, III: 30, IV: 40 };
 
 // Factor 4: Autonomía (A-G)
-// [TODO] Extraer de columna "Autonomía" de Plantilla de Valoración
-const POINTS_AUTONOMIA = { A: 5, B: 19, C: 33, D: 47, E: 62, F: 76, G: 95 };
+const POINTS_AUTONOMIA = { A: 10, B: 20, C: 30, D: 40, E: 50, F: 60, G: 70 };
 
 // Factor 4: Magnitud (1-14)
-// [TODO] Extraer de columna "Magnitud" de Plantilla de Valoración
-const POINTS_MAGNITUD = { '1': 0, '2': 19, '3': 38, '4': 57, '5': 76, '6': 95, '7': 114, '8': 133, '9': 152, '10': 171, '11': 190, '12': 209, '13': 228, '14': 247 };
+const POINTS_MAGNITUD = { '1': 5, '2': 10, '3': 15, '4': 20, '5': 25, '6': 30, '7': 35, '8': 40, '9': 45, '10': 50, '11': 55, '12': 60, '13': 65, '14': 70 };
 
 function getCategory(score) {
   for (const range of CATEGORY_RANGES) {
@@ -342,22 +317,22 @@ function getCategoryLabel(cat) {
 function calcTotalPoints(v) {
   const baseConoc = POINTS_CONOCIMIENTOS[v.conocimientos] || 0;
   const multExp = POINTS_EXPERIENCIA[v.experiencia] || 1;
-  const f1 = baseConoc * multExp + (POINTS_HABILIDAD[v.habilidadGerencial] || 0) + (POINTS_ROL[v.rolCargo] || 0);
+  const f1 = Math.round(baseConoc * multExp + (POINTS_HABILIDAD[v.habilidadGerencial] || 0) + (POINTS_ROL[v.rolCargo] || 0));
 
-  const f2 = (POINTS_CONTACTO[v.contacto] || 0) + (POINTS_FRECUENCIA[v.frecuenciaContacto] || 0) + (POINTS_CONTENIDO[v.contenidoRelaciones] || 0);
+  const f2 = Math.round((POINTS_CONTACTO[v.contacto] || 0) + (POINTS_FRECUENCIA[v.frecuenciaContacto] || 0) + (POINTS_CONTENIDO[v.contenidoRelaciones] || 0));
 
   const baseCC = POINTS_COMPLEJIDAD[v.complejidadConceptual] || 0;
   const multCC = POINTS_TENDENCIA[v.tendenciaCC] || 1;
   const baseGA = POINTS_GUIAS[v.guiasApoyo] || 0;
   const multGA = POINTS_TENDENCIA[v.tendenciaGA] || 1;
-  const f3 = baseCC * multCC + baseGA * multGA;
+  const f3 = Math.round(baseCC * multCC + baseGA * multGA);
 
-  const f4 = (POINTS_IMPACTO[v.impacto] || 0) + (POINTS_AUTONOMIA[v.autonomia] || 0) + (POINTS_MAGNITUD[v.magnitud] || 0);
+  const f4 = Math.round((POINTS_IMPACTO[v.impacto] || 0) + (POINTS_AUTONOMIA[v.autonomia] || 0) + (POINTS_MAGNITUD[v.magnitud] || 0));
 
   const criticidad = ((parseInt(v.criterio1) === 1 ? 1 : 0) + (parseInt(v.criterio2) === 1 ? 1 : 0) + (parseInt(v.criterio3) === 1 ? 1 : 0));
 
   const raw = f1 + f2 + f3 + f4;
-  const total = raw * (1 + criticidad * 0.15);
+  const total = raw * (1 + criticidad * 0.05);
   const cat = getCategory(Math.round(total));
   
   return { 

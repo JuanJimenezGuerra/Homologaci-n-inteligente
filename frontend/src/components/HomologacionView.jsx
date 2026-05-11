@@ -12,6 +12,7 @@ const STATUS_STYLES = {
   pendiente: 'bg-slate-100 text-slate-600 border border-slate-200',
   error: 'bg-red-100 text-red-700 border border-red-300',
   buscado_en_internet: 'bg-cyan-100 text-cyan-700 border border-cyan-300',
+  sugerido_analista: 'bg-orange-100 text-orange-700 border border-orange-300',
 };
 
 const StatusBadge = ({ estado }) => {
@@ -367,6 +368,7 @@ function HomologacionView({ empresaId, onComplete }) {
     total: safeDisplayCargos.length,
     homologados: safeDisplayCargos.filter(item => (item.estado || '').toLowerCase() === 'homologado').length,
     sugeridos: safeDisplayCargos.filter(item => (item.estado || '').toLowerCase() === 'sugerido').length,
+    sugeridos_analista: safeDisplayCargos.filter(item => (item.estado || '').toLowerCase() === 'sugerido_analista').length,
     pendientes: safeDisplayCargos.filter(item => ['pendiente', 'procesando'].includes((item.estado || '').toLowerCase())).length,
     sin_coincidencia: safeDisplayCargos.filter(item => (item.estado || '').toLowerCase().includes('sin_coincidencia')).length,
     buscados_internet: safeDisplayCargos.filter(item => (item.estado || '').toLowerCase().includes('buscado_en_internet')).length,
@@ -637,6 +639,7 @@ function HomologacionView({ empresaId, onComplete }) {
               <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-full">{stats.total} Total</span>
               {stats.homologados > 0 && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">{stats.homologados} Match</span>}
               {stats.sugeridos > 0 && <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded-full">{stats.sugeridos} Sugeridos</span>}
+              {stats.sugeridos_analista > 0 && <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded-full">{stats.sugeridos_analista} Sug. Analista</span>}
               {stats.pendientes > 0 && <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{stats.pendientes} Pend.</span>}
               {stats.sin_coincidencia > 0 && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full">{stats.sin_coincidencia} S/C</span>}
               {stats.buscados_internet > 0 && <span className="text-[10px] font-bold bg-cyan-100 text-cyan-700 px-2 py-1 rounded-full">{stats.buscados_internet} Internet</span>}
@@ -647,6 +650,7 @@ function HomologacionView({ empresaId, onComplete }) {
               <option value="all">Todos</option>
               <option value="homologado">Match Exacto</option>
               <option value="sugerido">Sugeridos IA</option>
+              <option value="sugerido_analista">Sugeridos x Analista</option>
               <option value="pendiente">Pendientes</option>
               <option value="sin_coincidencia">Sin Coincidencia</option>
               <option value="buscado_en_internet">Buscados en Internet</option>
@@ -708,11 +712,9 @@ function HomologacionView({ empresaId, onComplete }) {
             <thead className="bg-forest text-white text-[10px] font-bold uppercase">
               <tr>
                 <th className="px-3 py-3 w-8">#</th>
-                {(processing || selectedCargoIds.size > 0) && (
                   <th className="px-3 py-3 w-8">
                     <input type="checkbox" checked={selectedCargoIds.size > 0 && safeDisplayCargos.filter(item => item.estado !== 'HOMOLOGADO' && item.estado !== 'homologado').length > 0 && selectedCargoIds.size === safeDisplayCargos.filter(item => item.estado !== 'HOMOLOGADO' && item.estado !== 'homologado').length} onChange={e => { if (e.target.checked) selectAllReprocessable(); else clearSelection(); }} className="rounded border-slate-300 text-primary focus:ring-primary" />
                   </th>
-                )}
                 {visibleCols.cargo && <th className="px-3 py-3 min-w-[200px]">Cargo</th>}
                 {visibleCols.area && <th className="px-3 py-3 min-w-[100px]">Area</th>}
                 {visibleCols.estado && <th className="px-3 py-3 w-28">Estado</th>}
@@ -737,13 +739,11 @@ function HomologacionView({ empresaId, onComplete }) {
                                    c?.homologacion?.datos_excel?.basico || null;
                   
                   return (
-                    <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-purple-50/60' : isBuscadorInternet ? 'bg-cyan-50/40' : c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' : isSinCoincidencia ? 'bg-amber-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                    <tr key={c.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-purple-50/60' : isBuscadorInternet ? 'bg-cyan-50/40' : c.estado?.toLowerCase() === 'sugerido_analista' ? 'bg-orange-50/40' : c.estado?.toLowerCase() === 'sugerido' ? 'bg-purple-50/40' : isSinCoincidencia ? 'bg-amber-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                       <td className="px-3 py-2.5 text-slate-300 font-mono text-center text-xs">{idx + 1}</td>
-                      {(processing || selectedCargoIds.size > 0) && (
                         <td className="px-3 py-2.5 text-center">
                           {isReprocessable && <input type="checkbox" checked={isSelected} onChange={() => toggleCargoSelection(c.id)} className="rounded border-slate-300 text-primary focus:ring-primary" />}
                         </td>
-                      )}
                       {visibleCols.cargo && <td className="px-3 py-2.5 font-semibold text-forest">{c.nombre_cargo}</td>}
                       {visibleCols.area && <td className="px-3 py-2.5 text-slate-500 text-xs">{c.area}</td>}
                       {visibleCols.estado && <td className="px-3 py-2.5"><StatusBadge estado={c.estado} /></td>}
@@ -858,7 +858,7 @@ function HomologacionView({ empresaId, onComplete }) {
       </motion.div>
 
       {/* ============ NEXT STEP ============ */}
-      {stats.homologados + stats.sugeridos > 0 && !processing && (
+      {stats.homologados + stats.sugeridos + stats.sugeridos_analista > 0 && !processing && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-end">
           <button onClick={handleIrValoracion} className="flex items-center gap-2 bg-forest text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-primary transition-all shadow-lg">
             Ir a Valoración <ArrowRight size={16} />
