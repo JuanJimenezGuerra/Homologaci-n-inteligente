@@ -17,6 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 import os
 import shutil
+import io
 import threading
 import time
 from typing import List, Optional
@@ -224,6 +225,41 @@ def upload_requirements_file(
                 os.remove(temp_path)
             except:
                 pass
+
+
+@app.post("/uploads/{upload_id}/extra-descriptions")
+async def upload_extra_descriptions(
+    upload_id: int,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Upload extra description files (PDF, DOCX, XLSX) for cargo descriptions.
+    
+    The filename (without extension) will be matched to cargo names using fuzzy matching.
+    """
+    from .services.file_extractor import process_extra_descriptions
+    
+    upload = db.query(Upload).filter(Upload.id == upload_id).first()
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload no encontrado")
+    
+    # Process files
+    class FileObj:
+        def __init__(self, filename, file):
+            self.filename = filename
+            self.file = file
+    
+    file_objs = []
+    for f in files:
+        content = await f.read()
+        file_obj = FileObj(f.filename, io.BytesIO(content))
+        file_objs.append(file_obj)
+    
+    mapped_count = process_extra_descriptions(upload_id, file_objs, db)
+    
+    return {"message": f"Se procesaron {mapped_count} archivos de descripción", "mapped": mapped_count}
+
 
 @app.get("/uploads")
 def list_uploads(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

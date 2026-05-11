@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, LogOut, User as UserIcon, ShieldCheck, Building2, Link2, Target, TrendingUp, Scale } from 'lucide-react';
+import { LayoutDashboard, LogOut, User as UserIcon, ShieldCheck, Building2, Link2, Target, TrendingUp, Scale, History } from 'lucide-react';
 import { motion } from 'framer-motion';
 import logoShr from '../assets/logo_shr.png?v=2';
 
@@ -7,10 +7,11 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
 
   const menuItems = [
     { id: 'formulario', label: '1. Formulario', icon: Building2, desc: 'Cargar datos empresa y Excel' },
-    { id: 'homologacion', label: '2. Homologación', icon: Link2, desc: 'Matching de cargos' },
-    { id: 'valoracion', label: '3. Valoración', icon: Target, desc: 'Evaluación 12 factores' },
+    { id: 'valoracion', label: '2. Valoración', icon: Target, desc: 'Evaluación 12 factores' },
+    { id: 'homologacion', label: '3. Homologación', icon: Link2, desc: 'Matching de cargos' },
     { id: 'analisis', label: '4. Análisis', icon: TrendingUp, desc: 'Curvas y reportes' },
     { id: 'equidad', label: '5. Equidad', icon: Scale, desc: 'Regresion y nivelacion salarial' },
+    { id: 'historial', label: '6. Historial', icon: History, desc: 'Procesos ejecutados' },
   ];
 
   return (

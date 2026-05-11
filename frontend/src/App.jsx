@@ -8,6 +8,7 @@ import FormularioView from './components/FormularioView';
 import HomologacionView from './components/HomologacionView';
 import AnalisisView from './components/AnalisisView';
 import EquidadView from './components/EquidadView';
+import HistorialView from './components/HistorialView';
 import ErrorBoundary from './components/ErrorBoundary';
 
 const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
@@ -49,8 +50,16 @@ function App() {
     setActiveTab('formulario');
   };
 
-  const handleEmpresaCreada = (empId) => {
+const handleEmpresaCreada = (empId) => {
     setEmpresaId(empId);
+    setActiveTab('valoracion');
+  };
+
+  const handleValoracionCompleta = (valoraciones) => {
+    if (valoraciones) {
+      setValoracionesData(valoraciones);
+      try { localStorage.setItem('shr_valoraciones', JSON.stringify(valoraciones)); } catch {}
+    }
     setActiveTab('homologacion');
   };
 
@@ -59,13 +68,25 @@ function App() {
       setCargosHomologacion(cargos);
       try { localStorage.setItem('shr_cargos_homologacion', JSON.stringify(cargos)); } catch {}
     }
-    setActiveTab('valoracion');
+    setActiveTab('analisis');
+  };
+
+  const handleAnalisisCompleta = () => {
+    setActiveTab('equidad');
   };
 
   const handleValoracionCompleta = (valoraciones) => {
     if (valoraciones) {
       setValoracionesData(valoraciones);
       try { localStorage.setItem('shr_valoraciones', JSON.stringify(valoraciones)); } catch {}
+    }
+    setActiveTab('homologacion');
+  };
+
+  const handleHomologacionCompleta = (cargos) => {
+    if (cargos) {
+      setCargosHomologacion(cargos);
+      try { localStorage.setItem('shr_cargos_homologacion', JSON.stringify(cargos)); } catch {}
     }
     setActiveTab('analisis');
   };
@@ -145,6 +166,12 @@ function App() {
             uploadData={empresaId}
             onBack={() => setActiveTab('analisis')}
           />
+        )}
+      </ErrorBoundary>
+
+      <ErrorBoundary>
+        {activeTab === 'historial' && (
+          <HistorialView />
         )}
       </ErrorBoundary>
     </Layout>

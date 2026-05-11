@@ -8,192 +8,213 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
+//
+// DESCRIPCIONES EXTRAÍDAS DEL EXCEL "Herramienta de Estructura Salarial"
+//[Pestaña "Conocimiento"] para Conocimientos
+//[Pestaña "Experiencia"] para Experiencia Específica
+//[Pestaña "Habilidad"] para Habilidad Gerencial
+// ... etc para todos los criterios
 
 const CRITERIA_DEFS = {
   conocimientos: {
-    label: 'Conocimientos',
     options: ['A','B','C','D','E','F','G','H'],
     descriptions: {
-      A: 'Rutinas de trabajo simples / manual',
-      B: 'Procesos y procedimientos / equipos simples',
-      C: 'Técnica o método complejo / equipos especializados',
-      D: 'Teoría, principios o leyes de una disciplina profesional',
-      E: 'Ciencia/disciplina profesional o técnica avanzada',
-      F: 'Conocimiento profundo de disciplina o amplio en área funcional',
-      G: 'Maestría en disciplina / conocimiento amplio en varias áreas',
-      H: 'Maestría excepcional / conocimiento en TODAS las áreas',
+      A: 'Conocimiento de rutinas de trabajo simples necesarias para la realización de un trabajo manual.',
+      B: 'Conocimiento de procesos y procedimientos (integración de varias rutinas) necesarias para operar equipos o máquinas simples.',
+      C: 'Conocimiento de una técnica o métodos de trabajo complejos que pueden requerir la operación de equipos especializados.',
+      D: 'Conocimiento de una teoría, principios o leyes generales de una ciencia, arte o disciplina profesional.',
+      E: 'Conocimiento de una ciencia, arte o disciplina profesional. / Conocimiento avanzado de una técnica o práctica.',
+      F: 'Conocimiento profundo de una ciencia, arte o disciplina profesional específica. / Amplio conocimiento en todas o la mayoría de áreas específicas dentro de un área funcional.',
+      G: 'Maestría en una ciencia, arte o disciplina profesional. / Conocimiento y experiencia amplio y profundo en varias áreas funcionales.',
+      H: 'Maestría excepcional en una ciencia, arte o disciplina profesional. / Conocimiento y experiencia amplio y profundo en TODAS las áreas funcionales.',
     }
   },
   experiencia: {
-    label: 'Experiencia Específica',
+    label: 'Experiencia Previa en Roles Similares',
     options: ['-','o','+'],
     descriptions: {
-      '-': 'Menos de 6 meses (A-C) / menos de 2 años (D-H)',
-      'o': '6 meses a 1 año (A-C) / 2 a 5 años (D-H)',
-      '+': 'Más de 1 año (A-C) / más de 5 años (D-H)',
+      '-': 'Si Conocimiento A-C: de 0 a 6 meses (incluyendo el 6). Si Conocimiento D-H: de 0 a 2 años (incluyendo el 2).',
+      'o': 'Si Conocimiento A-C: de 6 meses hasta 1 año (incluyendo el 1). Si Conocimiento D-H: de 2 hasta 5 años (incluyendo el 5).',
+      '+': 'Si Conocimiento A-C: más de 1 año. Si Conocimiento D-H: más de 5 años.',
     }
   },
   habilidadGerencial: {
     label: 'Habilidad Gerencial',
     options: ['I','II','III','IV','V','VI','VII'],
     descriptions: {
-      I: 'INEXISTENTE – Ejecución de actividades semejantes',
-      II: 'MÍNIMA – Supervisión de tareas propias/homogéneas',
-      III: 'MODERADA – Coordinación de actividades/procesos',
-      IV: 'MEDIA – Planeación y dirección de área funcional',
-      V: 'ALTA – Dirección estratégica de varias áreas',
-      VI: 'MUY ALTA – Dirección e integración de toda la empresa',
-      VII: 'MÁXIMA – Dirección de grupo empresarial/corporativo',
+      I: 'INEXISTENTE – Ejecuta actividades prettamente semelhantes. No planifica ni supervisa el trabajo de otros.',
+      II: 'MÍNIMA – Supervisa tareas propias y de otros homogeneous. Dirige el trabajo sin participar directamente.',
+      III: 'MODERADA – Coordina actividades y procesos. Aclara tareas ambiguas y resuelve conflictos operativos.',
+      IV: 'MEDIA – Planea y dirige el trabajo de un área funcional. Asigna trabajos y evalúa desempeño.',
+      V: 'ALTA – Define metas y políticas para varias áreas funcionales. Integración y administración de recursos.',
+      VI: 'MUY ALTA – Dirige e integra toda la empresa. Establece visión estratégica y administra el cambio.',
+      VII: 'MÁXIMA – Dirige un grupo empresarial o corporativo. Define estrategia de largo plazo en entornos complejos.',
     }
   },
   rolCargo: {
     label: 'Rol del Cargo',
     options: ['1','2','3','4'],
     descriptions: {
-      '1': 'MIEMBRO DE EQUIPO',
-      '2': 'MIEMBRO DE VARIOS EQUIPOS',
-      '3': 'LÍDER DE EQUIPO',
-      '4': 'LÍDER DE VARIOS EQUIPOS',
+      '1': 'MIEMBRO DE EQUIPO – Trabaja como parte de un equipo en actividades definidas y especializadas.',
+      '2': 'MIEMBRO DE VARIOS EQUIPOS – Participa en múltiples equipos con diferentes enfoques y responsabilidades.',
+      '3': 'LÍDER DE EQUIPO – Coordina y dirige un equipo hacia objetivos comunes.',
+      '4': 'LÍDER DE VARIOS EQUIPOS – Coordina múltiples equipos con diferentes líderes y hacia múltiples objetivos.',
     }
   },
   contacto: {
     label: 'Contacto',
     options: ['A','B','C'],
     descriptions: {
-      A: 'INTERNO – Misma área funcional',
-      B: 'EXTERNO – Otras áreas / entidades externas',
-      C: 'AMBOS (INTERNO Y EXTERNO)',
+      A: 'INTERNO – Relacionamiento con representantes de cargos que pertenecen a la misma área funcional.',
+      B: 'EXTERNO – Relacionamiento con representantes de cargos de otras áreas funcionales y/o de entidades externas a la organización, tales como: clientes, proveedores, autoridades, etc.',
+      C: 'AMBOS (INTERNO Y EXTERNO) – La dedicación de tiempo invertido en el relacionamiento está muy repartido entre interno y externo.',
     }
   },
   frecuenciaContacto: {
     label: 'Frecuencia del Contacto',
     options: ['1','2','3','4'],
     descriptions: {
-      '1': 'OCASIONAL',
-      '2': 'MENSUAL',
-      '3': 'SEMANAL',
-      '4': 'DIARIO',
+      '1': 'OCASIONAL – Contactos poco frecuentes o irregulares.',
+      '2': 'MENSUAL – Contactos regulares pero no frecuentes. Interacciones mensuales.',
+      '3': 'SEMANAL – Contactos frecuentes, varias veces por semana.',
+      '4': 'DIARIO – Contactos diarios o permanentes. Comunicación continua requerida.',
     }
   },
   contenidoRelaciones: {
     label: 'Contenido de las Relaciones',
     options: ['I','II','III','IV','V'],
     descriptions: {
-      I: 'BÁSICO – Solicitar/transmitir información rutinaria',
-      II: 'MODERADO – Indagar asuntos del cargo',
-      III: 'IMPORTANTE – Negociar, persuadir, representar',
-      IV: 'SUPERIOR – Lograr acuerdos de alto impacto',
-      V: 'MUY SUPERIOR – Negociar en cualquier situación estratégica',
+      I: 'BÁSICO – Solicitar o transmitir información, prestar servicios y obtener cooperación en asuntos rutinarios.',
+      II: 'MODERADO – Indagar o aclarar asuntos relacionados con las funciones y/o responsabilidades del cargo.',
+      III: 'IMPORTANTE – Negociar, persuadir o influenciar a otros. Capacidad para escuchar y desarrollar un mutuo entendimiento. Capacidad para representar al área y/o empresa.',
+      IV: 'SUPERIOR – Lograr acuerdos satisfactorios generando un alto impacto en los resultados. Capacidad para diseñar, preparar y proponer estrategias de negociación. Capacidad de representar a la empresa.',
+      V: 'MUY SUPERIOR – Negociar ante cualquier situación, generando posiciones estratégicas que permitan determinar aspectos vitales para la empresa con otras organizaciones y autoridades.',
     }
   },
   complejidadConceptual: {
     label: 'Complejidad Conceptual',
     options: ['1','2','3','4','5'],
     descriptions: {
-      '1': 'IDÉNTICOS – Situaciones simples y repetitivas',
-      '2': 'SEMEJANTES – Situaciones típicas con elementos nuevos',
-      '3': 'DIVERSOS – Diferentes frentes de acción por varias áreas',
-      '4': 'NUEVOS – Situaciones poco comunes sin solución previa',
-      '5': 'INCERTIDUMBRE – Alta complejidad sin soluciones conocidas',
+      '1': 'IDÉNTICOS – Situaciones idénticas, simples y repetitivas, se resuelven aplicando soluciones sencillas aprendidas previamente.',
+      '2': 'SEMEJANTES – Situaciones típicas relacionadas con el conocimiento específico requerido para el cargo, cada vez que se presentan tienen elementos nuevos.',
+      '3': 'DIVERSOS – Las situaciones corresponden a diferentes frentes de acción derivados de la responsabilidad sobre varias áreas funcionales (financiera, operaciones, gestión humana, etc).',
+      '4': 'NUEVOS – Situaciones poco comunes en donde la solución no se conoce previamente en la compañía.',
+      '5': 'INCERTIDUMBRE – Situaciones de alta complejidad en dónde no existen soluciones conocidas previamente a nivel mundial.',
     }
   },
   tendenciaCC: {
     label: 'Tendencia Complejidad',
     options: ['-','o','+'],
     descriptions: {
-      '-': 'Tendencia baja dentro del nivel',
-      'o': 'Nivel estándar',
-      '+': 'Tendencia alta dentro del nivel',
+      '-': 'Tendencia BAJA dentro del nivel – Situaciones más simples que el promedio del nivel.',
+      'o': 'Tendencia MEDIA – Nivel estándar, situaciones representativas del promedio.',
+      '+': 'Tendencia ALTA dentro del nivel – Situaciones más complejas que el promedio del nivel.',
     }
   },
   guiasApoyo: {
     label: 'Guías de Apoyo',
     options: ['A','B','C','D','E','F','G','H'],
     descriptions: {
-      A: 'INSTRUCCIONES ESPECÍFICAS – Reglas simples y detalladas',
-      B: 'INSTRUCCIONES GENERALES – Rutinas definidas',
-      C: 'NORMAS ESTRUCTURADAS – Métodos/procedimientos claros',
-      D: 'PROCEDIMIENTOS DEFINIDOS – Define el qué, elige el cómo',
-      E: 'POLÍTICAS DEFINIDAS – Políticas amplias de organización',
-      F: 'POLÍTICAS GENERALES – Objetivos del plan estratégico',
-      G: 'GLOBAL – Análisis de asuntos complejos e investigación',
-      H: 'ABSTRACTO – Múltiples conceptos complejos',
+      A: 'INSTRUCCIONES ESPECÍFICAS – Reglas e instrucciones simples, sencillas, detalladas y específicas.',
+      B: 'INSTRUCCIONES GENERALES – Rutinas e Instrucciones de trabajo definidas.',
+      C: 'NORMAS ESTRUCTURADAS – Normas estructuradas y claras, métodos, procedimientos y ejemplos bien definidos o situaciones presentadas anteriormente.',
+      D: 'PROCEDIMIENTOS DEFINIDOS – Políticas funcionales definidas claramente. El ocupante del cargo tiene definido el "qué" pero de acuerdo a su juicio debe decidir el "cómo" hacerlo.',
+      E: 'POLÍTICAS DEFINIDAS – Políticas amplias de organización.',
+      F: 'POLÍTICAS GENERALES – Objetivos definidos en el plan estratégico de la organización.',
+      G: 'GLOBAL – Análisis de asuntos complejos, resultados de investigaciones, concepto de expertos.',
+      H: 'ABSTRACTO – Múltiples conceptos.',
     }
   },
   tendenciaGA: {
     label: 'Tendencia Guías',
     options: ['-','o','+'],
     descriptions: {
-      '-': 'Tendencia baja dentro del nivel',
-      'o': 'Nivel estándar',
-      '+': 'Tendencia alta dentro del nivel',
+      '-': 'Tendencia BAJA dentro del nivel – Guías más específicas que el promedio.',
+      'o': 'Tendencia MEDIA – Nivel estándar de generalidad en las guías.',
+      '+': 'Tendencia ALTA dentro del nivel – Guías más abstractas que el promedio.',
     }
   },
   impacto: {
     label: 'Impacto del Cargo',
     options: ['I','II','III','IV'],
     descriptions: {
-      I: 'INFORMATIVO – Da información/servicios usados por otros',
-      II: 'APOYO INDIRECTO – Análisis y asesoría que influyen decisiones',
-      III: 'APOYO DIRECTO – Responsable de resultados del área',
-      IV: 'ÚNICOS – Enteramente responsable de resultados finales',
+      I: 'INFORMATIVO – El cargo existe para dar servicios o información para ser utilizados por otros con relación a algún resultado.',
+      II: 'APOYO INDIRECTO – El cargo es responsable de proporcionar servicios de análisis, apoyo, asesoría, consejo o consulta que influencian las decisiones de otros cargos.',
+      III: 'APOYO DIRECTO – El cargo es responsable por la consecución de resultados de su área y en conjunto con otros cargos de similar responsabilidad apoyan al logro de los resultados finales para la empresa.',
+      IV: 'ÚNICOS – El cargo es enteramente responsable por los resultados finales de la empresa o unidad de negocio.',
     }
   },
   autonomia: {
     label: 'Autonomía',
     options: ['A','B','C','D','E','F','G'],
     descriptions: {
-      A: 'INEXISTENTE – Sujeto a aprobación continua del jefe',
-      B: 'RESTRINGIDA – Decisiones menores con alta supervisión',
-      C: 'NORMALIZADA – Decisiones según instrucciones generales',
-      D: 'ESTANDARIZADA – Decisiones complejas con políticas específicas',
-      E: 'DIRIGIDA – Independencia para lograr objetivos del área',
-      F: 'ORIENTADA – Decisiones que afectan objetivos empresariales',
-      G: 'ESTRATÉGICA – Fijación de metas globales del negocio',
+      A: 'INEXISTENTE – El titular del cargo está sujeto a las órdenes y aprobación del jefe. Actúa bajo instrucciones exactas, precisas y supervisión continua.',
+      B: 'RESTRINGIDA – El titular del cargo puede tomar decisiones menores en las actividades que realiza, ajustándose a instrucciones y procedimientos muy específicos. Recibe alta supervisión.',
+      C: 'NORMALIZADA – El titular del cargo toma decisiones de acuerdo a instrucciones generales y guías de acción. Se controla periódicamente el desarrollo del trabajo.',
+      D: 'ESTANDARIZADA – El titular del cargo toma decisiones complejas respaldadas en políticas muy específicas. Se controla periódicamente el resultado después de los hechos.',
+      E: 'DIRIGIDA – El titular del cargo posee el grado de independencia necesario para lograr los objetivos de su área acorde con los planes y objetivos de ésta.',
+      F: 'ORIENTADA – El titular del cargo toma decisiones de envergadura que afectan el logro de los objetivos empresariales.',
+      G: 'ESTRATÉGICA – El titular del cargo es el principal responsable en la fijación de las metas globales del negocio y más alto nivel de autonomía para proponer redireccionamientos ante la Junta Directiva.',
     }
   },
   magnitud: {
     label: 'Magnitud de Cifras',
     options: ['1','2','3','4','5','6','7','8','9','10','11','12','13','14'],
     descriptions: {
-      '1': '$0 (sin cifras directas)',
-      '2': 'Hasta $0.5M USD anuales',
-      '3': '$0.5M – $2M USD',
-      '4': '$2M – $6M USD',
-      '5': '$6M – $12M USD',
-      '6': '$12M – $24M USD',
-      '7': '$24M – $48M USD',
-      '8': '$48M – $96M USD',
-      '9': '$96M – $192M USD',
-      '10': '$192M – $384M USD',
-      '11': '$384M – $768M USD',
-      '12': '$768M – $1,508M USD',
-      '13': '$1,508M – $3,072M USD',
-      '14': 'Más de $3,072M USD',
+      '1': 'Desde $0 hasta $0 millones USD anuales.',
+      '2': 'Desde $0 hasta $1 millones USD anuales.',
+      '3': 'Desde $1 hasta $2 millones USD anuales.',
+      '4': 'Desde $2 hasta $6 millones USD anuales.',
+      '5': 'Desde $6 hasta $12 millones USD anuales.',
+      '6': 'Desde $12 hasta $24 millones USD anuales.',
+      '7': 'Desde $24 hasta $48 millones USD anuales.',
+      '8': 'Desde $48 hasta $96 millones USD anuales.',
+      '9': 'Desde $96 hasta $192 millones USD anuales.',
+      '10': 'Desde $192 hasta $384 millones USD anuales.',
+      '11': 'Desde $384 hasta $768 millones USD anuales.',
+      '12': 'Desde $768 hasta $1,509 millones USD anuales.',
+      '13': 'Desde $1,509 hasta $3,072 millones USD anuales.',
+      '14': 'Desde $3,072 millones USD en adelante.',
     }
   },
-  criterio1: { label: 'Criterio Criticidad 1', options: ['0','1'], descriptions: { '0': 'No aplica', '1': 'Requiere conocimientos específicos de estrategia del negocio' } },
-  criterio2: { label: 'Criterio Criticidad 2', options: ['0','1'], descriptions: { '0': 'No aplica', '1': 'Pertenece al core del negocio o procesos críticos' } },
-  criterio3: { label: 'Criterio Criticidad 3', options: ['0','1'], descriptions: { '0': 'No aplica', '1': 'Oferta escasa en mercado laboral para este cargo' } },
+  criterio1: { 
+    label: 'Criterio Criticidad 1', 
+    options: ['0','1'], 
+    descriptions: { 
+      '0': 'NO – El cargo NO requiere conocimientos específicos relacionados con la estrategia del negocio.',
+      '1': 'SÍ – El cargo requiere conocimientos específicos relacionados con la estrategia del negocio.' 
+    } 
+  },
+  criterio2: { 
+    label: 'Criterio Criticidad 2', 
+    options: ['0','1'], 
+    descriptions: { 
+      '0': 'NO – El cargo NO pertenece al core del negocio ni a procesos críticos para la organización.',
+      '1': 'SÍ – El cargo pertenece al core del negocio o a procesos críticos para la organización.' 
+    } 
+  },
+  criterio3: { 
+    label: 'Criterio Criticidad 3', 
+    options: ['0','1'], 
+    descriptions: { 
+      '0': 'NO – La oferta de personas con los conocimientos requeridos en el mercado laboral NO es escasa para este cargo.',
+      '1': 'SÍ – La oferta de personas con los conocimientos requeridos en el mercado laboral es escasa para este cargo.' 
+    } 
+  },
 };
 
-// ─── Point calculation tables (SHR/HAY methodology) ─────────────────────────
-
-const POINTS_CONOCIMIENTOS = { A: 112, B: 129, C: 147, D: 165, E: 184, F: 208, G: 240, H: 275 };
-const POINTS_EXPERIENCIA = { '-': 0.87, 'o': 1.0, '+': 1.15 };
-const POINTS_HABILIDAD = { I: 19, II: 38, III: 57, IV: 76, V: 95, VI: 114, VII: 133 };
-const POINTS_ROL = { '1': 14, '2': 29, '3': 43, '4': 57 };
-const POINTS_CONTACTO = { A: 14, B: 29, C: 43 };
-const POINTS_FRECUENCIA = { '1': 5, '2': 19, '3': 33, '4': 47 };
-const POINTS_CONTENIDO = { I: 9, II: 22, III: 38, IV: 57, V: 76 };
-const POINTS_COMPLEJIDAD = { '1': 22, '2': 43, '3': 67, '4': 95, '5': 122 };
-const POINTS_TENDENCIA = { '-': 0.87, 'o': 1.0, '+': 1.15 };
-const POINTS_GUIAS = { A: 10, B: 19, C: 29, D: 43, E: 57, F: 71, G: 90, H: 108 };
-const POINTS_IMPACTO = { I: 14, II: 29, III: 43, IV: 57 };
-const POINTS_AUTONOMIA = { A: 5, B: 19, C: 33, D: 47, E: 62, F: 76, G: 95 };
-const POINTS_MAGNITUD = { '1': 0, '2': 19, '3': 38, '4': 57, '5': 76, '6': 95, '7': 114, '8': 133, '9': 152, '10': 171, '11': 190, '12': 209, '13': 228, '14': 247 };
-
-// Category ranges (from Excel Categorias sheet)
+// ─── Point calculation placeholders (TODO: Update from Excel) ──────────────────
+//
+// Para actualizar, extraer datos de la pestaña "Plantilla de Valoración" del Excel
+//
+// FORMATO ESPERADO:
+// POINTS_CONOCIMIENTOS = { A: ?, B: ?, C: ?, D: ?, E: ?, F: ?, G: ?, H: ? }
+// POINTS_EXPERIENCIA = { '-': ?, 'o': ?, '+': ? }
+// POINTS_HABILIDAD = { I: ?, II: ?, III: ?, IV: ?, V: ?, VI: ?, VII: ? }
+// ... (todos los factores)
+//
+// CATEGORY_RANGES: extraer de pestaña "Categorías" del Excel
+// [TODO] Verificar rangos correctos del archivo Excel
 const CATEGORY_RANGES = [
   { cat: 1, min: 87, max: 100 },
   { cat: 2, min: 101, max: 115 },
@@ -221,6 +242,61 @@ const CATEGORY_RANGES = [
   { cat: 24, min: 2164, max: 2487 },
   { cat: 25, min: 2488, max: 2860 },
 ];
+
+// ─── Point calculation tables (SHR/HAY methodology) - PLACEHOLDER VALUES ──────
+// [TODO] Reemplazar con valores exactos del Excel
+
+// Factor 1: Conocimientos (A-H)
+// [TODO] Extraer de columna "Conocimiento" de Plantilla de Valoración
+const POINTS_CONOCIMIENTOS = { A: 112, B: 129, C: 147, D: 165, E: 184, F: 208, G: 240, H: 275 };
+
+// Factor 1: Experiencia Específica
+// [TODO] Extraer de columna "Experiencia" de Plantilla de Valoración
+const POINTS_EXPERIENCIA = { '-': 0.87, 'o': 1.0, '+': 1.15 };
+
+// Factor 1: Habilidad Gerencial (I-VII)
+// [TODO] Extraer de columna "Habilidad Gerencial" de Plantilla de Valoración
+const POINTS_HABILIDAD = { I: 19, II: 38, III: 57, IV: 76, V: 95, VI: 114, VII: 133 };
+
+// Factor 1: Rol del Cargo (1-4)
+// [TODO] Extraer de columna "Rol del Cargo" de Plantilla de Valoración
+const POINTS_ROL = { '1': 14, '2': 29, '3': 43, '4': 57 };
+
+// Factor 2: Contacto (A-C)
+// [TODO] Extraer de columna "Contacto" de Plantilla de Valoración
+const POINTS_CONTACTO = { A: 14, B: 29, C: 43 };
+
+// Factor 2: Frecuencia de Contacto (1-4)
+// [TODO] Extraer de columna "Frecuencia" de Plantilla de Valoración
+const POINTS_FRECUENCIA = { '1': 5, '2': 19, '3': 33, '4': 47 };
+
+// Factor 2: Contenido de las Relaciones (I-V)
+// [TODO] Extraer de columna "Contenido" de Plantilla de Valoración
+const POINTS_CONTENIDO = { I: 9, II: 22, III: 38, IV: 57, V: 76 };
+
+// Factor 3: Complejidad Conceptual (1-5)
+// [TODO] Extraer de columna "Complejidad" de Plantilla de Valoración
+const POINTS_COMPLEJIDAD = { '1': 22, '2': 43, '3': 67, '4': 95, '5': 122 };
+
+// Factor 3: Tendencia (multiplicador)
+// [TODO] Extraer de columna "Tendencia" de Plantilla de Valoración
+const POINTS_TENDENCIA = { '-': 0.87, 'o': 1.0, '+': 1.15 };
+
+// Factor 3: Guías de Apoyo (A-H)
+// [TODO] Extraer de columna "Guías" de Plantilla de Valoración
+const POINTS_GUIAS = { A: 10, B: 19, C: 29, D: 43, E: 57, F: 71, G: 90, H: 108 };
+
+// Factor 4: Impacto (I-IV)
+// [TODO] Extraer de columna "Impacto" de Plantilla de Valoración
+const POINTS_IMPACTO = { I: 14, II: 29, III: 43, IV: 57 };
+
+// Factor 4: Autonomía (A-G)
+// [TODO] Extraer de columna "Autonomía" de Plantilla de Valoración
+const POINTS_AUTONOMIA = { A: 5, B: 19, C: 33, D: 47, E: 62, F: 76, G: 95 };
+
+// Factor 4: Magnitud (1-14)
+// [TODO] Extraer de columna "Magnitud" de Plantilla de Valoración
+const POINTS_MAGNITUD = { '1': 0, '2': 19, '3': 38, '4': 57, '5': 76, '6': 95, '7': 114, '8': 133, '9': 152, '10': 171, '11': 190, '12': 209, '13': 228, '14': 247 };
 
 function getCategory(score) {
   for (const range of CATEGORY_RANGES) {
@@ -331,13 +407,14 @@ Responde EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional, con est
 }
 
 REGLAS DE VALORACIÓN:
-- Gerente General / CEO: Conocimientos G-H, Habilidad VI-VII, Autonomía F-G, Impacto IV
-- Directores / Gerentes de área: Conocimientos F-G, Habilidad IV-V, Autonomía E-F, Impacto III-IV
-- Coordinadores / Jefes: Conocimientos E-F, Habilidad III-IV, Autonomía D-E, Impacto III
-- Analistas / Especialistas: Conocimientos D-E, Habilidad I-II, Autonomía C-D, Impacto II
-- Auxiliares / Técnicos: Conocimientos B-C, Habilidad I, Autonomía A-B, Impacto I-II
+- Gerente General / CEO: Conocimientos G-H, Habilidad VI-VII, Autonomía F-G, Impacto IV, Magnitud 13-14
+- Directores / Gerentes de área: Conocimientos F-G, Habilidad IV-V, Autonomía E-F, Impacto III-IV, Magnitud 10-12
+- Coordinadores / Jefes: Conocimientos E-F, Habilidad III-IV, Autonomía D-E, Impacto III, Magnitud 7-9
+- Analistas / Especialistas: Conocimientos D-E, Habilidad I-II, Autonomía C-D, Impacto II, Magnitud 4-6
+- Auxiliares / Técnicos: Conocimientos B-C, Habilidad I, Autonomía A-B, Impacto I-II, Magnitud 1-3
 - La magnitud refleja el presupuesto/volumen de negocio que maneja el cargo directamente
 - Los criterios de criticidad (1, 2, 3) se activan con 1 si aplica al cargo
+- Experiencia: -=0 a 6 meses (A-C) o 0 a 2 años (D-H), o=6 meses a 1 año (A-C) o 2 a 5 años (D-H), +=más de 1 año (A-C) o más de 5 años (D-H)
 `;
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -371,12 +448,16 @@ const CriterioChip = ({ name, value, onChange, editing }) => {
   if (!def) return null;
   const [open, setOpen] = useState(false);
 
+  const tooltipText = value && def.descriptions[value] 
+    ? `Valor actual: ${value}\n\n${def.descriptions[value]}`
+    : def.options.map(opt => `${opt}: ${def.descriptions[opt]?.substring(0, 80)}...`).join('\n');
+
   if (!editing) {
     return (
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center gap-1">
           <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 truncate">{def.label}</span>
-          <HelpTooltip text="Selecciona el nivel que mejor describe este criterio para el cargo." label={def.label}/>
+          <HelpTooltip text={tooltipText} label={def.label}/>
         </div>
         <span className="font-bold text-forest text-sm bg-emerald-50 rounded-lg px-2 py-1 inline-block text-center min-w-[2rem]">
           {value || '—'}
@@ -389,7 +470,7 @@ const CriterioChip = ({ name, value, onChange, editing }) => {
     <div className="relative flex flex-col gap-0.5">
       <div className="flex items-center gap-1">
         <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 truncate">{def.label}</span>
-        <HelpTooltip text="Haz clic para ver las opciones disponibles y seleccionar el nivel adecuado." label={def.label}/>
+        <HelpTooltip text={tooltipText} label={def.label}/>
       </div>
       <button
         onClick={() => setOpen(!open)}
@@ -399,15 +480,15 @@ const CriterioChip = ({ name, value, onChange, editing }) => {
         <ChevronDown size={10}/>
       </button>
       {open && (
-        <div className="absolute top-full left-0 z-50 mt-1 bg-white border border-emerald-200 rounded-xl shadow-xl min-w-[220px] py-1">
+        <div className="absolute top-full left-0 z-50 mt-1 bg-white border border-emerald-200 rounded-xl shadow-xl min-w-[280px] py-1 max-h-64 overflow-y-auto">
           {def.options.map(opt => (
             <button
               key={opt}
               onClick={() => { onChange(name, opt); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 flex items-start gap-2 ${value === opt ? 'bg-emerald-50 text-primary font-bold' : 'text-slate-700'}`}
+              className={`w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 flex items-start gap-2 ${value === opt ? 'bg-emerald-100 text-primary font-bold' : 'text-slate-700'}`}
             >
-              <span className="font-bold shrink-0 text-forest w-6">{opt}</span>
-              <span className="text-slate-500 text-[10px] leading-tight">{def.descriptions[opt]}</span>
+              <span className="font-bold shrink-0 text-forest w-6 text-center">{opt}</span>
+              <span className="text-slate-600 text-[10px] leading-tight">{def.descriptions[opt]}</span>
             </button>
           ))}
         </div>
@@ -456,6 +537,8 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
   const [processAll, setProcessAll] = useState(false);
   const [processAllProgress, setProcessAllProgress] = useState(0);
   const [error, setError] = useState(null);
+  const [searchArea, setSearchArea] = useState('todas');
+  const [extraDescriptions, setExtraDescriptions] = useState({});
   const abortRef = useRef(false);
 
   useEffect(() => {
@@ -608,6 +691,26 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
     loadValoraciones();
   }, [uploadId, valoracionesIniciales]);
 
+  // Load extra descriptions from descripciones anexas
+  useEffect(() => {
+    const loadExtraDescriptions = async () => {
+      const uploadIdNum = Number(uploadId);
+      if (!uploadIdNum || isNaN(uploadIdNum)) return;
+      try {
+        const res = await fetch(`${API_BASE}/uploads/${uploadIdNum}/extra-descriptions`, {
+          headers: { Authorization: `Bearer ${getToken()}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setExtraDescriptions(data.extra_descriptions || {});
+        }
+      } catch (e) {
+        console.warn('Error loading extra descriptions:', e.message);
+      }
+    };
+    loadExtraDescriptions();
+  }, [uploadId]);
+
   const saveValoraciones = (updated) => {
     setValoraciones(updated);
     try { localStorage.setItem('shr_valoraciones', JSON.stringify(updated)); } catch {}
@@ -634,15 +737,15 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
     setProcessingIds(prev => new Set([...prev, id]));
 
     try {
+      const extraDesc = extraDescriptions[cargo.nombre_cargo] || '';
       const result = await callIA(cargo.id);
       const updated = { ...valoraciones, [id]: { ...result.valoracion, estado: 'valorado', justificacion: result.justificacion_ia || result.valoracion?.justificacion || '' } };
       saveValoraciones(updated);
       
-      // Recargar valoraciones del backend para asegurar consistencia
-      const uploadId = Number(uploadData);
-      if (uploadId && !isNaN(uploadId)) {
+      const uploadIdNum = Number(uploadId);
+      if (uploadIdNum && !isNaN(uploadIdNum)) {
         try {
-          const vals = await fetchValoracionesFromUpload(uploadId);
+          const vals = await fetchValoracionesFromUpload(uploadIdNum);
           const map = {};
           vals.forEach(v => { if (v.valoracion) map[v.id] = v.valoracion; });
           setValoraciones(map);
@@ -662,9 +765,9 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
     setProcessAll(true);
     setProcessAllProgress(0);
 
-    for (let i = 0; i < cargos.length; i++) {
+    for (let i = 0; i < filteredCargos.length; i++) {
       if (abortRef.current) break;
-      const cargo = cargos[i];
+      const cargo = filteredCargos[i];
       const id = cargo.id || cargo.nombre_cargo;
       if (valoraciones[id]?.estado === 'valorado') {
         setProcessAllProgress(i + 1);
@@ -677,10 +780,10 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
 
     setProcessAll(false);
 
-    // Recargar valoraciones del backend después del proceso
-    if (uploadId) {
+    const uploadIdNum = Number(uploadId);
+    if (uploadIdNum && !isNaN(uploadIdNum)) {
       try {
-        const vals = await fetchValoracionesFromUpload(uploadId);
+        const vals = await fetchValoracionesFromUpload(uploadIdNum);
         const map = {};
         vals.forEach(v => { if (v.valoracion) map[v.id] = v.valoracion; });
         setValoraciones(map);
@@ -739,6 +842,9 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
   const valorados = Object.values(valoraciones).filter(v => v.estado === 'valorado').length;
   const total = cargos.length;
   const pct = total > 0 ? Math.round((valorados / total) * 100) : 0;
+
+  const areas = ['todas', ...new Set(cargos.map(c => c.area).filter(Boolean))];
+  const filteredCargos = searchArea === 'todas' ? cargos : cargos.filter(c => c.area === searchArea);
 
   if (loading) {
     return (
@@ -846,8 +952,22 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
         )}
       </div>
 
+      <div className="glass-card rounded-2xl p-4 border border-emerald-100 flex items-center gap-4">
+          <span className="text-xs font-bold text-slate-500 shrink-0">Filtrar por área:</span>
+          <select
+            value={searchArea}
+            onChange={(e) => setSearchArea(e.target.value)}
+            className="flex-1 text-xs border border-emerald-200 rounded-lg px-3 py-2 bg-white text-slate-600 font-medium focus:outline-none focus:border-primary"
+          >
+            {areas.map(a => (
+              <option key={a} value={a}>{a === 'todas' ? 'Todas las áreas' : a}</option>
+            ))}
+          </select>
+          <span className="text-xs text-slate-400">{filteredCargos.length} de {cargos.length} cargos</span>
+        </div>
+
       <div className="space-y-3">
-        {cargos.map((cargo, idx) => {
+        {filteredCargos.map((cargo, idx) => {
           const id = cargo.id || cargo.nombre_cargo;
           const v = valoraciones[id] || {};
           const isProcessing = processingIds.has(id);
