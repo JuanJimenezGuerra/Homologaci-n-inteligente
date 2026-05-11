@@ -301,6 +301,74 @@ def homologar_con_ia(db, cargos, masters=None):
     return resultados
 
 
+def _validar_valor_unico(valor, opciones_validas, campo):
+    """Valida que un valor sea una opcion unica valida, no un rango."""
+    if not valor or not isinstance(valor, str):
+        return None
+    v = valor.strip()
+    if v in opciones_validas:
+        return v
+    return None
+
+
+def _sanitizar_valoracion(resultado):
+    """Sanitiza y valida la respuesta de IA, asegurando valores unicos."""
+    if not resultado or not isinstance(resultado, dict):
+        return resultado
+
+    VALIDOS = {
+        "conocimientos": ["A", "B", "C", "D", "E", "F", "G", "H"],
+        "experiencia": ["-", "o", "+"],
+        "habilidadGerencial": ["I", "II", "III", "IV", "V", "VI", "VII"],
+        "rolCargo": ["1", "2", "3", "4"],
+        "contacto": ["A", "B", "C"],
+        "frecuenciaContacto": ["1", "2", "3", "4"],
+        "contenidoRelaciones": ["I", "II", "III", "IV", "V"],
+        "complejidadConceptual": ["1", "2", "3", "4", "5"],
+        "tendenciaCC": ["-", "o", "+"],
+        "guiasApoyo": ["A", "B", "C", "D", "E", "F", "G", "H"],
+        "tendenciaGA": ["-", "o", "+"],
+        "impacto": ["I", "II", "III", "IV"],
+        "autonomia": ["A", "B", "C", "D", "E", "F", "G"],
+    }
+    MAGNITUD_VALIDOS = [str(i) for i in range(1, 15)]
+
+    for campo in VALIDOS:
+        valor = resultado.get(campo)
+        if isinstance(valor, str):
+            # Detectar rangos como "A-H", "I-VII", "+/+/+" y tomar solo el primer valor
+            if "-" in valor or "/" in valor or "," in valor:
+                partes = valor.replace("/", "-").replace(",", "-").split("-")
+                primer_valor = partes[0].strip() if partes else None
+                if primer_valor in VALIDOS[campo]:
+                    resultado[campo] = primer_valor
+                else:
+                    resultado[campo] = VALIDOS[campo][0]
+            elif valor not in VALIDOS[campo]:
+                resultado[campo] = VALIDOS[campo][0]
+
+    # Validar magnitud
+    magnitud = resultado.get("magnitud")
+    if isinstance(magnitud, str):
+        if "-" in magnitud or "/" in magnitud or "," in magnitud:
+            partes = magnitud.replace("/", "-").replace(",", "-").split("-")
+            resultado["magnitud"] = partes[0].strip() if partes[0].strip() in MAGNITUD_VALIDOS else "5"
+        elif magnitud not in MAGNITUD_VALIDOS:
+            resultado["magnitud"] = "5"
+
+    # Validar criterios - SOLO 0 o 1
+    for c in ["criterio1", "criterio2", "criterio3"]:
+        v = resultado.get(c)
+        try:
+            val = int(v)
+            if val not in (0, 1):
+                resultado[c] = 0
+        except (ValueError, TypeError):
+            resultado[c] = 0
+
+    return resultado
+
+
 def valorar_cargo_con_ia(cargo):
     """Valora un cargo usando IA siguiendo metodologia SHR/HAY."""
     if not OPENAI_API_KEY:
@@ -319,17 +387,39 @@ def valorar_cargo_con_ia(cargo):
     prompt += "\nINSTRUCCIONES ESTRICTAS:\n"
     prompt += "1. Responde UNICAMENTE con el objeto JSON, sin texto adicional.\n"
     prompt += "2. No uses markdown ni explicaciones.\n"
-    prompt += "3. Asigna niveles SHR/HAY para cada factor.\n"
-    prompt += '4. Formato exacto: {"conocimientos":"A-H","experiencia":"--/-/o/+","habilidadGerencial":"I-VII","rolCargo":"1-4","contacto":"A-C","frecuenciaContacto":"1-4","contenidoRelaciones":"I-V","complejidadConceptual":"1-5","tendenciaCC":"--/-/+","guiasApoyo":"A-H","tendenciaGA":"--/-/+","impacto":"I-IV","autonomia":"A-G","magnitud":"1-14","criterio1":0,"criterio2":0,"criterio3":0,"justificacion":"breve"}\n'
-    prompt += "5. Criterios: 0=Sin info, 1=Bajo, 2=Medio, 3=Alto.\n"
-    prompt += "6. magnitud: 1=Hasta 50M, 14=Mas de 500,000M."
+    prompt += "3. Asigna EXACTAMENTE UN (1) valor por cada factor. NO uses rangos ni multiple valores.\n"
+    prompt += '4. Formato exacto (elige SOLO UNA opcion de cada una):\n'
+    prompt += '   {"conocimientos":"A","experiencia":"o","habilidadGerencial":"III","rolCargo":"2",\n'
+    prompt += '    "contacto":"B","frecuenciaContacto":"3","contenidoRelaciones":"III",\n'
+    prompt += '    "complejidadConceptual":"3","tendenciaCC":"o","guiasApoyo":"C","tendenciaGA":"o",\n'
+    prompt += '    "impacto":"II","autonomia":"D","magnitud":"5",\n'
+    prompt += '    "criterio1":0,"criterio2":0,"criterio3":0,"justificacion":"breve analisis"}\n'
+    prompt += "5. Opciones validas para cada factor:\n"
+    prompt += "   conocimientos: A, B, C, D, E, F, G, H (SOLO UNA LETRA)\n"
+    prompt += "   experiencia: -, o, + (SOLO UN SIMBOLO)\n"
+    prompt += "   habilidadGerencial: I, II, III, IV, V, VI, VII (SOLO UN NUMERO ROMANO)\n"
+    prompt += "   rolCargo: 1, 2, 3, 4 (SOLO UN DIGITO)\n"
+    prompt += "   contacto: A, B, C\n"
+    prompt += "   frecuenciaContacto: 1, 2, 3, 4\n"
+    prompt += "   contenidoRelaciones: I, II, III, IV, V\n"
+    prompt += "   complejidadConceptual: 1, 2, 3, 4, 5\n"
+    prompt += "   tendenciaCC: -, o, +\n"
+    prompt += "   guiasApoyo: A, B, C, D, E, F, G, H\n"
+    prompt += "   tendenciaGA: -, o, +\n"
+    prompt += "   impacto: I, II, III, IV\n"
+    prompt += "   autonomia: A, B, C, D, E, F, G\n"
+    prompt += "   magnitud: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14\n"
+    prompt += "   criterio1/2/3: SOLO 0 o 1 (NUNCA uses 2 o 3)\n"
+    prompt += "6. CRITICO: criterio1, criterio2, criterio3 solo aceptan 0 o 1. NUNCA uses otros numeros.\n"
+    prompt += "7. magnitud: 1=Hasta 50M, 14=Mas de 500,000M.\n"
+    prompt += "8. Cada valor debe ser UNA SOLA OPCION valida de la lista. NUNCA concatenes opciones."
 
     content = call_ia([{"role": "user", "content": prompt}], max_tokens=400)
     if not content:
         return {"error": "Sin respuesta IA"}
     parsed = extract_json(content)
     if parsed and isinstance(parsed, dict):
-        return parsed
+        return _sanitizar_valoracion(parsed)
     return {"error": "Error parseo"}
 
 

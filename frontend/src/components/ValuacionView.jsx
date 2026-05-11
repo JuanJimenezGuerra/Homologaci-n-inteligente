@@ -352,34 +352,53 @@ function calcTotalPoints(v) {
 
 const buildPrompt = (cargo, area, homologado, descripcion) => `
 Eres un analista experto en valoración de cargos y compensación con la metodología HAY/SHR.
-Debes evaluar el siguiente cargo y seleccionar el nivel correcto para CADA UNO de los 13 criterios.
+Debes evaluar el siguiente cargo y seleccionar EXACTAMENTE UN (1) nivel por cada criterio.
 
 CARGO: ${cargo}
 ÁREA: ${area}
 CARGO HOMOLOGADO: ${homologado || cargo}
 DESCRIPCIÓN DEL CARGO: ${descripcion || 'No disponible'}
 
-Responde EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional, con esta estructura:
+CRITICO: Cada campo debe tener UN SOLO VALOR. NUNCA uses rangos como "A-H" ni valores concatenados como "+/+/+".
+
+Responde EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional, con esta estructura exacta:
 {
-  "conocimientos": "<A|B|C|D|E|F|G|H>",
-  "experiencia": "<-|o|+>",
-  "habilidadGerencial": "<I|II|III|IV|V|VI|VII>",
-  "rolCargo": "<1|2|3|4>",
-  "contacto": "<A|B|C>",
-  "frecuenciaContacto": "<1|2|3|4>",
-  "contenidoRelaciones": "<I|II|III|IV|V>",
-  "complejidadConceptual": "<1|2|3|4|5>",
-  "tendenciaCC": "<-|o|+>",
-  "guiasApoyo": "<A|B|C|D|E|F|G|H>",
-  "tendenciaGA": "<-|o|+>",
-  "impacto": "<I|II|III|IV>",
-  "autonomia": "<A|B|C|D|E|F|G>",
-  "magnitud": "<1|2|3|4|5|6|7|8|9|10|11|12|13|14>",
-  "criterio1": "<0|1>",
-  "criterio2": "<0|1>",
-  "criterio3": "<0|1>",
+  "conocimientos": "A",
+  "experiencia": "o",
+  "habilidadGerencial": "III",
+  "rolCargo": "2",
+  "contacto": "B",
+  "frecuenciaContacto": "3",
+  "contenidoRelaciones": "III",
+  "complejidadConceptual": "3",
+  "tendenciaCC": "o",
+  "guiasApoyo": "C",
+  "tendenciaGA": "o",
+  "impacto": "II",
+  "autonomia": "D",
+  "magnitud": "5",
+  "criterio1": 0,
+  "criterio2": 0,
+  "criterio3": 0,
   "justificacion": "Breve análisis del cargo en 2-3 líneas"
 }
+
+Opciones validas (SOLO UNA por campo, NUNCA un rango):
+- conocimientos: A, B, C, D, E, F, G, H
+- experiencia: -, o, +
+- habilidadGerencial: I, II, III, IV, V, VI, VII
+- rolCargo: 1, 2, 3, 4
+- contacto: A, B, C
+- frecuenciaContacto: 1, 2, 3, 4
+- contenidoRelaciones: I, II, III, IV, V
+- complejidadConceptual: 1, 2, 3, 4, 5
+- tendenciaCC: -, o, +
+- guiasApoyo: A, B, C, D, E, F, G, H
+- tendenciaGA: -, o, +
+- impacto: I, II, III, IV
+- autonomia: A, B, C, D, E, F, G
+- magnitud: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
+- criterio1, criterio2, criterio3: SOLO 0 o 1 (NUNCA 2, 3 ni otro número)
 
 REGLAS DE VALORACIÓN:
 - Gerente General / CEO: Conocimientos G-H, Habilidad VI-VII, Autonomía F-G, Impacto IV, Magnitud 13-14
@@ -388,7 +407,7 @@ REGLAS DE VALORACIÓN:
 - Analistas / Especialistas: Conocimientos D-E, Habilidad I-II, Autonomía C-D, Impacto II, Magnitud 4-6
 - Auxiliares / Técnicos: Conocimientos B-C, Habilidad I, Autonomía A-B, Impacto I-II, Magnitud 1-3
 - La magnitud refleja el presupuesto/volumen de negocio que maneja el cargo directamente
-- Los criterios de criticidad (1, 2, 3) se activan con 1 si aplica al cargo
+- Los criterios de criticidad (1, 2, 3) se activan con 1 si aplica al cargo, SOLO 0 o 1
 - Experiencia: -=0 a 6 meses (A-C) o 0 a 2 años (D-H), o=6 meses a 1 año (A-C) o 2 a 5 años (D-H), +=más de 1 año (A-C) o más de 5 años (D-H)
 `;
 
