@@ -152,26 +152,35 @@ def homologar_con_ia(db, cargos, masters=None):
         prompt = "Eres experto en homologacion de cargos en Colombia con experiencia en estructuras salariales y niveles jerarquicos.\n\n"
         prompt += "CATALOGO MAESTRO (" + str(len(masters[:150])) + " cargos):\n" + catalogo + "\n\n"
         prompt += "CARGOS A HOMOLOGAR:\n" + cargos_txt + "\n\n"
-        prompt += "REGLAS DE JERARQUIA SALARIAL (OBLIGATORIAS):\n"
-        prompt += "1. CONSERVAR NIVEL JERARQUICO: Un cargo se homologa a uno de SIMILAR nivel, NO superior.\n"
-        prompt += "   - AUXILIAR/ASISTENTE/APOYO -> homologar a cargo de nivel operativo, NO a profesional.\n"
-        prompt += "   - ANALISTA/ESPECIALISTA -> homologar a cargo de nivel profesional/técnico.\n"
-        prompt += "   - COORDINADOR/JEFE -> homologar a cargo de nivel coordinación/jefatura, NO a gerencial.\n"
-        prompt += "   - GERENTE -> homologar a cargo gerencial, NO a director ni VP.\n"
-        prompt += "   - DIRECTOR -> homologar a cargo director, NO a VP.\n"
-        prompt += "2. AREA FUNCIONAL: Si el cargo tiene area (Contabilidad, Ventas, etc), homologar a cargo CON area similar.\n"
-        prompt += "   - 'Auxiliar Contable' -> 'Auxiliar de Contabilidad', NO 'Auxiliar General'.\n"
-        prompt += "   - 'Analista de Marketing' -> 'Analista de Marketing', NO 'Analista' genérico.\n"
-        prompt += "3. EVITAR DUPLICADOS: No asignar el mismo cargo homologado a múltiples cargos originales diferentes. Si dos cargos son distintos (ej: 'Analista Junior' y 'Analista Senior'), homologar a posiciones diferentes del catalogo.\n"
-        prompt += "4. SOLO SIMILITUD ALTO: Confianza >= 0.7 para asignar homologacion, sino usar 'SIN COINCIDENCIA'.\n\n"
+        prompt += "REGLAS DE JERARQUIA SALARIAL (OBLIGATORIAS - NO VIOLAR):\n"
+        prompt += "1. CONSERVAR NIVEL JERARQUICO: Cada cargo se homologa a uno de SIMILAR nivel, NUNCA superior.\n"
+        prompt += "   - AUXILIAR/ASISTENTE/APOYO -> solo opciones de nivel operativo (ej: Auxiliar de Contabilidad, Asistente Administrativo)\n"
+        prompt += "   - ANALISTA/ESPECIALISTA -> solo opciones de nivel profesional (ej: Analista de Contabilidad)\n"
+        prompt += "   - COORDINADOR/JEFE -> solo opciones de nivel coordinacion/jefatura (ej: Coordinador de Ventas)\n"
+        prompt += "   - GERENTE -> solo opciones de nivel gerencial (ej: Gerente de Ventas)\n"
+        prompt += "   - DIRECTOR -> solo opciones de nivel director (ej: Director de Finanzas)\n"
+        prompt += "   - LIDER/PROGRAMADOR -> nivel profesional/coordinacion segun contexto\n"
+        prompt += "2. AREA FUNCIONAL: Si el cargo tiene area (Contabilidad, Ventas, etc), buscar homologado CON area similar en catalogo.\n"
+        prompt += "   - \"Auxiliar Contable\" -> buscar \"Auxiliar de Contabilidad\" o similar, NO \"Auxiliar General\"\n"
+        prompt += "   - \"Analista de Marketing\" -> buscar \"Analista de Marketing\" o similar, NO \"Analista\" generico\n"
+        prompt += "3. EVITAR DUPLICADOS: No asignar el mismo cargo homologado a múltiples cargos originales diferentes.\n"
+        prompt += "   - \"Analista Junior\" y \"Analista Senior\" deben tener homologados diferentes si existen niveles distintos\n"
+        prompt += "4. SOLO SIMILITUD ALTO: Confianza >= 0.7 para asignar homologacion. Sino usar \"SIN COINCIDENCIA\".\n\n"
+        prompt += "NIVELES DE CARGOS EN COLOMBIA (referencia):\n"
+        prompt += "- OPERATIVO: Auxiliar, Asistente, Apoyo, Tecnico (sin titulo profesional)\n"
+        prompt += "- PROFESIONAL: Analista, Especialistas, Tecnologo, Profesional (con titulo profesional)\n"
+        prompt += "- COORDINACION: Coordinador, Jefe de Area, Supervisor (mando medio)\n"
+        prompt += "- GERENCIAL: Gerente, Subgerente (directivos menores)\n"
+        prompt += "- DIRECTOR: Director, VP, Vicepresidente (alta direccion)\n\n"
         prompt += "INSTRUCCIONES:\n"
-        prompt += "1. Aplica las reglas de jerarquia ANTES de buscar en el catalogo.\n"
-        prompt += "2. Busca en el catalogo el cargo de nivel similar + area similar.\n"
-        prompt += "3. RESPONDE UNICAMENTE CON EL ARRAY JSON, SIN TEXTO ADICIONAL.\n"
-        prompt += '4. Formato: [{"id": 1, "cargo_homologado": "NOMBRE_CATALOGO", "justificacion": "nivel+area", "confianza": 0.8}]\n'
-        prompt += '5. Si no hay coincidencia de nivel+area usa "SIN COINCIDENCIA". Confianza: 0.0-1.0.\n'
-        prompt += "6. NO expliques, SOLO JSON valido.\n"
-        prompt += "7. CADA PAR CLAVE-VALOR SEPARADO POR COMAS.\n"
+        prompt += "1. Identificar el nivel del cargo original (usando keywords: AUXILIAR, ANALISTA, COORDINADOR, etc)\n"
+        prompt += "2. Buscar en el catalogo SOLO cargos del MISMO nivel y area similar\n"
+        prompt += "3. RESPUESTA: Array JSON, SIN texto adicional, cada objeto separado por coma\n"
+        prompt += '   Formato: [{"id": 1, "cargo_homologado": "NOMBRE_CATALOGO", "justificacion": "nivel+area", "confianza": 0.85}]\n'
+        prompt += "4. Si NO existe cargo de mismo nivel+area en catalogo -> \"SIN COINCIDENCIA\" con confianza 0.0\n"
+        prompt += "5. IMPORTANTE: Un COORDINADOR debe homologar a COORDINADOR o similar, NO a GERENTE\n"
+        prompt += "6. IMPORTANTE: Un GERENTE debe homologar a GERENTE o similar, NO a DIRECTOR\n"
+        prompt += "7. CADA PAR CLAVE-VALOR SEPARADO POR COMA. No omitir comas."
 
         content = ""
         for intento in range(2):
@@ -262,17 +271,31 @@ def buscar_en_internet_y_homologar(cargo_dict, db):
     masters = load_master_cargos(db)
 
     nombre = cargo_dict.get("nombre_cargo", "")
+    area = cargo_dict.get("area", "")
     descripcion = info.get("descripcion", "")
 
-    prompt = "Eres experto en homologacion de cargos en Colombia.\n\n"
-    prompt += "CARGO A HOMOLOGAR: " + nombre + "\n"
-    prompt += "INFO ENCONTRADA: " + descripcion + "\n\n"
-    prompt += "CATALOGO (primeros 50):\n"
-    prompt += "\n".join(["- " + m["nombre"] for m in masters[:50]]) + "\n\n"
+    catalogo = "\n".join(["- " + m["nombre"] for m in masters[:100]])
+
+    prompt = "Eres experto en homologacion de cargos en Colombia con experiencia en estructuras salariales y niveles jerarquicos.\n\n"
+    prompt += "CARGO: " + nombre + "\n"
+    prompt += "AREA: " + area + "\n"
+    prompt += "INFO INTERNET: " + descripcion + "\n\n"
+    prompt += "CATALOGO:\n" + catalogo + "\n\n"
+    prompt += "REGLAS DE JERARQUIA (OBLIGATORIAS - NO VIOLAR):\n"
+    prompt += "- AUXILIAR/ASISTENTE/APOYO -> NIVEL OPERATIVO (ej: Auxiliar Contable, Asistente Administrativo)\n"
+    prompt += "- ANALISTA/ESPECIALISTA -> NIVEL PROFESIONAL (ej: Analista de Contabilidad)\n"
+    prompt += "- COORDINADOR/JEFE -> NIVEL COORDINACION (ej: Coordinador de Ventas, Jefe de Taller)\n"
+    prompt += "- GERENTE -> NIVEL GERENCIAL (ej: Gerente de Ventas)\n"
+    prompt += "- DIRECTOR -> NIVEL DIRECTOR (ej: Director de Finanzas)\n"
+    prompt += "- LIDER/PROGRAMADOR -> NIVEL PROFESIONAL/COORDINACION segun contexto\n"
+    prompt += "- EVITAR SUBIR NIVEL: Un coordinador NO se homologa a gerente.\n\n"
     prompt += "INSTRUCCIONES:\n"
-    prompt += "1. Busca el cargo mas similar en el catalogo.\n"
-    prompt += '2. Responde UNICAMENTE con JSON: {"cargo_homologado": "NOMBRE", "justificacion": "razon", "confianza": 0.5}\n'
-    prompt += '3. Si no hay coincidencia usa "SIN COINCIDENCIA".'
+    prompt += "1. Identificar nivel del cargo original y buscar en catalogo opciones DEL MISMO NIVEL.\n"
+    prompt += "2. RESPUESTA: JSON, SIN texto adicional.\n"
+    prompt += '   Formato: {"cargo_homologado": "NOMBRE_CATALOGO", "justificacion": "nivel+area", "confianza": 0.85}\n'
+    prompt += '3. Si NO existe cargo de nivel+area en catalogo -> "SIN COINCIDENCIA" con confianza 0.0\n'
+    prompt += '4. Confianza >= 0.7 para asignar homologacion, sino "SIN COINCIDENCIA".\n'
+    prompt += "5. COORDINADOR -> COORDINADOR (no Gerente). GERENTE -> GERENTE (no Director).\n"
 
     content = call_ia([{"role": "user", "content": prompt}], max_tokens=300)
     if content:
@@ -395,36 +418,35 @@ def homologar_con_ia_observaciones(db, cargos_batch, masters, observaciones, sel
         prompt += "DESCRIPCION: " + descripcion + "\n"
         prompt += "HOMOLOGADO ACTUAL: " + homologado_actual + "\n\n"
 
-        # Add quick filter instructions
         if filters["produccion_a_operaciones"]:
-            prompt += "FILTRO ACTIVO: Trata 'PRODUCCION' como 'OPERACIONES'.\n"
+            prompt += "FILTRO: Trata 'PRODUCCION' como 'OPERACIONES'.\n"
         if filters["jefe_coordinador_nivel_superior"] and sugerencia_nivel_superior:
-            prompt += "FILTRO ACTIVO: 'JEFE/COORDINADOR' debe ir a nivel superior (ej. GERENTE). Sugerencia: " + sugerencia_nivel_superior + "\n"
+            prompt += "FILTRO: 'JEFE/COORDINADOR' a nivel superior. Sugerencia: " + sugerencia_nivel_superior + "\n"
         if filters["administrativo_no_tecnico"]:
-            prompt += "FILTRO ACTIVO: ADMINISTRATIVO no debe coincidir con TECNICO.\n"
+            prompt += "FILTRO: ADMINISTRATIVO != TECNICO.\n"
         if filters["buscar_sin_coincidencia_internet"]:
-            prompt += "FILTRO ACTIVO: Para 'SIN COINCIDENCIA', busca en internet sugerencias.\n"
+            prompt += "FILTRO: 'SIN COINCIDENCIA' -> buscar en internet.\n"
 
-        prompt += "\nREGLAS DE JERARQUIA SALARIAL (OBLIGATORIAS):\n"
-        prompt += "1. CONSERVAR NIVEL JERARQUICO: Un cargo se homologa a uno de SIMILAR nivel, NO superior.\n"
-        prompt += "   - AUXILIAR/ASISTENTE/APOYO -> nivel operativo.\n"
-        prompt += "   - ANALISTA/ESPECIALISTA -> nivel profesional.\n"
-        prompt += "   - COORDINADOR/JEFE -> nivel coordinación/jefatura.\n"
-        prompt += "   - GERENTE -> nivel gerencial.\n"
-        prompt += "   - DIRECTOR -> nivel director.\n"
-        prompt += "2. AREA FUNCIONAL: Homologar a cargo con area similar.\n"
-        prompt += "   - 'Auxiliar Contable' -> 'Auxiliar de Contabilidad', NO 'Auxiliar General'.\n"
-        prompt += "3. EVITAR DUPLICADOS: NO asignar el mismo cargo a múltiples originales diferentes.\n"
+        prompt += "\nREGLAS DE JERARQUIA (OBLIGATORIAS - NO VIOLAR):\n"
+        prompt += "1. CONSERVAR NIVEL: Cada cargo -> mismo nivel en catalogo.\n"
+        prompt += "   - AUXILIAR/ASISTENTE/APOYO -> nivel operativo\n"
+        prompt += "   - ANALISTA/ESPECIALISTA -> nivel profesional\n"
+        prompt += "   - COORDINADOR/JEFE -> nivel coordinacion/jefatura (NO a Gerente)\n"
+        prompt += "   - GERENTE -> nivel gerencial (NO a Director/VP)\n"
+        prompt += "   - DIRECTOR -> nivel director (NO a VP)\n"
+        prompt += "2. AREA: Homologar a cargo CON area similar.\n"
+        prompt += "3. EVITAR DUPLICADOS: No asignar mismo homologado a distintos originales.\n"
         prompt += "4. CONFIAZA >= 0.7 para asignar, sino 'SIN COINCIDENCIA'.\n\n"
 
-        prompt += "\nOBSERVACIONES DEL ANALISTA: " + observaciones + "\n\n"
+        prompt += "OBSERVACIONES DEL ANALISTA: " + observaciones + "\n\n"
         prompt += "CATALOGO (primeros 50):\n" + catalogo + "\n\n"
         prompt += "INSTRUCCIONES:\n"
-        prompt += "1. Aplica las reglas de jerarquia ANTES de buscar en el catalogo.\n"
-        prompt += "2. Usa las observaciones y filtros para mejorar la homologacion.\n"
-        prompt += "3. Busca en el catalogo el cargo de nivel similar + area similar.\n"
-        prompt += '4. Responde UNICAMENTE con JSON: {"cargo_homologado": "NOMBRE", "justificacion": "nivel+area", "confianza": 0.5}\n'
-        prompt += '5. Si no hay coincidencia de nivel+area usa "SIN COINCIDENCIA".'
+        prompt += "1. Identificar nivel del cargo original.\n"
+        prompt += "2. Buscar en catalogo SOLO opciones del MISMO nivel.\n"
+        prompt += "3. RESPUESTA: JSON sin texto adicional.\n"
+        prompt += '   Formato: {"cargo_homologado": "NOMBRE", "justificacion": "nivel+area", "confianza": 0.85}\n'
+        prompt += '4. Si NO existe nivel+area -> "SIN COINCIDENCIA" confianza 0.0\n'
+        prompt += "5. COORDINADOR -> COORDINADOR (NO Gerente). GERENTE -> GERENTE (NO Director).\n"
 
         content = call_ia([{"role": "user", "content": prompt}], max_tokens=300)
         if content:
