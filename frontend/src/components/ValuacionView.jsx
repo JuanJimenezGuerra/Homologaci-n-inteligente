@@ -425,17 +425,17 @@ const HelpTooltip = ({ text, label }) => {
     <div className="relative inline-flex">
       <button
         onClick={() => setOpen(!open)}
-        className="text-slate-400 hover:text-primary transition-colors"
-        title={`Ayuda: ${label}`}
+        className="text-slate-400 hover:text-primary transition-colors p-0.5"
+        title={text}
       >
-        <HelpCircle size={12}/>
+        <HelpCircle size={14}/>
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)}/>
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-64 bg-white border border-emerald-200 rounded-xl shadow-xl p-3 text-[11px] text-slate-600 leading-relaxed">
-            <p className="font-bold text-forest mb-1">{label}</p>
-            <p>{text}</p>
+          <div className="absolute left-full top-0 ml-2 z-50 w-72 bg-white border border-emerald-200 rounded-xl shadow-xl p-3 text-[11px] text-slate-600 leading-relaxed max-h-48 overflow-y-auto">
+            <p className="font-bold text-forest mb-1 text-[10px] uppercase tracking-wider">{label}</p>
+            <div className="text-[10px] whitespace-pre-wrap">{text}</div>
           </div>
         </>
       )}
@@ -517,6 +517,27 @@ const fetchCargosFromUpload = async (uploadId) => {
   return res.json();
 };
 
+const fetchExtraDescriptions = async (uploadId) => {
+  const res = await fetch(`${API_BASE}/uploads/${uploadId}/extra-descriptions`, {
+    headers: { Authorization: `Bearer ${getToken()}` }
+  });
+  if (!res.ok) return {};
+  const data = await res.json();
+  return data.extra_descriptions || {};
+};
+
+const uploadExtraDescriptions = async (uploadId, files) => {
+  const formData = new FormData();
+  files.forEach(f => formData.append('files', f));
+  const res = await fetch(`${API_BASE}/uploads/${uploadId}/extra-descriptions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body: formData
+  });
+  if (!res.ok) throw new Error('Error uploading files');
+  return res.json();
+};
+
 const fetchValoracionesFromUpload = async (uploadId) => {
   const res = await fetch(`${API_BASE}/uploads/${uploadId}/valoraciones`, {
     headers: { Authorization: `Bearer ${getToken()}` }
@@ -527,10 +548,10 @@ const fetchValoracionesFromUpload = async (uploadId) => {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCargosChange, onValoracionesChange, onComplete, onBack }) => {
-  const [cargos, setCargos] = useState(() => cargosIniciales || []);
-  const [valoraciones, setValoraciones] = useState(() => valoracionesIniciales || {});
-  const [loading, setLoading] = useState(!cargosIniciales || cargosIniciales.length === 0);
+const ValuacionView = ({ uploadId, onValoracionesChange, onComplete, onBack }) => {
+  const [cargos, setCargos] = useState([]);
+  const [valoraciones, setValoraciones] = useState({});
+  const [loading, setLoading] = useState(true);
   const [processingIds, setProcessingIds] = useState(new Set());
   const [expandedId, setExpandedId] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -539,176 +560,61 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
   const [error, setError] = useState(null);
   const [searchArea, setSearchArea] = useState('todas');
   const [extraDescriptions, setExtraDescriptions] = useState({});
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [hasExtraFiles, setHasExtraFiles] = useState(false);
   const abortRef = useRef(false);
 
-  useEffect(() => {
-    const loadCargos = async () => {
-      let loadedFromLocalStorage = false;
-
-      // 1. Intentar localStorage primero
-      try {
-        const saved = localStorage.getItem('shr_valoracion_cargos');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.length > 0) {
-            setCargos(parsed);
-            loadedFromLocalStorage = true;
-          }
-        }
-      } catch {}
-
-      // 2. Si tenemos cargos iniciales, usarlos
-      if (cargosIniciales && cargosIniciales.length > 0) {
-        setCargos(cargosIniciales);
-        setLoading(false);
-        return;
-      }
-
-      // 3. Intentar API
-      const uploadIdNum = Number(uploadId);
-      if (uploadIdNum && !isNaN(uploadIdNum)) {
-        setLoading(true);
-        setError(null);
-        try {
-          const fetched = await fetchCargosFromUpload(uploadIdNum);
-          setCargos(fetched);
-          try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(fetched)); } catch {}
-        } catch (e) {
-          console.warn('Error cargando de API:', e.message);
-          if (!loadedFromLocalStorage) {
-            setError('No se pudieron cargar los cargos del servidor. Ve a la pestaña de Homologación primero.');
-          }
-        } finally {
-          setLoading(false);
-        }
-        return;
-      }
-
-      // 4. Fallback final
-      if (!loadedFromLocalStorage) {
-        setError('No hay datos disponibles. Ve a la pestaña de Homologación primero.');
-      }
-    };
-
-    loadCargos();
-  }, [uploadId, cargosIniciales]);
-
-  // Cargar cargos y valoraciones
+  // Load extra descriptions and create cargos from them
   useEffect(() => {
     const loadData = async () => {
-      let loadedFromLocalStorage = false;
-
-      // 1. Intentar localStorage primero
-      try {
-        const saved = localStorage.getItem('shr_valoracion_cargos');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.length > 0) {
-            setCargos(parsed);
-            loadedFromLocalStorage = true;
-          }
-        }
-      } catch {}
-
-      // 2. Si tenemos cargos iniciales, usarlos
-      if (cargosIniciales && cargosIniciales.length > 0) {
-        setCargos(cargosIniciales);
+      const uploadIdNum = Number(uploadId);
+      if (!uploadIdNum || isNaN(uploadIdNum)) {
         setLoading(false);
         return;
       }
 
-      // 3. Intentar API
-      const uploadIdNum = Number(uploadId);
-      if (uploadIdNum && !isNaN(uploadIdNum)) {
-        setLoading(true);
-        setError(null);
-        try {
-          const fetched = await fetchCargosFromUpload(uploadIdNum);
-          setCargos(fetched);
-          try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(fetched)); } catch {}
-        } catch (e) {
-          console.warn('Error cargando de API:', e.message);
-          if (!loadedFromLocalStorage) {
-            setError('No se pudieron cargar los cargos del servidor. Ve a la pestaña de Homologación primero.');
-          }
-        } finally {
-          setLoading(false);
-        }
-        return;
-      }
+      setLoading(true);
+      setError(null);
+      try {
+        // Load extra descriptions from backend
+        const extras = await fetchExtraDescriptions(uploadIdNum);
+        setExtraDescriptions(extras);
 
-      // 4. Fallback final
-      if (!loadedFromLocalStorage) {
-        try {
-          const saved = localStorage.getItem('shr_valoracion_cargos');
-          if (saved) {
-            setCargos(JSON.parse(saved));
-          } else {
-            setError('No hay datos disponibles. Ve a la pestaña de Homologación primero.');
-          }
-        } catch {}
+        // Create cargos from extra descriptions
+        const descKeys = Object.keys(extras);
+        setHasExtraFiles(descKeys.length > 0);
+
+        if (descKeys.length > 0) {
+          // Create cargo objects from extra descriptions
+          const cargosFromDesc = descKeys.map((nombre, idx) => ({
+            id: `desc_${idx}`,
+            nombre_cargo: nombre,
+            area: 'General',
+            descripcion: extras[nombre],
+          }));
+          setCargos(cargosFromDesc);
+          try { localStorage.setItem('shr_valoracion_cargos', JSON.stringify(cargosFromDesc)); } catch {}
+        } else {
+          setCargos([]);
+        }
+
+        // Load existing valoraciones
+        const savedValoraciones = localStorage.getItem('shr_valoraciones');
+        if (savedValoraciones) {
+          try {
+            const parsed = JSON.parse(savedValoraciones);
+            setValoraciones(parsed);
+          } catch {}
+        }
+      } catch (e) {
+        console.warn('Error loading data:', e.message);
+        setError('Error cargando datos. Sube archivos de descripción anexos primero.');
+      } finally {
+        setLoading(false);
       }
     };
 
     loadData();
-  }, [uploadId, cargosIniciales]);
-
-  // Cargar valoraciones existentes del backend
-  useEffect(() => {
-    const loadValoraciones = async () => {
-      // Si tenemos valoraciones iniciales, usarlas
-      if (valoracionesIniciales && Object.keys(valoracionesIniciales).length > 0) {
-        setValoraciones(valoracionesIniciales);
-        return;
-      }
-
-      const uploadIdNum = Number(uploadId);
-      if (uploadIdNum && !isNaN(uploadIdNum)) {
-        try {
-          const vals = await fetchValoracionesFromUpload(uploadIdNum);
-          const map = {};
-          vals.forEach(v => {
-            if (v.valoracion) {
-              map[v.id] = v.valoracion;
-            }
-          });
-          setValoraciones(map);
-          if (onValoracionesChange) onValoracionesChange(map);
-          try { localStorage.setItem('shr_valoraciones', JSON.stringify(map)); } catch {}
-        } catch {
-          // Fallback a localStorage
-          try {
-            const saved = localStorage.getItem('shr_valoraciones');
-            if (saved) {
-              const parsed = JSON.parse(saved);
-              setValoraciones(parsed);
-            }
-          } catch {}
-        }
-      }
-    };
-    
-    loadValoraciones();
-  }, [uploadId, valoracionesIniciales]);
-
-  // Load extra descriptions from descripciones anexas
-  useEffect(() => {
-    const loadExtraDescriptions = async () => {
-      const uploadIdNum = Number(uploadId);
-      if (!uploadIdNum || isNaN(uploadIdNum)) return;
-      try {
-        const res = await fetch(`${API_BASE}/uploads/${uploadIdNum}/extra-descriptions`, {
-          headers: { Authorization: `Bearer ${getToken()}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setExtraDescriptions(data.extra_descriptions || {});
-        }
-      } catch (e) {
-        console.warn('Error loading extra descriptions:', e.message);
-      }
-    };
-    loadExtraDescriptions();
   }, [uploadId]);
 
   const saveValoraciones = (updated) => {
@@ -717,13 +623,18 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
     if (onValoracionesChange) onValoracionesChange(updated);
   };
 
-  const callIA = async (cargoId) => {
+  const callIA = async (cargoId, cargo) => {
+    const extraDesc = cargo?.descripcion || extraDescriptions[cargo?.nombre_cargo] || '';
     const response = await fetch(`${API_BASE}/valoracion/${cargoId}/evaluar-ia`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${getToken()}`
-      }
+      },
+      body: JSON.stringify({
+        descripcion_cargo: extraDesc,
+        nombre_cargo: cargo?.nombre_cargo || ''
+      })
     });
     if (!response.ok) {
       const err = await response.text();
@@ -737,8 +648,7 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
     setProcessingIds(prev => new Set([...prev, id]));
 
     try {
-      const extraDesc = extraDescriptions[cargo.nombre_cargo] || '';
-      const result = await callIA(cargo.id);
+      const result = await callIA(id, cargo);
       const updated = { ...valoraciones, [id]: { ...result.valoracion, estado: 'valorado', justificacion: result.justificacion_ia || result.valoracion?.justificacion || '' } };
       saveValoraciones(updated);
       
@@ -870,7 +780,7 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
     );
   }
 
-  if (cargos.length === 0) {
+  if (cargos.length === 0 && !loading) {
     return (
       <div className="max-w-3xl mx-auto py-16 text-center space-y-6">
         <div className="inline-flex p-5 bg-emerald-50 rounded-3xl text-primary mb-2">
@@ -878,12 +788,15 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
         </div>
         <h2 className="text-3xl font-bold text-forest">Valoración de Cargos</h2>
         <p className="text-slate-500 text-lg max-w-md mx-auto">
-          Para iniciar la valoración, primero completa el <strong>Paso 1: Homologación</strong> y procesa al menos un proceso.
-          Los cargos aparecerán aquí automáticamente.
+          <strong>Sube archivos de descripción anexos</strong> para iniciar la valoración.
+          Estos archivos (PDF, DOCX, XLSX) contienen las descripciones de los cargos.
+        </p>
+        <p className="text-sm text-slate-400">
+          El nombre del archivo debe coincidir con el nombre del cargo (ej: "Auxiliar Contable.pdf").
         </p>
         <div className="glass-card p-6 rounded-2xl border border-emerald-100 text-sm text-emerald-700 bg-emerald-50/50 flex items-start gap-3">
           <Info size={18} className="shrink-0 mt-0.5"/>
-          <p>Los datos se transfieren automáticamente del Paso 1 al Paso 2. No se pierde información al cambiar de pestaña.</p>
+          <p>Ve a la pestaña de Formulario para subir los archivos de descripción anexos junto con el archivo de requerimientos.</p>
         </div>
       </div>
     );

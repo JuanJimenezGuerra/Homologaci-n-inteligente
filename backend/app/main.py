@@ -261,9 +261,73 @@ async def upload_extra_descriptions(
     return {"message": f"Se procesaron {mapped_count} archivos de descripción", "mapped": mapped_count}
 
 
+@app.get("/uploads/{upload_id}/extra-descriptions")
+def get_extra_descriptions(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Get all extra descriptions mapped from uploaded files.
+    
+    Returns a dict with filename (without extension) as key and extracted text as value.
+    """
+    upload = db.query(Upload).filter(Upload.id == upload_id).first()
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload no encontrado")
+    
+    # Get all cargos with their descriptions from extra files
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    
+    # Build a dict: cargo_name -> description
+    extra_descriptions = {}
+    for c in cargos:
+        if c.descripcion_empresa and c.descripcion_empresa.strip():
+            # Use the filename pattern that was matched
+            extra_descriptions[c.nombre_cargo] = c.descripcion_empresa
+    
+    return {"extra_descriptions": extra_descriptions}
+
+
 @app.get("/uploads")
 def list_uploads(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(Upload).all()
+    """List all uploads with enriched data for the historial view."""
+    uploads = db.query(Upload).all()
+    result = []
+    for u in uploads:
+        # Count cargos
+        num_cargos = db.query(Cargo).filter(Cargo.upload_id == u.id).count()
+        
+        # Get empresa info
+        empresa_nombre = u.empresa or "Empresa sin nombre"
+        
+        # Determine estado based on cargo states
+        estado = "pendiente"
+        if num_cargos > 0:
+            cargos_valorados = db.query(Cargo).filter(
+                Cargo.upload_id == u.id,
+                Cargo.estado == "VALORADO"
+            ).count()
+            
+            if cargos_valorados == num_cargos:
+                estado = "completado"
+            elif cargos_valorados > 0:
+                estado = "procesando"
+        
+        result.append({
+            "id": u.id,
+            "nombre_empresa": empresa_nombre,
+            "empresa": empresa_nombre,
+            "estado": estado,
+            "status": u.status,
+            "num_cargos": num_cargos,
+            "fecha_creacion": u.created_at.isoformat() if u.created_at else None,
+            "usuario_email": current_user.email if current_user else None,
+            "valorados": db.query(Cargo).filter(
+                Cargo.upload_id == u.id,
+                Cargo.estado == "VALORADO"
+            ).count(),
+            "homologados": db.query(Homologacion).join(Cargo).filter(
+                Cargo.upload_id == u.id
+            ).count(),
+            "upload": u
+        })
+    return result
 
 @app.get("/uploads/{upload_id}/cargos")
 def list_cargos(upload_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

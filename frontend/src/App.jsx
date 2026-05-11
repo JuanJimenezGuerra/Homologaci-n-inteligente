@@ -112,12 +112,6 @@ const handleAnalisisCompleta = () => {
           <ValuacionView
             key={empresaId || 'new'}
             uploadId={empresaId}
-            cargosIniciales={cargosHomologacion}
-            valoracionesIniciales={valoracionesData}
-            onCargosChange={(cargos) => {
-              setCargosHomologacion(cargos);
-              try { localStorage.setItem('shr_cargos_homologacion', JSON.stringify(cargos)); } catch {}
-            }}
             onValoracionesChange={(vals) => {
               setValoracionesData(vals);
               try { localStorage.setItem('shr_valoraciones', JSON.stringify(vals)); } catch {}
