@@ -149,16 +149,28 @@ def homologar_con_ia(db, cargos, masters=None):
         catalogo = "\n".join(["- " + m["nombre"] for m in masters[:150]])
         cargos_txt = "\n".join(["ID:" + str(c.get("id")) + " | " + str(c.get("nombre_cargo", "")).upper() + " | Area:" + str(c.get("area", "")) for c in batch])
 
-        prompt = "Eres experto en homologacion de cargos en Colombia. Analiza SIMILITUD SEMANTICA.\n\n"
+        prompt = "Eres experto en homologacion de cargos en Colombia con experiencia en estructuras salariales y niveles jerarquicos.\n\n"
         prompt += "CATALOGO MAESTRO (" + str(len(masters[:150])) + " cargos):\n" + catalogo + "\n\n"
         prompt += "CARGOS A HOMOLOGAR:\n" + cargos_txt + "\n\n"
-        prompt += "INSTRUCCIONES PRIORITARIAS:\n"
-        prompt += "1. Busca el cargo mas SIMILAR semanticamente en el catalogo, no solo coincidencia exacta.\n"
-        prompt += "2. Ejemplos: 'Auxiliar' = 'Asistente', 'Coord' = 'Coordinador', 'Jefe' = 'Gerente'.\n"
+        prompt += "REGLAS DE JERARQUIA SALARIAL (OBLIGATORIAS):\n"
+        prompt += "1. CONSERVAR NIVEL JERARQUICO: Un cargo se homologa a uno de SIMILAR nivel, NO superior.\n"
+        prompt += "   - AUXILIAR/ASISTENTE/APOYO -> homologar a cargo de nivel operativo, NO a profesional.\n"
+        prompt += "   - ANALISTA/ESPECIALISTA -> homologar a cargo de nivel profesional/técnico.\n"
+        prompt += "   - COORDINADOR/JEFE -> homologar a cargo de nivel coordinación/jefatura, NO a gerencial.\n"
+        prompt += "   - GERENTE -> homologar a cargo gerencial, NO a director ni VP.\n"
+        prompt += "   - DIRECTOR -> homologar a cargo director, NO a VP.\n"
+        prompt += "2. AREA FUNCIONAL: Si el cargo tiene area (Contabilidad, Ventas, etc), homologar a cargo CON area similar.\n"
+        prompt += "   - 'Auxiliar Contable' -> 'Auxiliar de Contabilidad', NO 'Auxiliar General'.\n"
+        prompt += "   - 'Analista de Marketing' -> 'Analista de Marketing', NO 'Analista' genérico.\n"
+        prompt += "3. EVITAR DUPLICADOS: No asignar el mismo cargo homologado a múltiples cargos originales diferentes. Si dos cargos son distintos (ej: 'Analista Junior' y 'Analista Senior'), homologar a posiciones diferentes del catalogo.\n"
+        prompt += "4. SOLO SIMILITUD ALTO: Confianza >= 0.7 para asignar homologacion, sino usar 'SIN COINCIDENCIA'.\n\n"
+        prompt += "INSTRUCCIONES:\n"
+        prompt += "1. Aplica las reglas de jerarquia ANTES de buscar en el catalogo.\n"
+        prompt += "2. Busca en el catalogo el cargo de nivel similar + area similar.\n"
         prompt += "3. RESPONDE UNICAMENTE CON EL ARRAY JSON, SIN TEXTO ADICIONAL.\n"
-        prompt += '4. Formato: [{"id": 1, "cargo_homologado": "NOMBRE_EXACTO_CATALOGO", "justificacion": "similitud", "confianza": 0.8}]\n'
-        prompt += '5. Si no hay similitud usa "SIN COINCIDENCIA". Confianza: 0.0-1.0.\n'
-        prompt += "6. NO expliques, SOLO JSON.\n"
+        prompt += '4. Formato: [{"id": 1, "cargo_homologado": "NOMBRE_CATALOGO", "justificacion": "nivel+area", "confianza": 0.8}]\n'
+        prompt += '5. Si no hay coincidencia de nivel+area usa "SIN COINCIDENCIA". Confianza: 0.0-1.0.\n'
+        prompt += "6. NO expliques, SOLO JSON valido.\n"
         prompt += "7. CADA PAR CLAVE-VALOR SEPARADO POR COMAS.\n"
 
         content = ""
@@ -377,7 +389,7 @@ def homologar_con_ia_observaciones(db, cargos_batch, masters, observaciones, sel
 
         catalogo = "\n".join(["- " + m["nombre"] for m in masters[:50]])
 
-        prompt = "Eres experto en homologacion de cargos en Colombia.\n\n"
+        prompt = "Eres experto en homologacion de cargos en Colombia con experiencia en estructuras salariales y niveles jerarquicos.\n\n"
         prompt += "CARGO A HOMOLOGAR: " + nombre_modificado + "\n"
         prompt += "AREA: " + area + "\n"
         prompt += "DESCRIPCION: " + descripcion + "\n"
@@ -393,12 +405,26 @@ def homologar_con_ia_observaciones(db, cargos_batch, masters, observaciones, sel
         if filters["buscar_sin_coincidencia_internet"]:
             prompt += "FILTRO ACTIVO: Para 'SIN COINCIDENCIA', busca en internet sugerencias.\n"
 
+        prompt += "\nREGLAS DE JERARQUIA SALARIAL (OBLIGATORIAS):\n"
+        prompt += "1. CONSERVAR NIVEL JERARQUICO: Un cargo se homologa a uno de SIMILAR nivel, NO superior.\n"
+        prompt += "   - AUXILIAR/ASISTENTE/APOYO -> nivel operativo.\n"
+        prompt += "   - ANALISTA/ESPECIALISTA -> nivel profesional.\n"
+        prompt += "   - COORDINADOR/JEFE -> nivel coordinación/jefatura.\n"
+        prompt += "   - GERENTE -> nivel gerencial.\n"
+        prompt += "   - DIRECTOR -> nivel director.\n"
+        prompt += "2. AREA FUNCIONAL: Homologar a cargo con area similar.\n"
+        prompt += "   - 'Auxiliar Contable' -> 'Auxiliar de Contabilidad', NO 'Auxiliar General'.\n"
+        prompt += "3. EVITAR DUPLICADOS: NO asignar el mismo cargo a múltiples originales diferentes.\n"
+        prompt += "4. CONFIAZA >= 0.7 para asignar, sino 'SIN COINCIDENCIA'.\n\n"
+
         prompt += "\nOBSERVACIONES DEL ANALISTA: " + observaciones + "\n\n"
         prompt += "CATALOGO (primeros 50):\n" + catalogo + "\n\n"
         prompt += "INSTRUCCIONES:\n"
-        prompt += "1. Usa las observaciones y filtros para mejorar la homologacion.\n"
-        prompt += '2. Responde UNICAMENTE con JSON: {"cargo_homologado": "NOMBRE", "justificacion": "razon", "confianza": 0.5}\n'
-        prompt += '3. Si no hay coincidencia usa "SIN COINCIDENCIA".'
+        prompt += "1. Aplica las reglas de jerarquia ANTES de buscar en el catalogo.\n"
+        prompt += "2. Usa las observaciones y filtros para mejorar la homologacion.\n"
+        prompt += "3. Busca en el catalogo el cargo de nivel similar + area similar.\n"
+        prompt += '4. Responde UNICAMENTE con JSON: {"cargo_homologado": "NOMBRE", "justificacion": "nivel+area", "confianza": 0.5}\n'
+        prompt += '5. Si no hay coincidencia de nivel+area usa "SIN COINCIDENCIA".'
 
         content = call_ia([{"role": "user", "content": prompt}], max_tokens=300)
         if content:
