@@ -179,19 +179,89 @@ const CRITERIA_DEFS = {
 
 // ─── Point calculation tables (SHR/HAY methodology) ─────────────────────────
 
-const POINTS_CONOCIMIENTOS = { A: 20, B: 40, C: 60, D: 80, E: 100, F: 120, G: 140, H: 160 };
-const POINTS_EXPERIENCIA = { '-': 0.8, 'o': 1.0, '+': 1.2 };
-const POINTS_HABILIDAD = { I: 10, II: 20, III: 30, IV: 40, V: 50, VI: 60, VII: 70 };
-const POINTS_ROL = { '1': 10, '2': 15, '3': 25, '4': 35 };
-const POINTS_CONTACTO = { A: 5, B: 10, C: 15 };
-const POINTS_FRECUENCIA = { '1': 2, '2': 4, '3': 6, '4': 8 };
-const POINTS_CONTENIDO = { I: 5, II: 10, III: 15, IV: 20, V: 25 };
-const POINTS_COMPLEJIDAD = { '1': 10, '2': 20, '3': 30, '4': 40, '5': 50 };
-const POINTS_TENDENCIA = { '-': 0.85, 'o': 1.0, '+': 1.15 };
-const POINTS_GUIAS = { A: 10, B: 20, C: 30, D: 40, E: 50, F: 60, G: 70, H: 80 };
-const POINTS_IMPACTO = { I: 10, II: 20, III: 30, IV: 40 };
-const POINTS_AUTONOMIA = { A: 10, B: 20, C: 30, D: 40, E: 50, F: 60, G: 70 };
-const POINTS_MAGNITUD = { '1': 0, '2': 5, '3': 10, '4': 15, '5': 20, '6': 25, '7': 30, '8': 35, '9': 40, '10': 45, '11': 50, '12': 55, '13': 60, '14': 65 };
+const POINTS_CONOCIMIENTOS = { A: 112, B: 129, C: 147, D: 165, E: 184, F: 208, G: 240, H: 275 };
+const POINTS_EXPERIENCIA = { '-': 0.87, 'o': 1.0, '+': 1.15 };
+const POINTS_HABILIDAD = { I: 19, II: 38, III: 57, IV: 76, V: 95, VI: 114, VII: 133 };
+const POINTS_ROL = { '1': 14, '2': 29, '3': 43, '4': 57 };
+const POINTS_CONTACTO = { A: 14, B: 29, C: 43 };
+const POINTS_FRECUENCIA = { '1': 5, '2': 19, '3': 33, '4': 47 };
+const POINTS_CONTENIDO = { I: 9, II: 22, III: 38, IV: 57, V: 76 };
+const POINTS_COMPLEJIDAD = { '1': 22, '2': 43, '3': 67, '4': 95, '5': 122 };
+const POINTS_TENDENCIA = { '-': 0.87, 'o': 1.0, '+': 1.15 };
+const POINTS_GUIAS = { A: 10, B: 19, C: 29, D: 43, E: 57, F: 71, G: 90, H: 108 };
+const POINTS_IMPACTO = { I: 14, II: 29, III: 43, IV: 57 };
+const POINTS_AUTONOMIA = { A: 5, B: 19, C: 33, D: 47, E: 62, F: 76, G: 95 };
+const POINTS_MAGNITUD = { '1': 0, '2': 19, '3': 38, '4': 57, '5': 76, '6': 95, '7': 114, '8': 133, '9': 152, '10': 171, '11': 190, '12': 209, '13': 228, '14': 247 };
+
+// Category ranges (from Excel Categorias sheet)
+const CATEGORY_RANGES = [
+  { cat: 1, min: 87, max: 100 },
+  { cat: 2, min: 101, max: 115 },
+  { cat: 3, min: 116, max: 132 },
+  { cat: 4, min: 133, max: 152 },
+  { cat: 5, min: 153, max: 175 },
+  { cat: 6, min: 176, max: 201 },
+  { cat: 7, min: 202, max: 231 },
+  { cat: 8, min: 232, max: 266 },
+  { cat: 9, min: 267, max: 306 },
+  { cat: 10, min: 307, max: 352 },
+  { cat: 11, min: 353, max: 405 },
+  { cat: 12, min: 406, max: 466 },
+  { cat: 13, min: 467, max: 536 },
+  { cat: 14, min: 537, max: 616 },
+  { cat: 15, min: 617, max: 708 },
+  { cat: 16, min: 709, max: 814 },
+  { cat: 17, min: 815, max: 936 },
+  { cat: 18, min: 937, max: 1076 },
+  { cat: 19, min: 1077, max: 1237 },
+  { cat: 20, min: 1238, max: 1423 },
+  { cat: 21, min: 1424, max: 1636 },
+  { cat: 22, min: 1637, max: 1881 },
+  { cat: 23, min: 1882, max: 2163 },
+  { cat: 24, min: 2164, max: 2487 },
+  { cat: 25, min: 2488, max: 2860 },
+];
+
+function getCategory(score) {
+  for (const range of CATEGORY_RANGES) {
+    if (score >= range.min && score <= range.max) {
+      return range.cat;
+    }
+  }
+  if (score < 87) return 1;
+  return 25;
+}
+
+function getCategoryLabel(cat) {
+  const labels = {
+    1: 'Operativo',
+    2: 'Operativo',
+    3: 'Operativo/Analista',
+    4: 'Analista Jr',
+    5: 'Analista',
+    6: 'Analista Sr',
+    7: 'Especialista Jr',
+    8: 'Especialista',
+    9: 'Especialista Sr',
+    10: 'Coordinador Jr',
+    11: 'Coordinador',
+    12: 'Coordinador Sr',
+    13: 'Jefe Jr',
+    14: 'Jefe',
+    15: 'Jefe Sr/Gerente Jr',
+    16: 'Gerente Jr',
+    17: 'Gerente',
+    18: 'Gerente Sr',
+    19: 'Gerente Director',
+    20: 'Director Jr',
+    21: 'Director',
+    22: 'Director Sr',
+    23: 'Vicepresidente Jr',
+    24: 'Vicepresidente',
+    25: 'Presidente',
+  };
+  return labels[cat] || `Cat ${cat}`;
+}
 
 function calcTotalPoints(v) {
   const baseConoc = POINTS_CONOCIMIENTOS[v.conocimientos] || 0;
@@ -211,8 +281,20 @@ function calcTotalPoints(v) {
   const criticidad = ((v.criterio1 === '1' ? 1 : 0) + (v.criterio2 === '1' ? 1 : 0) + (v.criterio3 === '1' ? 1 : 0));
 
   const raw = f1 + f2 + f3 + f4;
-  const total = raw * (1 + criticidad * 0.05);
-  return { f1, f2, f3, f4, criticidad, raw, total: Math.round(total) };
+  const total = raw * (1 + criticidad * 0.15);
+  const cat = getCategory(Math.round(total));
+  
+  return { 
+    f1: Math.round(f1), 
+    f2: Math.round(f2), 
+    f3: Math.round(f3), 
+    f4: Math.round(f4), 
+    criticidad, 
+    raw: Math.round(raw), 
+    total: Math.round(total),
+    categoria: cat,
+    categoriaLabel: getCategoryLabel(cat)
+  };
 }
 
 // ─── AI prompt builder ───────────────────────────────────────────────────────
@@ -846,6 +928,7 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
                     { label: 'F2 Comunicación', val: pts.f2 },
                     { label: 'F3 Solución Prob.', val: pts.f3 },
                     { label: 'F4 Responsabilidad', val: pts.f4 },
+                    { label: 'Criticidad', val: `+${pts.criticidad * 15}%` },
                   ].map(f => (
                     <div key={f.label} className="flex justify-between">
                       <span className="text-slate-400">{f.label}:</span>
@@ -853,8 +936,12 @@ const ValuacionView = ({ uploadId, cargosIniciales, valoracionesIniciales, onCar
                     </div>
                   ))}
                   <div className="flex justify-between col-span-2 sm:col-span-4 mt-1 pt-1 border-t border-emerald-100">
-                    <span className="font-bold text-forest">Total:</span>
-                    <span className="font-bold text-forest text-xs">{pts.total} puntos</span>
+                    <span className="font-bold text-forest">Total Score:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-forest">{pts.total} pts</span>
+                      <span className="bg-forest/10 text-forest px-2 py-0.5 rounded-full text-xs font-bold">CAT {pts.categoria}</span>
+                      <span className="text-forest/70 text-xs">({pts.categoriaLabel})</span>
+                    </div>
                   </div>
                 </div>
               )}
