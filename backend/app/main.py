@@ -378,12 +378,19 @@ def list_cargos(upload_id: int, db: Session = Depends(get_db), current_user: Use
     result = []
     for c in cargos:
         homo = c.homologacion
+        tiene_anexa = (
+            c.area == 'DESCRIPCION_ANEXA'
+            and c.descripcion_empresa is not None
+            and c.descripcion_empresa != ''
+        )
         result.append({
             "id": c.id,
             "nombre_cargo": c.nombre_cargo,
             "area": c.area,
             "estado": c.estado,
             "descripcion_empresa": c.descripcion_empresa,
+            "tiene_descripcion_anexa": tiene_anexa,
+            "es_sin_match": c.area == 'SIN_MATCH',
             "homologacion": {
                 "cargo_homologado": homo.cargo_homologado if homo else None,
                 "justificacion": homo.justificacion if homo else None,
@@ -1642,3 +1649,45 @@ def calcular_modelo_equidad(upload_id: int, db: Session = Depends(get_db), curre
     df = pd.DataFrame(data)
     resultado = calcular_equidad(df)
     return resultado
+
+
+# ==========================================
+# DB SCHEMA INFO — Admin dashboard visibility
+# ==========================================
+
+@app.get("/db-info")
+def get_db_info(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Retorna estructura completa de la base de datos: tablas, columnas, FKs, filas."""
+    inspector = inspect(engine)
+    tables = []
+    for table_name in inspector.get_table_names():
+        if table_name.startswith("sqlite_"):
+            continue
+        columns = []
+        for col in inspector.get_columns(table_name):
+            columns.append({
+                "name": col["name"],
+                "type": str(col["type"]),
+                "nullable": col["nullable"],
+                "default": str(col["default"]) if col["default"] else None,
+                "primary_key": col.get("primary_key", False),
+                "autoincrement": col.get("autoincrement", False),
+            })
+        fks = []
+        for fk in inspector.get_foreign_keys(table_name):
+            fks.append({
+                "constrained_columns": fk["constrained_columns"],
+                "referred_table": fk["referred_table"],
+                "referred_columns": fk["referred_columns"],
+            })
+        try:
+            count = db.execute(text(f"SELECT COUNT(*) FROM \"{table_name}\"")).scalar()
+        except Exception:
+            count = 0
+        tables.append({
+            "name": table_name,
+            "columns": columns,
+            "foreign_keys": fks,
+            "row_count": count,
+        })
+    return tables

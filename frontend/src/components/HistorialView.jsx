@@ -3,7 +3,7 @@ import {
   History, Search, Filter, ChevronDown, ChevronUp, 
   User, Calendar, Building, CheckCircle, AlertCircle, 
   Clock, FileText, Download, RefreshCw, Loader2, X,
-  TrendingUp, Users, Award, Target, Eye, EyeOff
+  TrendingUp, Users, Award, Target, Eye, EyeOff, Database, Server, Table as TableIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -11,7 +11,7 @@ import {
   PieChart, Pie, Cell, LineChart, Line, Legend
 } from 'recharts';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 const getToken = () => localStorage.getItem('token') || '';
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
@@ -226,14 +226,25 @@ const HistorialView = () => {
   const [auditLogs, setAuditLogs] = useState([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [auditFilter, setAuditFilter] = useState({ entidad: '', accion: '', search: '' });
+  const [dbTables, setDbTables] = useState([]);
+  const [loadingDb, setLoadingDb] = useState(false);
+  const [expandedTable, setExpandedTable] = useState(null);
 
   useEffect(() => {
     if (subTab === 'procesos') loadProcesos();
+    if (subTab === 'dbinfo') loadDbInfo();
   }, []);
 
   useEffect(() => {
     if (subTab === 'auditoria') loadAuditLogs();
+    if (subTab === 'dbinfo') loadDbInfo();
   }, [subTab]);
+
+  const fetchWithTimeout = (url, options = {}, timeout = 10000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+  };
 
   const loadAuditLogs = async () => {
     setLoadingAudit(true);
@@ -242,7 +253,7 @@ const HistorialView = () => {
       if (auditFilter.entidad) params.set('entidad', auditFilter.entidad);
       if (auditFilter.accion) params.set('accion', auditFilter.accion);
       const qs = params.toString();
-      const res = await fetch(`${API_BASE}/audit-logs${qs ? '?' + qs : ''}`, { headers: getAuthHeaders() });
+      const res = await fetchWithTimeout(`${API_BASE}/api/v1/audit-logs${qs ? '?' + qs : ''}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error('Error cargando auditoría');
       const data = await res.json();
       setAuditLogs(Array.isArray(data) ? data : []);
@@ -253,18 +264,35 @@ const HistorialView = () => {
     }
   };
 
+  const loadDbInfo = async () => {
+    setLoadingDb(true);
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/db-info`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      if (!res.ok) throw new Error('Error cargando info de base de datos');
+      const data = await res.json();
+      setDbTables(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setDbTables([]);
+    } finally {
+      setLoadingDb(false);
+    }
+  };
+
   const loadProcesos = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/uploads`, {
+      const res = await fetchWithTimeout(`${API_BASE}/uploads`, {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       if (!res.ok) throw new Error('Error cargando procesos');
       const data = await res.json();
       setProcesos(Array.isArray(data) ? data : []);
     } catch (e) {
-      setError(e.message);
+      setError(e.name === 'AbortError' ? 'La solicitud tardó demasiado. Verifica que el backend esté corriendo.' : e.message);
     } finally {
       setLoading(false);
     }
@@ -314,6 +342,9 @@ const HistorialView = () => {
         </button>
         <button onClick={() => setSubTab('auditoria')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${subTab === 'auditoria' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
           <div className="flex items-center gap-2"><Eye size={14} /> Auditoría</div>
+        </button>
+        <button onClick={() => setSubTab('dbinfo')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${subTab === 'dbinfo' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
+          <div className="flex items-center gap-2"><Database size={14} /> Base de Datos</div>
         </button>
       </div>
 
@@ -546,6 +577,128 @@ const HistorialView = () => {
                   (l.usuario_email || '').toLowerCase().includes(auditFilter.search.toLowerCase()))
                 .map(log => <AuditRow key={log.id} log={log} />)
               }
+            </div>
+          )}
+        </div>
+      )}
+
+      {subTab === 'dbinfo' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800">Estructura de la Base de Datos</h2>
+              <p className="text-sm text-slate-500">Tablas, columnas y relaciones del backend</p>
+            </div>
+            <button onClick={loadDbInfo} className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-xl text-sm font-semibold hover:bg-slate-50">
+              <RefreshCw size={14} /> Recargar
+            </button>
+          </div>
+
+          {loadingDb ? (
+            <div className="flex items-center justify-center py-16 gap-3 text-primary">
+              <Loader2 className="animate-spin" size={24} />
+              <span className="font-medium">Cargando estructura...</span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <Database size={24} className="text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-slate-800">{dbTables.length}</p>
+                  <p className="text-xs text-slate-500">Tablas en la base de datos</p>
+                </div>
+                <div className="ml-auto text-xs text-slate-400">
+                  <Server size={14} className="inline mr-1" />
+                  {import.meta.env.VITE_API_URL || 'localhost:8000'}
+                </div>
+              </div>
+
+              {dbTables.map((table) => (
+                <div key={table.name} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <button
+                    onClick={() => setExpandedTable(expandedTable === table.name ? null : table.name)}
+                    className="w-full flex items-center gap-3 p-4 hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+                      <TableIcon size={18} className="text-emerald-600" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <h3 className="font-bold text-slate-800 text-sm">{table.name}</h3>
+                      <p className="text-xs text-slate-400">
+                        {table.columns?.length || 0} columnas
+                        {table.row_count !== undefined && (
+                          <span> &middot; {table.row_count.toLocaleString()} registros</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">
+                        {table.columns?.length || 0} cols
+                      </span>
+                      {table.row_count > 0 && (
+                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
+                          {table.row_count} filas
+                        </span>
+                      )}
+                      {expandedTable === table.name ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                    </div>
+                  </button>
+
+                  {expandedTable === table.name && (
+                    <div className="border-t border-slate-100">
+                      {/* Foreign Keys */}
+                      {table.foreign_keys?.length > 0 && (
+                        <div className="px-4 py-3 bg-blue-50/50 border-b border-slate-100">
+                          <p className="text-xs font-bold text-blue-700 mb-2 uppercase tracking-wider">Relaciones</p>
+                          <div className="flex flex-wrap gap-2">
+                            {table.foreign_keys.map((fk, i) => (
+                              <span key={i} className="text-xs bg-blue-100 text-blue-700 px-2.5 py-1 rounded-lg font-medium">
+                                {fk.constrained_columns?.join(', ')} → {fk.referred_table}({fk.referred_columns?.join(', ')})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Columns */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px]">
+                              <th className="px-4 py-2">Columna</th>
+                              <th className="px-4 py-2">Tipo</th>
+                              <th className="px-4 py-2 text-center">Nulo</th>
+                              <th className="px-4 py-2 text-center">PK</th>
+                              <th className="px-4 py-2 text-center">Auto</th>
+                              <th className="px-4 py-2">Default</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {table.columns?.map((col, i) => (
+                              <tr key={col.name} className={`border-t border-slate-50 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}>
+                                <td className="px-4 py-2 font-mono font-medium text-slate-800">{col.name}</td>
+                                <td className="px-4 py-2 font-mono text-slate-500">{col.type}</td>
+                                <td className="px-4 py-2 text-center">
+                                  {col.nullable ? <span className="text-emerald-500 font-bold">SÍ</span> : <span className="text-red-400 font-bold">NO</span>}
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                  {col.primary_key ? <CheckCircle size={14} className="text-amber-500 inline" /> : '—'}
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                  {col.autoincrement ? <CheckCircle size={14} className="text-blue-500 inline" /> : '—'}
+                                </td>
+                                <td className="px-4 py-2 font-mono text-slate-400">{col.default || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>

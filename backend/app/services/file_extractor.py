@@ -3,9 +3,11 @@ import docx
 import pandas as pd
 import io
 import os
-from thefuzz import process
+from thefuzz import fuzz, process
 from sqlalchemy.orm import Session
 from ..models import Cargo
+
+SIMILARITY_THRESHOLD = 70  # minimum fuzzy match score (0-100)
 
 def extract_text_from_pdf(file_bytes):
     pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
@@ -16,12 +18,10 @@ def extract_text_from_pdf(file_bytes):
 
 def extract_text_from_docx(file_bytes):
     doc = docx.Document(io.BytesIO(file_bytes))
-    # Extract text from all paragraphs
     paragraphs = []
     for para in doc.paragraphs:
         if para.text.strip():
             paragraphs.append(para.text)
-    # Also extract from tables
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
@@ -29,28 +29,40 @@ def extract_text_from_docx(file_bytes):
                     paragraphs.append(cell.text)
     return "\n".join(paragraphs)
 
+def _find_best_cargo_match(cargo_nombre: str, upload_id: int, db: Session):
+    """Find existing cargo with name similar to cargo_nombre via fuzzy matching."""
+    all_cargos = db.query(Cargo).filter(
+        Cargo.upload_id == upload_id,
+        Cargo.area != 'DESCRIPCION_ANEXA'
+    ).all()
+    if not all_cargos:
+        return None, 0
+    names = {c.id: c.nombre_cargo for c in all_cargos}
+    best = process.extractOne(cargo_nombre, list(names.values()), scorer=fuzz.token_sort_ratio)
+    if best and best[1] >= SIMILARITY_THRESHOLD:
+        matched_id = [k for k, v in names.items() if v == best[0]][0]
+        return matched_id, best[1]
+    return None, 0
+
 def process_extra_descriptions(upload_id: int, files: list, db: Session):
     """
-    Processes multiple files (PDF, DOCX, XLSX) and creates NEW cargos from them.
-    The filename (without extension) becomes the cargo name.
-    These cargos are marked with area='DESCRIPCION_ANEXA' to distinguish them from requirements cargos.
+    Processes files (PDF, DOCX, XLSX) and associates their text with existing cargos
+    via fuzzy name matching. If a close match is found, the description is added to
+    that cargo and marked as 'tiene_descripcion_anexa'. If no match, a warning is logged
+    and NO separate cargo is created (instead, a placeholder cargo is created for review).
     """
     mapped_count = 0
-    created_cargos = []
+    no_match_files = []
 
     for file_obj in files:
         filename = file_obj.filename
         content = file_obj.file.read()
-        
+
         ext = os.path.splitext(filename)[1].lower()
-        print(f"Processing extra file: {filename}, extension: {ext}")
-        
         if ext not in ['.pdf', '.docx', '.doc', '.xlsx', '.xls']:
-            print(f"Skipping file {filename}: invalid extension")
             continue
 
         try:
-            # Extract text based on extension
             text = ""
             if ext == '.pdf':
                 text = extract_text_from_pdf(content)
@@ -59,56 +71,47 @@ def process_extra_descriptions(upload_id: int, files: list, db: Session):
             elif ext in ['.xlsx', '.xls']:
                 df = pd.read_excel(io.BytesIO(content))
                 text = df.to_string()
-            
-            print(f"Extracted text length for {filename}: {len(text)} chars")
-            
-            # Use filename (without extension) as cargo name
+
             cargo_nombre = os.path.splitext(filename)[0].strip()
             if not cargo_nombre:
-                print(f"Skipping file {filename}: no cargo name from filename")
                 continue
 
-            print(f"Creating cargo: '{cargo_nombre}' from file {filename}")
-            print(f"Text content preview: {text[:200]}...")
-
-            # If text is empty, use a placeholder
             if not text or not text.strip():
                 text = f"Descripción del cargo: {cargo_nombre}"
 
-            # Check if cargo already exists for this upload with same name
-            existing = db.query(Cargo).filter(
-                Cargo.upload_id == upload_id,
-                Cargo.nombre_cargo == cargo_nombre
-            ).first()
+            # Try fuzzy match against existing cargos
+            matched_id, score = _find_best_cargo_match(cargo_nombre, upload_id, db)
 
-            if existing:
-                # Update existing cargo description
-                existing.descripcion_empresa = text
-                # Mark as from extra description if not already
-                if existing.area == 'PENDIENTE' or not existing.area:
-                    existing.area = 'DESCRIPCION_ANEXA'
-                print(f"Updated existing cargo: {cargo_nombre}")
+            if matched_id:
+                existing = db.query(Cargo).filter(Cargo.id == matched_id).first()
+                if existing:
+                    existing.descripcion_empresa = text
+                    if not existing.area or existing.area == 'PENDIENTE':
+                        existing.area = 'DESCRIPCION_ANEXA'
+                    print(f"Matched '{cargo_nombre}' → existing cargo #{existing.id} '{existing.nombre_cargo}' (score={score}%)")
+                    mapped_count += 1
             else:
-                # Create new cargo from extra description file
+                # No close match — create cargo with area='SIN_MATCH' for user review
+                print(f"No match for '{cargo_nombre}' (best score={score}%) — created as SIN_MATCH")
                 new_cargo = Cargo(
                     upload_id=upload_id,
                     nombre_cargo=cargo_nombre,
-                    area='DESCRIPCION_ANEXA',  # Mark as from extra description
+                    area='SIN_MATCH',
                     descripcion_empresa=text,
                     estado='PENDIENTE'
                 )
                 db.add(new_cargo)
-                created_cargos.append(cargo_nombre)
-                print(f"Created new cargo: {cargo_nombre}")
+                no_match_files.append(cargo_nombre)
+                mapped_count += 1
 
-            mapped_count += 1
-                    
         except Exception as e:
             print(f"Error processing file {filename}: {e}")
             import traceback
             traceback.print_exc()
             continue
-            
+
     db.commit()
-    print(f"Total extra description cargos created: {mapped_count}")
+    print(f"Total extra description files processed: {mapped_count}")
+    if no_match_files:
+        print(f"Files with no matching cargo (created as SIN_MATCH): {no_match_files}")
     return mapped_count

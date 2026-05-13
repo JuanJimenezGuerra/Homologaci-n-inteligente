@@ -12,7 +12,7 @@ const UploadView = ({ onSuccess }) => {
   const [error, setError] = useState(null);
   const [detectedEmpresa, setDetectedEmpresa] = useState('');
 
-  let apiUrl = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
+  let apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   if (apiUrl.endsWith('/')) {
     apiUrl = apiUrl.slice(0, -1);
   }

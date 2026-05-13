@@ -3,7 +3,7 @@ import axios from 'axios';
 import {
   Play, Download, Search, Edit2, ChevronDown, ChevronUp,
   FileSpreadsheet, Loader2, AlertCircle, Check, X, Eye, EyeOff,
-  RefreshCw, Building, BarChart2
+  RefreshCw, Building, BarChart2, FileText, AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -166,6 +166,7 @@ const DataframeTable = ({
                 <th className="px-3 py-3 w-8">#</th>
                 <th className="px-3 py-3 min-w-[180px]">Cargo</th>
                 <th className="px-3 py-3 min-w-[110px]">Área</th>
+                <th className="px-3 py-3 w-12 text-center">Anexo</th>
                 <th className="px-3 py-3">Estado</th>
                 <th className="px-3 py-3 min-w-[200px]">Cargo Homologado</th>
                 <th className="px-3 py-3 min-w-[200px]">Justificación</th>
@@ -184,7 +185,20 @@ const DataframeTable = ({
                     <tr className={`border-b border-emerald-50 hover:bg-emerald-50/30 transition-colors ${idx%2===0?'bg-white/60':'bg-white/90'}`}>
                       <td className="px-3 py-2.5 text-slate-300 font-mono text-center">{idx+1}</td>
                       <td className="px-3 py-2.5 font-bold text-forest">{c.nombre_cargo}</td>
-                      <td className="px-3 py-2.5 text-slate-500">{c.area}</td>
+                      <td className="px-3 py-2.5 text-slate-500">{c.area === 'DESCRIPCION_ANEXA' ? '—' : c.area}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        {c.tiene_descripcion_anexa ? (
+                          <span title="Tiene descripción anexa" className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                            <FileText size={11} /> Sí
+                          </span>
+                        ) : c.es_sin_match ? (
+                          <span title="Sin match en Excel" className="inline-flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                            <AlertTriangle size={11} /> ?
+                          </span>
+                        ) : (
+                          <span className="text-slate-200">—</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5"><StatusBadge estado={c.estado}/></td>
                       <td className="px-3 py-2.5">
                         {isEditing ? (
@@ -224,7 +238,7 @@ const DataframeTable = ({
                     <AnimatePresence>
                       {isExpanded && c.descripcion_empresa && (
                         <motion.tr key={`exp-${c.id}`} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="bg-emerald-50/40">
-                          <td colSpan={7+(showMeta?metaKeys.length:0)} className="px-8 py-3">
+                          <td colSpan={8+(showMeta?metaKeys.length:0)} className="px-8 py-3">
                             <p className="text-[10px] font-bold text-emerald-700 mb-1 uppercase tracking-wider">📄 Descripción del Cargo</p>
                             <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line max-h-32 overflow-y-auto">{c.descripcion_empresa}</p>
                           </td>

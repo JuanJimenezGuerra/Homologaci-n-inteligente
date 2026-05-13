@@ -7,7 +7,7 @@ import {
   Loader2,
 } from 'lucide-react';
 
-const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
   return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : {};
@@ -361,9 +361,13 @@ function SyncFromUploadButton({ onRefresh }) {
     setLoadingUploads(true);
     setError('');
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
       const res = await fetch(`${API}/uploads`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (!res.ok) {
         const err = await res.text();
         setError(`Error al cargar: ${err.slice(0, 100)}`);
@@ -374,7 +378,7 @@ function SyncFromUploadButton({ onRefresh }) {
         if (Array.isArray(data) && data.length > 0) setSelectedId(String(data[0].id));
       }
     } catch (e) {
-      setError('Error de conexión al cargar uploads');
+      setError(e.name === 'AbortError' ? 'La conexión tardó demasiado. Verifica que el backend esté corriendo en localhost:8000.' : 'Error de conexión al cargar uploads');
       setUploads([]);
     }
     setLoadingUploads(false);
@@ -395,7 +399,7 @@ function SyncFromUploadButton({ onRefresh }) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
-      const res = await fetch(`${API}/api/v1/uploads/${selectedId}/sync-organigrama`, {
+      const res = await fetch(`${API}/uploads/${selectedId}/sync-organigrama`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         signal: controller.signal,
@@ -494,42 +498,64 @@ export default function OrganizacionView({ onNavigate }) {
   const refresh = () => setRefreshKey(k => k + 1);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     Promise.all([
       apiGet('/grupos-empresariales'),
       apiGet('/empresas'),
-      fetch(`${API}/uploads`, { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d.length : 0).catch(() => 0),
+      fetch(`${API}/uploads`, { headers: getAuthHeaders(), signal: controller.signal }).then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d.length : 0).catch(() => 0),
     ]).then(([gruposRes, empresasRes, uCount]) => {
+      if (cancelled) return;
+      clearTimeout(timeout);
       setUploadCount(uCount);
       const empresas = Array.isArray(empresasRes) ? empresasRes : [];
       setGrupos(Array.isArray(gruposRes) ? gruposRes : []);
-      // Fetch macroprocesos and cargos counts from all empresas
       Promise.all(empresas.map(e =>
         Promise.all([
           apiGet(`/empresas/${e.id}/macroprocesos`).then(r => Array.isArray(r) ? r.length : 0),
           apiGet(`/empresas/${e.id}/cargos-organizacionales`).then(r => Array.isArray(r) ? r.length : 0),
         ])
       )).then(counts => {
+        if (cancelled) return;
         const macroCount = counts.reduce((s, [m]) => s + m, 0);
         const cargoCount = counts.reduce((s, [, c]) => s + c, 0);
         setStats({ empresas: empresas.length, macroprocesos: macroCount, cargos: cargoCount });
       }).catch(() => {});
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; clearTimeout(timeout); controller.abort(); };
   }, [refreshKey]);
 
   const [grupoForm, setGrupoForm] = useState({ nombre: '', descripcion: '', sector_principal: '', tamano: '', pais_principal: '' });
+  const [savingGrupo, setSavingGrupo] = useState(false);
 
   const handleCreateGrupo = async (e) => {
     e.preventDefault();
     if (!grupoForm.nombre.trim()) { alert('El nombre del grupo es requerido'); return; }
+    setSavingGrupo(true);
     try {
-      await apiPost('/grupos-empresariales', grupoForm);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(`${API_BASE}/grupos-empresariales`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(grupoForm),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) {
+        const err = await res.text().then(t => t.slice(0, 200));
+        throw new Error(err);
+      }
       setShowCreateGrupo(false);
       setGrupoForm({ nombre: '', descripcion: '', sector_principal: '', tamano: '', pais_principal: '' });
       refresh();
     } catch (err) {
-      alert('Error al crear grupo: ' + err.message);
+      alert(err.name === 'AbortError' ? 'La solicitud tardó demasiado. Verifica que el backend esté corriendo en localhost:8000.' : 'Error al crear grupo: ' + err.message);
+    } finally {
+      setSavingGrupo(false);
     }
   };
 
@@ -670,7 +696,7 @@ export default function OrganizacionView({ onNavigate }) {
               <h3 className="font-bold text-lg text-slate-800">Nuevo Grupo Empresarial</h3>
               <button onClick={() => setShowCreateGrupo(false)} className="p-1 hover:bg-slate-100 rounded"><X size={20} /></button>
             </div>
-            <form onSubmit={handleCreateGrupo} className="p-6 space-y-4">
+            <form onSubmit={(e) => e.preventDefault()} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Nombre *</label>
                 <input value={grupoForm.nombre} onChange={e => setGrupoForm(s => ({ ...s, nombre: e.target.value }))} required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500" />
@@ -699,8 +725,10 @@ export default function OrganizacionView({ onNavigate }) {
                 </div>
               </div>
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setShowCreateGrupo(false)} className="flex-1 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-                <button type="submit" className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">Guardar</button>
+                <button type="button" onClick={() => setShowCreateGrupo(false)} disabled={savingGrupo} className="flex-1 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancelar</button>
+                <button type="button" onClick={handleCreateGrupo} disabled={savingGrupo} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                  {savingGrupo ? <><Loader2 size={14} className="animate-spin inline mr-1" /> Guardando...</> : 'Guardar'}
+                </button>
               </div>
             </form>
           </motion.div>

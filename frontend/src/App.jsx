@@ -13,7 +13,7 @@ import OrganizacionView from './components/OrganizacionView';
 import SesionesView from './components/SesionesView';
 import ErrorBoundary from './components/ErrorBoundary';
 
-const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'));

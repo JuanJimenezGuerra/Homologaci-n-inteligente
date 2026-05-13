@@ -8,7 +8,7 @@ import {
   BarChart3, TrendingUp, Layers, Eye,
 } from 'lucide-react';
 
-const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API_BASE = `${API}/api/v1`;
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
@@ -931,7 +931,7 @@ export default function SesionesView({ initialEmpresaId }) {
   const handleSyncFromUpload = async () => {
     const uploadId = window.prompt('ID del upload de requerimientos (ej: 1):');
     if (!uploadId || !uploadId.trim()) return;
-    const res = await fetch(`${API}/api/v1/uploads/${uploadId}/sync-organigrama`, {
+    const res = await fetch(`${API}/uploads/${uploadId}/sync-organigrama`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
     });

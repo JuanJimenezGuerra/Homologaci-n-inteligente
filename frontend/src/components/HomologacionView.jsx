@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link2, Play, Loader2, AlertCircle, Building2, MapPin, User, Edit2, Check, X, MessageSquare, RefreshCw, ArrowRight, Calendar, Phone, Mail, Package, Users, DollarSign, FileText, Activity, Briefcase, Target, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const API = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
+const API = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 
 const STATUS_STYLES = {
   homologado: 'bg-emerald-100 text-emerald-700 border border-emerald-300',
