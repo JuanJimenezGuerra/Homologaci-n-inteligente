@@ -4,7 +4,7 @@ import {
   ClipboardList, Plus, ArrowRight, CheckCircle, XCircle, Clock,
   RotateCcw, Trash2, ChevronDown, ChevronUp, Briefcase,
   Pencil, X, UserPlus, UserMinus, AlertCircle, FileSpreadsheet,
-  Search, Download, Loader2, Users, User,
+  Search, Download, Loader2, Users, User, Upload,
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
@@ -667,6 +667,22 @@ export default function SesionesView({ initialEmpresaId }) {
     }
   };
 
+  const handleSyncFromUpload = async () => {
+    const uploadId = window.prompt('ID del upload de requerimientos (ej: 1):');
+    if (!uploadId || !uploadId.trim()) return;
+    const res = await fetch(`${API}/api/v1/uploads/${uploadId}/sync-organigrama`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(`✅ ${data.created} cargos sincronizados desde requerimientos`, 'success');
+      if (empresaId) loadSesiones(empresaId);
+    } else {
+      showToast(`Error: ${data.detail || 'desconocido'}`, 'error');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Toast visible={toast.visible} message={toast.message} type={toast.type} onClose={() => setToast(t => ({ ...t, visible: false }))} />
@@ -680,6 +696,10 @@ export default function SesionesView({ initialEmpresaId }) {
             <option value="">Seleccionar empresa...</option>
             {empresas.map(e => <option key={e.id} value={e.id}>{e.nombre_empresa || e.nombre}</option>)}
           </select>
+          <button onClick={handleSyncFromUpload}
+            className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            <Upload size={14} /> Sinc. Req.
+          </button>
           {empresaId && (
             <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">
               <Plus size={16} /> Nueva Sesión

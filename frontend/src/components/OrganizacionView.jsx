@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Globe, MapPin, Layers, GitBranch, ClipboardList,
   ChevronRight, ChevronDown, Plus, Pencil, Trash2, Save, X,
-  Search, FolderTree, Briefcase, Users, RotateCcw, AlertCircle, Upload,
+  Search, FolderTree, Briefcase, Users, RotateCcw, AlertCircle, Upload, Sparkles,
   Loader2,
 } from 'lucide-react';
 
@@ -330,6 +330,72 @@ function ModalEdit({ title, data, fields, onSave, onClose }) {
   );
 }
 
+function SyncFromUploadButton({ onRefresh }) {
+  const [open, setOpen] = useState(false);
+  const [uploadId, setUploadId] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const handleSync = async () => {
+    if (!uploadId.trim()) return;
+    setSyncing(true);
+    setResult(null);
+    try {
+      const res = await fetch(`${API}/api/v1/uploads/${uploadId}/sync-organigrama`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      const data = await res.json();
+      setResult(data);
+      if (res.ok) { onRefresh?.(); }
+    } catch (e) {
+      setResult({ error: e.message });
+    }
+    setSyncing(false);
+  };
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)}
+        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">
+        <Upload size={16} /> Sincronizar
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => { setOpen(false); setResult(null); }}>
+          <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-md m-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-slate-200">
+              <h3 className="font-bold text-lg text-slate-800">Sincronizar desde Requerimientos</h3>
+              <button onClick={() => { setOpen(false); setResult(null); }} className="p-1 hover:bg-slate-100 rounded"><X size={20} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600">Convierte los cargos del Excel de requerimientos en cargos organizacionales.</p>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Upload ID</label>
+                <input value={uploadId} onChange={e => setUploadId(e.target.value)}
+                  placeholder="ID del upload (ej: 1)" type="number"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              {result && (
+                <div className={`p-3 rounded-xl text-sm ${result.error ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                  {result.error ? `Error: ${result.error}` : `✅ ${result.created} creados, ${result.skipped} omitidos de ${result.total} total`}
+                </div>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => { setOpen(false); setResult(null); }} className="flex-1 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
+                <button onClick={handleSync} disabled={syncing || !uploadId.trim()}
+                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                  {syncing ? <><Loader2 size={14} className="animate-spin inline mr-1" /> Sincronizando...</> : 'Sincronizar'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </>
+  );
+}
+
+
 // ─── Main View ───
 export default function OrganizacionView({ onNavigate }) {
   const [grupos, setGrupos] = useState([]);
@@ -376,6 +442,23 @@ export default function OrganizacionView({ onNavigate }) {
     refresh();
   };
 
+  const [seeding, setSeeding] = useState(false);
+  const handleSeedDemo = async () => {
+    setSeeding(true);
+    try {
+      const res = await fetch(`${API}/api/v1/demo/seed`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      const data = await res.json();
+      alert(`✅ Datos demo creados:\nEmpresa: ${data.empresa}\nCargos: ${data.cargos}\nSesión ID: ${data.sesion_id}\n\nVe a "Sesiones de Valoración" para ver el taller.`);
+      refresh();
+    } catch (e) {
+      alert('Error al crear datos demo: ' + e.message);
+    }
+    setSeeding(false);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -385,6 +468,11 @@ export default function OrganizacionView({ onNavigate }) {
           <p className="text-sm text-slate-500 mt-1">Gestión de estructura: grupos empresariales, empresas, sedes, procesos y cargos</p>
         </div>
         <div className="flex gap-3">
+          <button onClick={handleSeedDemo} disabled={seeding}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 disabled:opacity-50">
+            {seeding ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Demo
+          </button>
+          <SyncFromUploadButton onRefresh={refresh} />
           {onNavigate && (
             <button onClick={() => onNavigate('sesiones')}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700">

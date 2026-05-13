@@ -5,7 +5,8 @@ from .database import get_db, engine, Base, run_migrations, DATABASE_URL
 from .models import (
     User, Upload, Cargo, Homologacion, JobStatus, ProcessingLog,
     Empresa, CargoEmpresa, ValoracionCargo, MasterDescription, Valoracion,
-    Regional, Sede, Area, MuestraPeriodo,
+    Regional, Sede, Area, Proceso, Macroproceso, CargoOrganizacional,
+    SesionValoracion, ValoracionVersion, ParticipanteSesion, MuestraPeriodo,
 )
 from .auth import get_password_hash, create_access_token, verify_password, get_current_user
 from .services.excel_processor import process_requirements_excel
@@ -22,6 +23,7 @@ import io
 import threading
 import time
 from typing import List, Optional
+from collections import defaultdict
 from pydantic import BaseModel
 
 # Progress tracking for real-time updates
@@ -435,6 +437,234 @@ def get_empresa_from_upload(upload_id: int, db: Session = Depends(get_db), curre
         "excedentes_presupuestados": emp.excedentes_presupuestados,
         "fecha_diligenciamiento": emp.fecha_diligenciamiento.isoformat() if emp.fecha_diligenciamiento else None,
     }
+
+
+@app.post("/uploads/{upload_id}/sync-organigrama")
+def sync_requerimientos_a_organigrama(
+    upload_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Convierte los Cargos de un upload (Excel de requerimientos) en CargoOrganizacional,
+    creando la estructura jerárquica mínima (Macroproceso→Proceso→Area) si no existe."""
+    upload = db.query(Upload).filter(Upload.id == upload_id).first()
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload no encontrado")
+
+    # Find empresa by name
+    emp = db.query(Empresa).filter(Empresa.nombre_empresa == upload.empresa).order_by(Empresa.id.desc()).first()
+    if not emp:
+        raise HTTPException(status_code=400, detail="No se encontró la empresa. Primero carga el Excel de requerimientos.")
+
+    cargos = db.query(Cargo).filter(Cargo.upload_id == upload_id).all()
+    if not cargos:
+        raise HTTPException(status_code=400, detail="No hay cargos en este upload.")
+
+    created = 0
+    skipped = 0
+    user_id = _uid(current_user) if hasattr(current_user, 'id') else None
+
+    # Ensure default hierarchy exists
+    macro = db.query(Macroproceso).filter(
+        Macroproceso.empresa_id == emp.id,
+        Macroproceso.nombre == "GENERAL",
+        Macroproceso.deleted_at.is_(None)
+    ).first()
+    if not macro:
+        macro = Macroproceso(empresa_id=emp.id, nombre="GENERAL", created_by=user_id)
+        db.add(macro)
+        db.flush()
+
+    proc = db.query(Proceso).filter(
+        Proceso.macroproceso_id == macro.id,
+        Proceso.nombre == "GENERAL",
+        Proceso.deleted_at.is_(None)
+    ).first()
+    if not proc:
+        proc = Proceso(macroproceso_id=macro.id, nombre="GENERAL", created_by=user_id)
+        db.add(proc)
+        db.flush()
+
+    # Group cargos by area name
+    areas_map = defaultdict(list)
+    for c in cargos:
+        area_name = (c.area or "GENERAL").upper().strip()
+        areas_map[area_name].append(c)
+
+    for area_name, area_cargos in areas_map.items():
+        area_obj = db.query(Area).filter(
+            Area.proceso_id == proc.id,
+            Area.nombre.ilike(area_name),
+            Area.deleted_at.is_(None)
+        ).first()
+        if not area_obj:
+            area_obj = Area(proceso_id=proc.id, nombre=area_name, created_by=user_id)
+            db.add(area_obj)
+            db.flush()
+
+        for cargo in area_cargos:
+            exists = db.query(CargoOrganizacional).filter(
+                CargoOrganizacional.empresa_id == emp.id,
+                CargoOrganizacional.nombre == cargo.nombre_cargo,
+                CargoOrganizacional.deleted_at.is_(None)
+            ).first()
+            if exists:
+                skipped += 1
+                continue
+
+            org_cargo = CargoOrganizacional(
+                nombre=cargo.nombre_cargo,
+                empresa_id=emp.id,
+                area_id=area_obj.id,
+                nivel_organizacional="GENERAL",
+                mision=cargo.descripcion_empresa,
+                created_by=user_id,
+            )
+            db.add(org_cargo)
+            created += 1
+
+    db.commit()
+    return {"created": created, "skipped": skipped, "total": len(cargos)}
+
+
+@app.post("/demo/seed")
+def seed_demo_data(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Crea datos demo completos para que el stakeholder vea todo el flujo funcionando."""
+    user_id = current_user.id if hasattr(current_user, 'id') else None
+
+    # 1. Create or find demo empresa
+    emp = db.query(Empresa).filter(Empresa.nombre_empresa == "DEMO S.A.S.").first()
+    if not emp:
+        emp = Empresa(nombre_empresa="DEMO S.A.S.", created_by=user_id)
+        db.add(emp)
+        db.flush()
+
+    # 2. Create full hierarchy
+    macro = db.query(Macroproceso).filter(
+        Macroproceso.empresa_id == emp.id, Macroproceso.nombre == "OPERACIONES",
+        Macroproceso.deleted_at.is_(None)
+    ).first()
+    if not macro:
+        macro = Macroproceso(empresa_id=emp.id, nombre="OPERACIONES", created_by=user_id)
+        db.add(macro)
+        db.flush()
+
+    proc = db.query(Proceso).filter(
+        Proceso.macroproceso_id == macro.id, Proceso.nombre == "TALENTO HUMANO",
+        Proceso.deleted_at.is_(None)
+    ).first()
+    if not proc:
+        proc = Proceso(macroproceso_id=macro.id, nombre="TALENTO HUMANO", created_by=user_id)
+        db.add(proc)
+        db.flush()
+
+    area = db.query(Area).filter(
+        Area.proceso_id == proc.id, Area.nombre == "NÓMINA",
+        Area.deleted_at.is_(None)
+    ).first()
+    if not area:
+        area = Area(proceso_id=proc.id, nombre="NÓMINA", created_by=user_id)
+        db.add(area)
+        db.flush()
+
+    # 3. Create sample cargos
+    cargos_data = [
+        ("AUXILIAR DE NÓMINA", "Procesa liquidaciones de nómina, seguridad social y parafiscales. Genera reportes de novedades."),
+        ("ANALISTA DE COMPENSACIÓN", "Analiza estructuras salariales, elabora estudios de mercado y propone ajustes."),
+        ("JEFE DE COMPENSACIÓN", "Dirige la estrategia de compensación y beneficios. Define políticas salariales."),
+        ("DIRECTOR DE GESTIÓN HUMANA", "Lidera la gestión estratégica del talento humano en la organización."),
+    ]
+
+    created_cargos = []
+    for nombre, desc in cargos_data:
+        exists = db.query(CargoOrganizacional).filter(
+            CargoOrganizacional.empresa_id == emp.id,
+            CargoOrganizacional.nombre == nombre,
+            CargoOrganizacional.deleted_at.is_(None)
+        ).first()
+        if exists:
+            created_cargos.append(exists)
+            continue
+        c = CargoOrganizacional(
+            nombre=nombre, empresa_id=emp.id, area_id=area.id,
+            nivel_organizacional="GENERAL", mision=desc,
+            created_by=user_id,
+        )
+        db.add(c)
+        db.flush()
+        created_cargos.append(c)
+
+    # 4. Create a demo session
+    sesion = db.query(SesionValoracion).filter(
+        SesionValoracion.empresa_id == emp.id,
+        SesionValoracion.nombre == "Taller Demo - Mayo 2026",
+    ).first()
+    if not sesion:
+        sesion = SesionValoracion(
+            empresa_id=emp.id, nombre="Taller Demo - Mayo 2026",
+            descripcion="Taller de valoración de cargos para demostración. Todos los factores ya cargados con scoring.",
+            estado="EN_PROCESO", metodologia="SHR/HAY",
+            creada_por=user_id,
+        )
+        db.add(sesion)
+        db.flush()
+
+        # Assign 4 participants
+        demo_participants = [
+            ("consultor", "Carlos Consultor"),
+            ("rh", "María RH"),
+            ("gerente_area", "Pedro Gerente"),
+            ("lider_cargo", "Ana Líder"),
+        ]
+        for rol, nombre in demo_participants:
+            db.add(ParticipanteSesion(sesion_id=sesion.id, rol=rol, nombre=nombre, created_by=user_id))
+
+        # Create versions with scoring for each cargo
+        factor_sets = [
+            {"conocimientos": "Medio", "experiencia": "1-2 años", "habilidad_gerencial": "Baja", "rol_cargo": "Individual",
+             "contacto": "Interno", "frecuencia": "Semanal", "contenido_relaciones": "Informativo",
+             "complejidad_conceptual": "Procedimental", "tendencia_cc": "Estable", "guias_apoyo": "Específicas", "tendencia_ga": "Estable",
+             "impacto": "Mínimo", "autonomia": "Supervisada", "magnitud": "Pequeña", "criterio_1": 0, "criterio_2": 0, "criterio_3": 0},
+            {"conocimientos": "Avanzado", "experiencia": "3-5 años", "habilidad_gerencial": "Media", "rol_cargo": "Táctico",
+             "contacto": "Mixto", "frecuencia": "Diaria", "contenido_relaciones": "Coordinación",
+             "complejidad_conceptual": "Analítica", "tendencia_cc": "Creciente", "guias_apoyo": "Generales", "tendencia_ga": "Creciente",
+             "impacto": "Medio", "autonomia": "Guiada", "magnitud": "Mediana", "criterio_1": 0, "criterio_2": 1, "criterio_3": 0},
+            {"conocimientos": "Experto", "experiencia": "5-7 años", "habilidad_gerencial": "Alta", "rol_cargo": "Estratégico",
+             "contacto": "Externo", "frecuencia": "Permanente", "contenido_relaciones": "Negociación",
+             "complejidad_conceptual": "Creativa", "tendencia_cc": "Creciente", "guias_apoyo": "Políticas", "tendencia_ga": "Creciente",
+             "impacto": "Alto", "autonomia": "Total", "magnitud": "Grande", "criterio_1": 1, "criterio_2": 1, "criterio_3": 0},
+            {"conocimientos": "Experto", "experiencia": "7+ años", "habilidad_gerencial": "Alta", "rol_cargo": "Dirección",
+             "contacto": "Externo", "frecuencia": "Permanente", "contenido_relaciones": "Asesoría",
+             "complejidad_conceptual": "Estratégica", "tendencia_cc": "Creciente", "guias_apoyo": "Autonomía total", "tendencia_ga": "Creciente",
+             "impacto": "Crítico", "autonomia": "Total", "magnitud": "Corporativa", "criterio_1": 1, "criterio_2": 1, "criterio_3": 1},
+        ]
+
+        for i, cargo in enumerate(created_cargos):
+            from .services.scoring_service import calcular_puntaje
+            fs = factor_sets[i % len(factor_sets)]
+            v = ValoracionVersion(
+                cargo_id=cargo.id, sesion_id=sesion.id, version=1,
+                estado="BORRADOR", created_by=user_id, **fs,
+            )
+            db.add(v)
+            db.flush()
+            score = calcular_puntaje(v)
+            v.puntos_totales = score["puntaje_total"]
+            v.nivel_shr = score["nivel_shr"]
+            v.categoria = score["categoria"]
+
+    db.commit()
+    return {
+        "message": "Datos demo creados exitosamente",
+        "empresa": emp.nombre_empresa,
+        "empresa_id": emp.id,
+        "sesion_id": sesion.id,
+        "cargos": len(created_cargos),
+    }
+
 
 @app.put("/homologacion/{cargo_id}")
 async def update_homologation(cargo_id: int, data: dict, db: Session = Depends(get_db)):

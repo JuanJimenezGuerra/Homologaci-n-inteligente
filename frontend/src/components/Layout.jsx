@@ -6,14 +6,16 @@ import logoShr from '../assets/logo_shr.png?v=2';
 const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
 
   const menuItems = [
-    { id: 'formulario', label: '1. Formulario', icon: Building2, desc: 'Cargar datos empresa y Excel' },
-    { id: 'organizacion', label: '2. Organización', icon: GitBranch, desc: 'Estructura organizacional' },
-    { id: 'sesiones', label: '3. Sesiones', icon: ClipboardList, desc: 'Ciclos de valoración' },
-    { id: 'valoracion', label: '4. Valoración', icon: Target, desc: 'Evaluación 12 factores' },
-    { id: 'homologacion', label: '5. Homologación', icon: Link2, desc: 'Matching de cargos' },
-    { id: 'analisis', label: '6. Análisis', icon: TrendingUp, desc: 'Curvas y reportes' },
-    { id: 'equidad', label: '7. Equidad', icon: Scale, desc: 'Regresion y nivelacion salarial' },
-    { id: 'historial', label: '8. Historial', icon: History, desc: 'Procesos ejecutados' },
+    // ── Flujo Principal (Nuevo Pipeline) ──
+    { id: 'formulario', label: '1. Formulario', icon: Building2, desc: 'Cargar requerimientos', primary: true },
+    { id: 'organizacion', label: '2. Organización', icon: GitBranch, desc: 'Crear organigrama', primary: true },
+    { id: 'sesiones', label: '3. Sesiones', icon: ClipboardList, desc: 'Taller de valoración', primary: true },
+    // ── Flujo Anterior (Legado) ──
+    { id: 'valoracion', label: '4. Valoración', icon: Target, desc: 'Evaluación IA (legado)', primary: false },
+    { id: 'homologacion', label: '5. Homologación', icon: Link2, desc: 'Matching (legado)', primary: false },
+    { id: 'analisis', label: '6. Análisis', icon: TrendingUp, desc: 'Curvas (legado)', primary: false },
+    { id: 'equidad', label: '7. Equidad', icon: Scale, desc: 'Nivelación (legado)', primary: false },
+    { id: 'historial', label: '8. Historial', icon: History, desc: 'Procesos ejecutados', primary: true },
   ];
 
   return (
@@ -36,29 +38,33 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
 
         {/* Menu */}
         <nav className="flex-1 px-4 py-4 space-y-1">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`nav-link w-full ${activeTab === item.id ? 'active' : ''}`}
-            >
-              <item.icon size={20} className={activeTab === item.id ? 'text-white' : 'text-emerald-600'} />
-              <div className="text-left">
-                <span className="font-semibold">{item.label}</span>
-                {item.desc && (
-                  <span className={`block text-xs ${activeTab === item.id ? 'text-white/70' : 'text-slate-400'}`}>
-                    {item.desc}
-                  </span>
-                )}
-              </div>
+          {menuItems.map((item, idx) => (
+            <React.Fragment key={item.id}>
+              {idx === 3 && <div className="my-2 border-t border-slate-200 pt-2">
+                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 px-2">Legado</span>
+              </div>}
+              <button
+                onClick={() => setActiveTab(item.id)}
+                className={`nav-link w-full ${activeTab === item.id ? 'active' : ''} ${item.primary === false ? 'opacity-60 hover:opacity-100' : ''}`}
+              >
+                <item.icon size={20} className={activeTab === item.id ? 'text-white' : 'text-emerald-600'} />
+                <div className="text-left">
+                  <span className="font-semibold">{item.label}</span>
+                  {item.desc && (
+                    <span className={`block text-xs ${activeTab === item.id ? 'text-white/70' : 'text-slate-400'}`}>
+                      {item.desc}
+                    </span>
+                  )}
+                </div>
 
-              {activeTab === item.id && (
-                <motion.div 
-                  layoutId="activeTab"
-                  className="ml-auto w-1.5 h-5 bg-white/40 rounded-full"
-                />
-              )}
-            </button>
+                {activeTab === item.id && (
+                  <motion.div 
+                    layoutId="activeTab"
+                    className="ml-auto w-1.5 h-5 bg-white/40 rounded-full"
+                  />
+                )}
+              </button>
+            </React.Fragment>
           ))}
         </nav>
 
