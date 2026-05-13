@@ -824,6 +824,20 @@ class CargoOrganizacional(Base):
     versiones_valoracion = relationship("ValoracionVersion", back_populates="cargo_organizacional", foreign_keys="ValoracionVersion.cargo_id")
 
 
+class ParticipanteSesion(Base):
+    """Participante de un taller de valoración con su rol específico."""
+    __tablename__ = "participantes_sesion"
+    id = Column(Integer, primary_key=True, index=True)
+    sesion_id = Column(Integer, ForeignKey("sesiones_valoracion.id"), nullable=False)
+    nombre = Column(String(200), nullable=False)
+    rol = Column(String(50), nullable=False)  # consultor, rh, gerente_area, lider_cargo
+    email = Column(String(200), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    sesion = relationship("SesionValoracion", back_populates="participantes")
+
+
 class SesionValoracion(Base):
     """Sesión de valoración: agrupa un conjunto de valoraciones de cargos
     dentro de una empresa para un período/metodología específica."""
@@ -847,6 +861,7 @@ class SesionValoracion(Base):
 
     empresa = relationship("Empresa", back_populates="sesiones_valoracion")
     versiones = relationship("ValoracionVersion", back_populates="sesion")
+    participantes = relationship("ParticipanteSesion", back_populates="sesion", cascade="all, delete-orphan")
 
 
 class ValoracionVersion(Base):

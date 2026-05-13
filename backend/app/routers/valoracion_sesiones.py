@@ -7,8 +7,8 @@ from ..database import get_db
 from ..models import (
     SesionValoracion, ValoracionVersion, CargoOrganizacional, User, AuditLog,
     GrupoEmpresarial, Empresa, Regional, Sede, Macroproceso, Proceso, Area,
+    ParticipanteSesion,
 )
-from ..database import get_db
 from ..auth import get_current_user
 from ..services.scoring_service import calcular_puntaje
 from .organizacion import _serialize
@@ -161,6 +161,20 @@ def transicionar_sesion(
             detail=f"Transición no permitida: {sesion.estado} → {nuevo_estado}. Permitidas: {transiciones_permitidas}"
         )
 
+    # Validar que los 4 participantes estén asignados antes de FINALIZADA
+    if nuevo_estado == "FINALIZADA":
+        participantes = db.query(ParticipanteSesion).filter(
+            ParticipanteSesion.sesion_id == sesion_id
+        ).all()
+        roles_asignados = {p.rol for p in participantes}
+        roles_requeridos = {"consultor", "rh", "gerente_area", "lider_cargo"}
+        faltantes = roles_requeridos - roles_asignados
+        if faltantes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Se requieren los 4 roles del taller antes de finalizar. Faltan: {', '.join(sorted(faltantes))}"
+            )
+
     antes = _serialize(sesion)
     sesion.estado = nuevo_estado
     if nuevo_estado == "APROBADA":
@@ -224,6 +238,86 @@ def _finalizar_valoraciones_en_sesion(db: Session, sesion_id: int, user_id: int 
             cargo.estado_valoracion = "VALORADO"
 
     db.commit()
+
+
+# ==========================================
+# PARTICIPANTES DEL TALLER (4 ROLES)
+# ==========================================
+
+ROL_PARTICIPANTES_VALIDOS = ("consultor", "rh", "gerente_area", "lider_cargo")
+
+
+@router.get("/sesiones-valoracion/{sesion_id}/participantes")
+def listar_participantes(
+    sesion_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return _serialize(db.query(ParticipanteSesion).filter(
+        ParticipanteSesion.sesion_id == sesion_id
+    ).all())
+
+
+@router.post("/sesiones-valoracion/{sesion_id}/participantes")
+def crear_participante(
+    sesion_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sesion = db.query(SesionValoracion).filter(
+        SesionValoracion.id == sesion_id,
+        SesionValoracion.deleted_at.is_(None)
+    ).first()
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+
+    rol = data.get("rol")
+    if rol not in ROL_PARTICIPANTES_VALIDOS:
+        raise HTTPException(status_code=400, detail=f"Rol no válido: {rol}. Válidos: {ROL_PARTICIPANTES_VALIDOS}")
+
+    nombre = data.get("nombre", "").strip()
+    if not nombre:
+        raise HTTPException(status_code=400, detail="Nombre del participante requerido")
+
+    # Reemplazar si ya existe ese rol en la sesión
+    existente = db.query(ParticipanteSesion).filter(
+        ParticipanteSesion.sesion_id == sesion_id,
+        ParticipanteSesion.rol == rol
+    ).first()
+    if existente:
+        existente.nombre = nombre
+        existente.email = data.get("email")
+    else:
+        p = ParticipanteSesion(
+            sesion_id=sesion_id, nombre=nombre, rol=rol,
+            email=data.get("email"), created_by=_get_user_id(current_user),
+        )
+        db.add(p)
+
+    db.commit()
+    return _serialize(db.query(ParticipanteSesion).filter(
+        ParticipanteSesion.sesion_id == sesion_id,
+        ParticipanteSesion.rol == rol
+    ).first())
+
+
+@router.delete("/sesiones-valoracion/{sesion_id}/participantes/{participante_id}")
+def eliminar_participante(
+    sesion_id: int,
+    participante_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    p = db.query(ParticipanteSesion).filter(
+        ParticipanteSesion.id == participante_id,
+        ParticipanteSesion.sesion_id == sesion_id
+    ).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Participante no encontrado")
+    db.delete(p)
+    db.commit()
+    return {"message": "Participante eliminado"}
 
 
 # ==========================================

@@ -61,7 +61,7 @@ PTS_MAGNITUD = {
 def _get(d, key, default=0):
     if not key:
         return default
-    return d.get(key, d.get(key, default))
+    return d.get(key, default)
 
 
 def calcular_puntaje(v) -> dict:

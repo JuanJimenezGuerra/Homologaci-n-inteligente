@@ -101,13 +101,13 @@ const handleAnalisisCompleta = () => {
 
       <ErrorBoundary>
         {activeTab === 'organizacion' && (
-          <OrganizacionView />
+          <OrganizacionView onNavigate={(tab) => setActiveTab(tab)} />
         )}
       </ErrorBoundary>
 
       <ErrorBoundary>
         {activeTab === 'sesiones' && (
-          <SesionesView />
+          <SesionesView initialEmpresaId={empresaId} />
         )}
       </ErrorBoundary>
 

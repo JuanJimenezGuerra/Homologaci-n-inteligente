@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Building2, Globe, MapPin, Layers, GitBranch,
+  Building2, Globe, MapPin, Layers, GitBranch, ClipboardList,
   ChevronRight, ChevronDown, Plus, Pencil, Trash2, Save, X,
   Search, FolderTree, Briefcase, Users, RotateCcw, AlertCircle, Upload,
   Loader2,
@@ -331,7 +331,7 @@ function ModalEdit({ title, data, fields, onSave, onClose }) {
 }
 
 // ─── Main View ───
-export default function OrganizacionView() {
+export default function OrganizacionView({ onNavigate }) {
   const [grupos, setGrupos] = useState([]);
   const [stats, setStats] = useState({ empresas: 0, macroprocesos: 0, cargos: 0 });
   const [loading, setLoading] = useState(true);
@@ -385,6 +385,12 @@ export default function OrganizacionView() {
           <p className="text-sm text-slate-500 mt-1">Gestión de estructura: grupos empresariales, empresas, sedes, procesos y cargos</p>
         </div>
         <div className="flex gap-3">
+          {onNavigate && (
+            <button onClick={() => onNavigate('sesiones')}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700">
+              <ClipboardList size={16} /> Sesiones de Valoración
+            </button>
+          )}
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar..." className="pl-9 pr-4 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 w-48" />

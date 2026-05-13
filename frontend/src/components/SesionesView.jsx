@@ -4,7 +4,7 @@ import {
   ClipboardList, Plus, ArrowRight, CheckCircle, XCircle, Clock,
   RotateCcw, Trash2, ChevronDown, ChevronUp, Briefcase,
   Pencil, X, UserPlus, UserMinus, AlertCircle, FileSpreadsheet,
-  Search, Download, Loader2,
+  Search, Download, Loader2, Users, User,
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
@@ -107,6 +107,30 @@ function TransicionLabel(estado) {
   return labels[estado] || estado;
 }
 
+function ParticipantInput({ rol, label, onAdd }) {
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const handleSubmit = async () => {
+    if (!value.trim() || saving) return;
+    setSaving(true);
+    await onAdd(rol, value);
+    setValue('');
+    setSaving(false);
+  };
+  return (
+    <div className="flex items-center gap-1 flex-1">
+      <input value={value} onChange={e => setValue(e.target.value)}
+        placeholder="Nombre..."
+        className="flex-1 min-w-0 px-2 py-0.5 text-xs border border-slate-300 rounded-lg bg-white"
+        onKeyDown={e => { if (e.key === 'Enter') handleSubmit(); }}
+      />
+      <button onClick={handleSubmit} className="p-0.5 hover:bg-emerald-100 rounded text-emerald-600 shrink-0">
+        {saving ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+      </button>
+    </div>
+  );
+}
+
 function VersionEditModal({ version, cargo, onSave, onClose }) {
   const [form, setForm] = useState({ ...version });
 
@@ -161,6 +185,13 @@ function VersionEditModal({ version, cargo, onSave, onClose }) {
   );
 }
 
+const ROLES_TALLER = [
+  { key: 'consultor', label: 'Consultor', icon: User, color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { key: 'rh', label: 'RH', icon: User, color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { key: 'gerente_area', label: 'Gerente Área', icon: User, color: 'bg-purple-50 text-purple-700 border-purple-200' },
+  { key: 'lider_cargo', label: 'Líder del Cargo', icon: User, color: 'bg-orange-50 text-orange-700 border-orange-200' },
+];
+
 function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
   const [expanded, setExpanded] = useState(false);
   const [cargos, setCargos] = useState([]);
@@ -176,6 +207,9 @@ function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
   const [loadingVersionTrans, setLoadingVersionTrans] = useState({});
   const [deleting, setDeleting] = useState(false);
   const [addingCargo, setAddingCargo] = useState(null);
+  const [participantes, setParticipantes] = useState([]);
+  const [showParticipantes, setShowParticipantes] = useState(false);
+  const [editParticipante, setEditParticipante] = useState({ rol: '', nombre: '', email: '' });
 
   const loadCargos = async () => {
     setLoadingCargos(true);
@@ -186,8 +220,39 @@ function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
     setLoadingCargos(false);
   };
 
+  const loadParticipantes = async () => {
+    try {
+      const res = await apiGet(`/sesiones-valoracion/${sesion.id}/participantes`);
+      setParticipantes(Array.isArray(res) ? res : []);
+    } catch { onToast?.('Error al cargar participantes', 'error'); }
+  };
+
+  const handleAddParticipante = async (rol, nombre) => {
+    if (!nombre.trim()) return;
+    try {
+      await apiPost(`/sesiones-valoracion/${sesion.id}/participantes`, { rol, nombre, email: '' });
+      onToast?.(`${ROLES_TALLER.find(r => r.key === rol)?.label}: ${nombre}`, 'success');
+      await loadParticipantes();
+    } catch { onToast?.('Error al agregar participante', 'error'); }
+  };
+
+  const handleRemoveParticipante = async (participanteId) => {
+    try {
+      await apiDelete(`/sesiones-valoracion/${sesion.id}/participantes/${participanteId}`);
+      onToast?.('Participante eliminado', 'success');
+      await loadParticipantes();
+    } catch { onToast?.('Error al eliminar participante', 'error'); }
+  };
+
+  const participantesCompletos = ROLES_TALLER.every(r =>
+    participantes.some(p => p.rol === r.key && p.nombre?.trim())
+  );
+
   const toggleExpand = async () => {
-    if (!expanded) await loadCargos();
+    if (!expanded) {
+      await loadCargos();
+      await loadParticipantes();
+    }
     setExpanded(!expanded);
   };
 
@@ -380,8 +445,48 @@ function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
                   ))}
                 </div>
               )}
+          </div>
+          {/* Workshop Participants Section */}
+          <div className="border-t border-slate-100 px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+                <Users size={14} /> Taller - Participantes
+                {participantesCompletos ? (
+                  <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold">4/4</span>
+                ) : (
+                  <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">{participantes.length}/4</span>
+                )}
+              </h4>
             </div>
-          </motion.div>
+            <div className="grid grid-cols-2 gap-2">
+              {ROLES_TALLER.map(rol => {
+                const existing = participantes.find(p => p.rol === rol.key);
+                const Icon = rol.icon;
+                return (
+                  <div key={rol.key} className={`flex items-center gap-2 p-2 rounded-xl border ${existing ? rol.color : 'border-slate-200 bg-slate-50'} text-sm`}>
+                    <Icon size={16} className="shrink-0" />
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase shrink-0 w-20">{rol.label}</span>
+                    {existing ? (
+                      <div className="flex items-center gap-1 flex-1 min-w-0">
+                        <span className="text-xs font-medium text-slate-700 truncate">{existing.nombre}</span>
+                        {canTransition && (
+                          <button onClick={() => handleRemoveParticipante(existing.id)}
+                            className="ml-auto p-0.5 hover:bg-red-100 rounded text-red-400 hover:text-red-600 shrink-0">
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    ) : canTransition ? (
+                      <ParticipantInput rol={rol.key} label={rol.label} onAdd={handleAddParticipante} />
+                    ) : (
+                      <span className="text-[10px] text-slate-400 italic">Pendiente</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </motion.div>
         )}
       </AnimatePresence>
 
@@ -510,9 +615,9 @@ function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
   );
 }
 
-export default function SesionesView() {
+export default function SesionesView({ initialEmpresaId }) {
   const [empresas, setEmpresas] = useState([]);
-  const [empresaId, setEmpresaId] = useState(null);
+  const [empresaId, setEmpresaId] = useState(initialEmpresaId || null);
   const [sesiones, setSesiones] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -525,7 +630,17 @@ export default function SesionesView() {
   };
 
   useEffect(() => {
-    apiGet('/empresas').then(res => setEmpresas(Array.isArray(res) ? res : []));
+    apiGet('/empresas').then(res => {
+      setEmpresas(Array.isArray(res) ? res : []);
+      if (initialEmpresaId) {
+        setEmpresaId(initialEmpresaId);
+        setLoading(true);
+        apiGet(`/empresas/${initialEmpresaId}/sesiones-valoracion`).then(r => {
+          setSesiones(Array.isArray(r) ? r : []);
+          setLoading(false);
+        });
+      }
+    });
   }, []);
 
   const loadSesiones = async (eid) => {
