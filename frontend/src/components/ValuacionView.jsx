@@ -777,6 +777,10 @@ const ValuacionView = ({ uploadId, onValoracionesChange, onComplete, onBack }) =
   if (cargos.length === 0 && !loading) {
     return (
       <div className="max-w-3xl mx-auto py-16 text-center space-y-6">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 mb-4">
+          <strong>Funcionalidad Legacy</strong> — Esta pestaña ha sido reemplazada por el nuevo flujo de valoración.
+          Ve a <strong>Formulario → Organización → Sesiones</strong> para usar el pipeline actualizado.
+        </div>
         <div className="inline-flex p-5 bg-emerald-50 rounded-3xl text-primary mb-2">
           <BarChart2 size={48}/>
         </div>

@@ -10,12 +10,12 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
     { id: 'formulario', label: '1. Formulario', icon: Building2, desc: 'Cargar requerimientos', primary: true },
     { id: 'organizacion', label: '2. Organización', icon: GitBranch, desc: 'Crear organigrama', primary: true },
     { id: 'sesiones', label: '3. Sesiones', icon: ClipboardList, desc: 'Taller de valoración', primary: true },
+    { id: 'historial', label: '4. Historial', icon: History, desc: 'Procesos ejecutados', primary: true },
     // ── Flujo Anterior (Legado) ──
-    { id: 'valoracion', label: '4. Valoración', icon: Target, desc: 'Evaluación IA (legado)', primary: false },
-    { id: 'homologacion', label: '5. Homologación', icon: Link2, desc: 'Matching (legado)', primary: false },
-    { id: 'analisis', label: '6. Análisis', icon: TrendingUp, desc: 'Curvas (legado)', primary: false },
-    { id: 'equidad', label: '7. Equidad', icon: Scale, desc: 'Nivelación (legado)', primary: false },
-    { id: 'historial', label: '8. Historial', icon: History, desc: 'Procesos ejecutados', primary: true },
+    { id: 'valoracion', label: '5. Valoración', icon: Target, desc: 'Evaluación IA (legado)', primary: false },
+    { id: 'homologacion', label: '6. Homologación', icon: Link2, desc: 'Matching (legado)', primary: false },
+    { id: 'analisis', label: '7. Análisis', icon: TrendingUp, desc: 'Curvas (legado)', primary: false },
+    { id: 'equidad', label: '8. Equidad', icon: Scale, desc: 'Nivelación (legado)', primary: false },
   ];
 
   return (
@@ -40,7 +40,7 @@ const Layout = ({ children, activeTab, setActiveTab, user, onLogout }) => {
         <nav className="flex-1 px-4 py-4 space-y-1">
           {menuItems.map((item, idx) => (
             <React.Fragment key={item.id}>
-              {idx === 3 && <div className="my-2 border-t border-slate-200 pt-2">
+              {idx === 4 && <div className="my-2 border-t border-slate-200 pt-2">
                 <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 px-2">Legado</span>
               </div>}
               <button

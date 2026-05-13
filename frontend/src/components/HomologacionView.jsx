@@ -397,6 +397,10 @@ function HomologacionView({ empresaId, onComplete }) {
   if (safeDisplayCargos.length === 0 && !loading && !processing) {
     return (
       <div className="max-w-4xl mx-auto">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 mb-4">
+          <strong>Funcionalidad Legacy</strong> — Esta pestaña ha sido reemplazada por el nuevo flujo.
+          Ve a <strong>Formulario → Organización → Sesiones</strong> para usar el pipeline actualizado.
+        </div>
         <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
           <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold mb-2">No hay datos</h2>
@@ -412,6 +416,10 @@ function HomologacionView({ empresaId, onComplete }) {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 mb-4">
+        <strong>Funcionalidad Legacy</strong> — Esta pestaña ha sido reemplazada por el nuevo flujo.
+        Ve a <strong>Formulario → Organización → Sesiones</strong> para usar el pipeline actualizado.
+      </div>
       {/* ============ EMPRESA: TODOS LOS DATOS BASICOS ============ */}
       {hasEmpresaData && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-lg overflow-hidden">

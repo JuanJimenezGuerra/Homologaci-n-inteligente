@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Building2, Globe, MapPin, Layers, GitBranch, ClipboardList,
   ChevronRight, ChevronDown, Plus, Pencil, Trash2, Save, X,
@@ -56,16 +56,28 @@ const FIELD_LABELS = {
 const API_BASE = `${API}/api/v1`;
 
 function apiGet(path) {
-  return fetch(`${API_BASE}${path}`, { headers: getAuthHeaders() }).then(r => r.json());
+  return fetch(`${API_BASE}${path}`, { headers: getAuthHeaders() }).then(async r => {
+    if (!r.ok) throw new Error(await r.text().then(t => t.slice(0, 200)));
+    return r.json();
+  });
 }
 function apiPost(path, data) {
-  return fetch(`${API_BASE}${path}`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) }).then(r => r.json());
+  return fetch(`${API_BASE}${path}`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) }).then(async r => {
+    if (!r.ok) throw new Error(await r.text().then(t => t.slice(0, 200)));
+    return r.json();
+  });
 }
 function apiPut(path, data) {
-  return fetch(`${API_BASE}${path}`, { method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data) }).then(r => r.json());
+  return fetch(`${API_BASE}${path}`, { method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data) }).then(async r => {
+    if (!r.ok) throw new Error(await r.text().then(t => t.slice(0, 200)));
+    return r.json();
+  });
 }
 function apiDelete(path) {
-  return fetch(`${API_BASE}${path}`, { method: 'DELETE', headers: getAuthHeaders() }).then(r => r.json());
+  return fetch(`${API_BASE}${path}`, { method: 'DELETE', headers: getAuthHeaders() }).then(async r => {
+    if (!r.ok) throw new Error(await r.text().then(t => t.slice(0, 200)));
+    return r.json();
+  });
 }
 
 // ─── TreeNode Component ───
@@ -115,10 +127,12 @@ function TreeNode({ type, data, depth, onRefresh, empresaId }) {
     }
     if (childType === 'empresa') payload.grupo_empresarial_id = data.id;
     if (childType === 'cargo') payload.empresa_id = empresaId || data.empresa_id;
-    await apiPost(`/${nt.endpoint}`, payload);
-    setShowForm(false);
-    setFormData({});
-    await loadChildren();
+    try {
+      await apiPost(`/${nt.endpoint}`, payload);
+      setShowForm(false);
+      setFormData({});
+      await loadChildren();
+    } catch (e) { alert('Error al crear: ' + e.message); }
     setOperating(false);
   };
 
@@ -128,9 +142,11 @@ function TreeNode({ type, data, depth, onRefresh, empresaId }) {
     e.preventDefault();
     setOperating(true);
     const nt = NODE_TYPES[type];
-    await apiPut(`/${nt.endpoint}/${data.id}`, formData);
-    setEditing(false);
-    onRefresh();
+    try {
+      await apiPut(`/${nt.endpoint}/${data.id}`, formData);
+      setEditing(false);
+      onRefresh();
+    } catch (e) { alert('Error al actualizar: ' + e.message); }
     setOperating(false);
   };
 
@@ -138,8 +154,10 @@ function TreeNode({ type, data, depth, onRefresh, empresaId }) {
     if (!confirm(`¿Eliminar ${data.nombre || data.name || 'este elemento'}?`)) return;
     setOperating(true);
     const nt = NODE_TYPES[type];
-    await apiDelete(`/${nt.endpoint}/${data.id}`);
-    onRefresh();
+    try {
+      await apiDelete(`/${nt.endpoint}/${data.id}`);
+      onRefresh();
+    } catch (e) { alert('Error al eliminar: ' + e.message); }
     setOperating(false);
   };
 
@@ -337,25 +355,35 @@ function SyncFromUploadButton({ onRefresh }) {
   const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState(null);
   const [loadingUploads, setLoadingUploads] = useState(false);
+  const [error, setError] = useState('');
 
   const fetchUploads = async () => {
     setLoadingUploads(true);
+    setError('');
     try {
       const res = await fetch(`${API}/api/v1/uploads`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
-      if (res.ok) {
+      if (!res.ok) {
+        const err = await res.text();
+        setError(`Error al cargar: ${err.slice(0, 100)}`);
+        setUploads([]);
+      } else {
         const data = await res.json();
         setUploads(Array.isArray(data) ? data : []);
         if (Array.isArray(data) && data.length > 0) setSelectedId(String(data[0].id));
       }
-    } catch {}
+    } catch (e) {
+      setError('Error de conexión al cargar uploads');
+      setUploads([]);
+    }
     setLoadingUploads(false);
   };
 
   const handleOpen = () => {
     setOpen(true);
     setResult(null);
+    setError('');
     fetchUploads();
   };
 
@@ -363,18 +391,39 @@ function SyncFromUploadButton({ onRefresh }) {
     if (!selectedId) return;
     setSyncing(true);
     setResult(null);
+    setError('');
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
       const res = await fetch(`${API}/api/v1/uploads/${selectedId}/sync-organigrama`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       const data = await res.json();
-      setResult(data);
-      if (res.ok) { onRefresh?.(); }
+      if (res.ok) {
+        setResult({ ok: true, created: data.created, skipped: data.skipped, total: data.total });
+        onRefresh?.();
+      } else {
+        setResult({ ok: false, error: data.detail || 'Error desconocido' });
+      }
     } catch (e) {
-      setResult({ error: e.message });
+      if (e.name === 'AbortError') {
+        setResult({ ok: false, error: 'La solicitud tardó demasiado. Intenta de nuevo.' });
+      } else {
+        setResult({ ok: false, error: e.message });
+      }
     }
     setSyncing(false);
+  };
+
+  const fmtFecha = (u) => {
+    try {
+      if (u.fecha_creacion) return new Date(u.fecha_creacion).toLocaleDateString();
+      if (u.fecha) return new Date(u.fecha).toLocaleDateString();
+    } catch {}
+    return '?';
   };
 
   return (
@@ -395,28 +444,30 @@ function SyncFromUploadButton({ onRefresh }) {
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Selecciona una carga</label>
                 {loadingUploads ? (
-                  <div className="flex items-center gap-2 text-sm text-slate-400 py-2"><Loader2 size={14} className="animate-spin" /> Cargando...</div>
+                  <div className="flex items-center gap-2 text-sm text-slate-400 py-3"><Loader2 size={14} className="animate-spin" /> Cargando...</div>
+                ) : error ? (
+                  <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm">{error}</div>
                 ) : uploads.length === 0 ? (
-                  <p className="text-sm text-slate-400 italic py-2">No hay cargas disponibles. Sube un Excel primero.</p>
+                  <p className="text-sm text-slate-400 italic py-2">No hay cargas disponibles. Sube un Excel primero desde la pestaña "Formulario".</p>
                 ) : (
                   <select value={selectedId} onChange={e => setSelectedId(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
                     {uploads.map(u => (
                       <option key={u.id} value={u.id}>
-                        #{u.id} - {u.empresa || 'Sin empresa'} ({u.fecha ? new Date(u.fecha).toLocaleDateString() : '?'}) - {u.num_cargos || 0} cargos
+                        #{u.id} - {u.empresa || 'Sin empresa'} ({fmtFecha(u)}) - {u.num_cargos || 0} cargos
                       </option>
                     ))}
                   </select>
                 )}
               </div>
               {result && (
-                <div className={`p-3 rounded-xl text-sm ${result.error ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                  {result.error ? `Error: ${result.error}` : `✅ ${result.created} creados, ${result.skipped} omitidos de ${result.total} total`}
+                <div className={`p-3 rounded-xl text-sm ${!result.ok ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                  {!result.ok ? `Error: ${result.error}` : `✅ ${result.created} creados, ${result.skipped} omitidos de ${result.total} total`}
                 </div>
               )}
               <div className="flex gap-3 pt-2">
                 <button onClick={() => { setOpen(false); setResult(null); }} className="flex-1 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
-                <button onClick={handleSync} disabled={syncing || !selectedId || uploads.length === 0}
+                <button onClick={handleSync} disabled={syncing || uploads.length === 0}
                   className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">
                   {syncing ? <><Loader2 size={14} className="animate-spin inline mr-1" /> Sincronizando...</> : 'Sincronizar'}
                 </button>
@@ -436,9 +487,6 @@ export default function OrganizacionView({ onNavigate }) {
   const [stats, setStats] = useState({ empresas: 0, macroprocesos: 0, cargos: 0 });
   const [loading, setLoading] = useState(true);
   const [showCreateGrupo, setShowCreateGrupo] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [importResult, setImportResult] = useState(null);
-  const [importing, setImporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -467,12 +515,13 @@ export default function OrganizacionView({ onNavigate }) {
     }).catch(() => setLoading(false));
   }, [refreshKey]);
 
+  const [grupoForm, setGrupoForm] = useState({ nombre: '', descripcion: '', sector_principal: '', tamano: '', pais_principal: '' });
+
   const handleCreateGrupo = async (e) => {
     e.preventDefault();
-    const form = new FormData(e.target);
-    const data = Object.fromEntries(form.entries());
-    await apiPost('/grupos-empresariales', data);
+    await apiPost('/grupos-empresariales', grupoForm);
     setShowCreateGrupo(false);
+    setGrupoForm({ nombre: '', descripcion: '', sector_principal: '', tamano: '', pais_principal: '' });
     refresh();
   };
 
@@ -485,8 +534,12 @@ export default function OrganizacionView({ onNavigate }) {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
       const data = await res.json();
-      alert(`✅ Datos demo creados:\nEmpresa: ${data.empresa}\nCargos: ${data.cargos}\nSesión ID: ${data.sesion_id}\n\nVe a "Sesiones de Valoración" para ver el taller.`);
-      refresh();
+      if (res.ok) {
+        alert(`✅ Datos demo creados:\nEmpresa: ${data.empresa}\nCargos: ${data.cargos}\nSesión ID: ${data.sesion_id}\n\nVe a "Sesiones de Valoración" para ver el taller.`);
+        refresh();
+      } else {
+        alert('Error: ' + (data.detail || 'Error desconocido'));
+      }
     } catch (e) {
       alert('Error al crear datos demo: ' + e.message);
     }
@@ -495,6 +548,37 @@ export default function OrganizacionView({ onNavigate }) {
 
   return (
     <div className="space-y-6">
+      {/* Welcome banner when no data */}
+      {grupos.length === 0 && !loading && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-8 text-white shadow-xl">
+          <h2 className="text-2xl font-bold mb-2">Bienvenido a SHR Valoración</h2>
+          <p className="text-blue-100 mb-6">Completa esta información para comenzar con la estructura organizacional.</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-1">Paso 1</p>
+              <p className="font-semibold">Sube el Excel de Requerimientos</p>
+              <p className="text-xs text-blue-200 mt-1">Ve a la pestaña "Formulario" y carga el archivo con los datos de la empresa y los cargos.</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-1">Paso 2</p>
+              <p className="font-semibold">Crea un Grupo Empresarial</p>
+              <p className="text-xs text-blue-200 mt-1">Usa el botón "Nuevo Grupo" para crear la estructura jerárquica de la organización.</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-1">Paso 3</p>
+              <p className="font-semibold">Sincroniza los Cargos</p>
+              <p className="text-xs text-blue-200 mt-1">Usa el botón "Sincronizar" para convertir los cargos del Excel en cargos organizacionales.</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-1">Paso 4</p>
+              <p className="font-semibold">Crea Sesiones de Valoración</p>
+              <p className="text-xs text-blue-200 mt-1">Ve a "Sesiones de Valoración" para crear talleres con 4 participantes y valorar cargos.</p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -519,9 +603,6 @@ export default function OrganizacionView({ onNavigate }) {
           </div>
           <button onClick={() => setShowCreateGrupo(true)} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">
             <Plus size={16} /> Nuevo Grupo
-          </button>
-          <button onClick={() => setShowImport(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700">
-            <Upload size={16} /> Importar Excel
           </button>
         </div>
       </div>
@@ -576,20 +657,20 @@ export default function OrganizacionView({ onNavigate }) {
             <form onSubmit={handleCreateGrupo} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Nombre *</label>
-                <input name="nombre" required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500" />
+                <input value={grupoForm.nombre} onChange={e => setGrupoForm(s => ({ ...s, nombre: e.target.value }))} required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Descripción</label>
-                <textarea name="descripcion" rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500" />
+                <textarea value={grupoForm.descripcion} onChange={e => setGrupoForm(s => ({ ...s, descripcion: e.target.value }))} rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Sector Principal</label>
-                <input name="sector_principal" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500" />
+                <input value={grupoForm.sector_principal} onChange={e => setGrupoForm(s => ({ ...s, sector_principal: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Tamaño</label>
-                  <select name="tamano" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500">
+                  <select value={grupoForm.tamano} onChange={e => setGrupoForm(s => ({ ...s, tamano: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500">
                     <option value="">Seleccionar</option>
                     <option>Pequeño</option>
                     <option>Mediano</option>
@@ -597,77 +678,20 @@ export default function OrganizacionView({ onNavigate }) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">País</label>
-                  <input name="pais_principal" defaultValue="Colombia" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500" />
+                  <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">País Principal</label>
+                  <input value={grupoForm.pais_principal} onChange={e => setGrupoForm(s => ({ ...s, pais_principal: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500" />
                 </div>
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => setShowCreateGrupo(false)} className="flex-1 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-                <button type="submit" className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">Crear Grupo</button>
+                <button type="submit" className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">Guardar</button>
               </div>
             </form>
           </motion.div>
         </div>
       )}
 
-      {/* Import Modal */}
-      <AnimatePresence>
-        {showImport && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => { setShowImport(false); setImportResult(null); }}>
-            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg m-4" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between p-6 border-b border-slate-200">
-                <h3 className="font-bold text-lg text-slate-800">Importar Estructura desde Excel</h3>
-                <button onClick={() => { setShowImport(false); setImportResult(null); }} className="p-1 hover:bg-slate-100 rounded"><X size={20} /></button>
-              </div>
-              <div className="p-6 space-y-4">
-                <p className="text-sm text-slate-600">El archivo debe tener hojas llamadas <strong>Areas</strong> y <strong>Cargos</strong>.</p>
-                <input type="file" accept=".xlsx,.xls" onChange={async (e) => {
-                  const file = e.target.files[0];
-                  if (!file) return;
-                  setImporting(true);
-                  setImportResult(null);
-                  const form = new FormData();
-                  form.append('file', file);
-                  try {
-                    const token = localStorage.getItem('token');
-                    const res = await fetch(`${API_BASE}/organizacion/carga-masiva`, {
-                      method: 'POST',
-                      headers: { Authorization: `Bearer ${token}` },
-                      body: form,
-                    });
-                    const data = await res.json();
-                    setImportResult({ ok: res.ok, data });
-                    if (res.ok) refresh();
-                  } catch (err) {
-                    setImportResult({ ok: false, data: { detail: err.message } });
-                  }
-                  setImporting(false);
-                }} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" />
-                {importing && <div className="flex items-center gap-2 text-sm text-slate-500"><div className="w-4 h-4 border-2 border-slate-300 border-t-emerald-500 rounded-full animate-spin" /> Procesando...</div>}
-                {importResult && (
-                  <div className={`p-4 rounded-xl text-sm ${importResult.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
-                    {importResult.ok ? (
-                      <div>
-                        <p className="font-semibold">Importación completada</p>
-                        <p>Áreas creadas: {importResult.data.areas?.creados || 0}</p>
-                        <p>Cargos creados: {importResult.data.cargos?.creados || 0}</p>
-                        {importResult.data.areas?.errores?.length > 0 && (
-                          <div className="mt-2"><p className="font-semibold">Errores:</p><ul className="list-disc pl-4 text-xs">{importResult.data.areas.errores.map((e, i) => <li key={i}>{e}</li>)}</ul></div>
-                        )}
-                        {importResult.data.cargos?.errores?.length > 0 && (
-                          <div className="mt-2"><p className="font-semibold">Errores en cargos:</p><ul className="list-disc pl-4 text-xs">{importResult.data.cargos.errores.map((e, i) => <li key={i}>{e}</li>)}</ul></div>
-                        )}
-                      </div>
-                    ) : (
-                      <p>{importResult.data?.detail || 'Error desconocido'}</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
     </div>
   );
 }

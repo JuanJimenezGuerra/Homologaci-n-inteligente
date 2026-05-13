@@ -199,6 +199,10 @@ function AnalisisView({ uploadData, onBack }) {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 mb-4">
+        <strong>Funcionalidad Legacy</strong> — Esta pestaña ha sido reemplazada por el nuevo flujo.
+        Ve a <strong>Formulario → Organización → Sesiones</strong> para usar el pipeline actualizado.
+      </div>
       <div className="glass-card rounded-2xl p-6 border border-emerald-100">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
@@ -243,14 +247,20 @@ function AnalisisView({ uploadData, onBack }) {
       </div>
 
       {!tieneDatos && !loading ? (
-        <div className="glass-card rounded-2xl p-12 text-center space-y-4">
-          <div className="inline-flex p-5 bg-amber-50 rounded-3xl text-amber-500 mb-2">
-            <AlertTriangle size={48}/>
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 mb-4">
+            <strong>Funcionalidad Legacy</strong> — Esta pestaña ha sido reemplazada por el nuevo flujo.
+            Ve a <strong>Formulario → Organización → Sesiones</strong> para usar el pipeline actualizado.
           </div>
-          <h3 className="text-xl font-bold text-forest">Sin datos suficientes</h3>
-          <p className="text-slate-500 max-w-md mx-auto">
-            Completa la <strong>Homologación</strong> y <strong>Valoración</strong> de cargos primero para generar los análisis.
-          </p>
+          <div className="glass-card rounded-2xl p-12 text-center space-y-4">
+            <div className="inline-flex p-5 bg-amber-50 rounded-3xl text-amber-500 mb-2">
+              <AlertTriangle size={48}/>
+            </div>
+            <h3 className="text-xl font-bold text-forest">Sin datos suficientes</h3>
+            <p className="text-slate-500 max-w-md mx-auto">
+              Completa la <strong>Homologación</strong> y <strong>Valoración</strong> de cargos primero para generar los análisis.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="glass-card rounded-2xl p-6 border border-emerald-100">

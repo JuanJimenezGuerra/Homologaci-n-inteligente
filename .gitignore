@@ -3,6 +3,7 @@ dist/
 *.db
 *.log
 __pycache__/
+*.bak
 .env
 temp_req_*
 temp_master_*
