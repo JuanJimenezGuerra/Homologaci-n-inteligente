@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ClipboardList, Plus, ArrowRight, CheckCircle, XCircle, Clock,
   RotateCcw, Trash2, ChevronDown, ChevronUp, Briefcase,
   Pencil, X, UserPlus, UserMinus, AlertCircle, FileSpreadsheet,
   Search, Download, Loader2, Users, User, Upload,
+  BarChart3, TrendingUp, Layers, Eye,
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
@@ -61,6 +62,44 @@ const FACTORES = [
   { key: 'magnitud', label: 'Magnitud', options: ['Pequeña', 'Mediana', 'Grande', 'Corporativa'] },
 ];
 
+const PTS = {
+  conocimientos: { 'Básico': 20, 'Medio': 40, 'Avanzado': 60, 'Experto': 80 },
+  experiencia: { 'Mínima': 0.6, '1-2 años': 0.8, '3-5 años': 1.0, '5-7 años': 1.2, '7+ años': 1.4 },
+  habilidad_gerencial: { 'No requiere': 10, 'Baja': 20, 'Media': 30, 'Alta': 40 },
+  rol_cargo: { 'Individual': 10, 'Supervisión': 15, 'Táctico': 25, 'Estratégico': 35, 'Dirección': 45 },
+  contacto: { 'Interno': 5, 'Mixto': 10, 'Externo': 15, 'Cliente': 20 },
+  frecuencia: { 'Esporádica': 2, 'Mensual': 4, 'Semanal': 6, 'Diaria': 8, 'Permanente': 10 },
+  contenido_relaciones: { 'Informativo': 5, 'Coordinación': 10, 'Negociación': 15, 'Asesoría': 20 },
+  complejidad_conceptual: { 'Repetitiva': 10, 'Procedimental': 20, 'Analítica': 30, 'Creativa': 40, 'Estratégica': 50 },
+  tendencia: { 'Estable': 0.85, 'Creciente': 1.0, 'Decreciente': 1.15 },
+  guias_apoyo: { 'Específicas': 10, 'Generales': 20, 'Políticas': 30, 'Autonomía total': 40 },
+  impacto: { 'Mínimo': 10, 'Medio': 20, 'Alto': 30, 'Crítico': 40 },
+  autonomia: { 'Nula': 10, 'Supervisada': 20, 'Guiada': 30, 'Total': 40 },
+  magnitud: { 'Pequeña': 5, 'Mediana': 10, 'Grande': 15, 'Corporativa': 20 },
+};
+
+function calcularScorePreview(form) {
+  const pts = PTS;
+  const _g = (table, key, def) => (key && table[key] != null) ? table[key] : def;
+  const f1 = _g(pts.conocimientos, form.conocimientos, 40) * _g(pts.experiencia, form.experiencia, 1.0) + _g(pts.habilidad_gerencial, form.habilidad_gerencial, 20) + _g(pts.rol_cargo, form.rol_cargo, 15);
+  const f2 = _g(pts.contacto, form.contacto, 10) + _g(pts.frecuencia, form.frecuencia, 4) + _g(pts.contenido_relaciones, form.contenido_relaciones, 10);
+  const f3 = _g(pts.complejidad_conceptual, form.complejidad_conceptual, 20) * _g(pts.tendencia, form.tendencia_cc, 1.0) + _g(pts.guias_apoyo, form.guias_apoyo, 20) * _g(pts.tendencia, form.tendencia_ga, 1.0);
+  const f4 = _g(pts.impacto, form.impacto, 20) + _g(pts.autonomia, form.autonomia, 20) + _g(pts.magnitud, form.magnitud, 10);
+  const crit = (parseInt(form.criterio_1) === 1 ? 1 : 0) + (parseInt(form.criterio_2) === 1 ? 1 : 0) + (parseInt(form.criterio_3) === 1 ? 1 : 0);
+  const raw = Math.round(f1 + f2 + f3 + f4);
+  const total = Math.round(raw * (1 + crit * 0.05));
+  let nivel, cat;
+  if (total <= 100) { nivel = 'Nivel I'; cat = 1; }
+  else if (total <= 150) { nivel = 'Nivel II'; cat = 2; }
+  else if (total <= 200) { nivel = 'Nivel III'; cat = 3; }
+  else if (total <= 250) { nivel = 'Nivel IV'; cat = 4; }
+  else if (total <= 300) { nivel = 'Nivel V'; cat = 5; }
+  else if (total <= 350) { nivel = 'Nivel VI'; cat = 6; }
+  else if (total <= 400) { nivel = 'Nivel VII'; cat = 7; }
+  else { nivel = 'Nivel VIII'; cat = 8; }
+  return { f1: Math.round(f1), f2: Math.round(f2), f3: Math.round(f3), f4: Math.round(f4), crit, raw, total, nivel, cat };
+}
+
 function apiGet(path) {
   return fetch(`${API_BASE}${path}`, { headers: getAuthHeaders() }).then(r => r.json());
 }
@@ -107,6 +146,150 @@ function TransicionLabel(estado) {
   return labels[estado] || estado;
 }
 
+const NIVEL_COLORS = {
+  'Nivel I': 'bg-slate-100 text-slate-600',
+  'Nivel II': 'bg-blue-50 text-blue-700',
+  'Nivel III': 'bg-cyan-50 text-cyan-700',
+  'Nivel IV': 'bg-emerald-50 text-emerald-700',
+  'Nivel V': 'bg-amber-50 text-amber-700',
+  'Nivel VI': 'bg-orange-50 text-orange-700',
+  'Nivel VII': 'bg-rose-50 text-rose-700',
+  'Nivel VIII': 'bg-purple-50 text-purple-700',
+};
+
+function ScoreBar({ score, max }) {
+  const pct = Math.min((score / max) * 100, 100);
+  const color = score >= 300 ? 'bg-purple-500' : score >= 200 ? 'bg-blue-500' : score >= 100 ? 'bg-emerald-500' : 'bg-slate-400';
+  return (
+    <div className="w-full bg-slate-100 rounded-full h-1.5">
+      <div className={`h-1.5 rounded-full transition-all duration-500 ${color}`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function SessionDashboard({ cargos, sesion }) {
+  const stats = useMemo(() => {
+    const total = cargos.length;
+    const scored = cargos.filter(c => c.version?.puntos_totales != null);
+    const avg = scored.length ? Math.round(scored.reduce((s, c) => s + (c.version.puntos_totales || 0), 0) / scored.length) : 0;
+    const byNivel = {};
+    const byEstado = {};
+    scored.forEach(c => {
+      const n = c.version.nivel_shr || 'Sin nivel';
+      byNivel[n] = (byNivel[n] || 0) + 1;
+      const e = c.version.estado || 'BORRADOR';
+      byEstado[e] = (byEstado[e] || 0) + 1;
+    });
+    return { total, scored: scored.length, avg, byNivel, byEstado };
+  }, [cargos]);
+
+  return (
+    <div className="space-y-5">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-4 gap-3">
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Briefcase size={16} className="text-blue-600" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Cargos</span>
+          </div>
+          <span className="text-2xl font-bold text-blue-800">{stats.total}</span>
+          <span className="text-xs text-blue-600 ml-2">{stats.scored} valorados</span>
+        </div>
+        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp size={16} className="text-emerald-600" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Promedio</span>
+          </div>
+          <span className="text-2xl font-bold text-emerald-800">{stats.avg}</span>
+          <span className="text-xs text-emerald-600 ml-2">pts</span>
+        </div>
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Layers size={16} className="text-purple-600" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Niveles</span>
+          </div>
+          <span className="text-2xl font-bold text-purple-800">{Object.keys(stats.byNivel).length}</span>
+          <span className="text-xs text-purple-600 ml-2">distintos</span>
+        </div>
+        <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <BarChart3 size={16} className="text-amber-600" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Definitivas</span>
+          </div>
+          <span className="text-2xl font-bold text-amber-800">{stats.byEstado['DEFINITIVA'] || 0}</span>
+          <span className="text-xs text-amber-600 ml-2">de {stats.total}</span>
+        </div>
+      </div>
+
+      {/* Distribution by Level */}
+      {Object.keys(stats.byNivel).length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {Object.entries(stats.byNivel).map(([nivel, count]) => {
+            const colors = NIVEL_COLORS[nivel] || 'bg-slate-100 text-slate-600';
+            return (
+              <span key={nivel} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${colors}`}>
+                {nivel} <span className="opacity-70">x{count}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Full Table */}
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="text-left py-3 px-4 font-bold text-[10px] uppercase tracking-wider text-slate-500">Cargo</th>
+              <th className="text-left py-3 px-4 font-bold text-[10px] uppercase tracking-wider text-slate-500">Área</th>
+              <th className="text-center py-3 px-4 font-bold text-[10px] uppercase tracking-wider text-slate-500">Puntaje</th>
+              <th className="text-center py-3 px-4 font-bold text-[10px] uppercase tracking-wider text-slate-500">Nivel SHR</th>
+              <th className="text-center py-3 px-4 font-bold text-[10px] uppercase tracking-wider text-slate-500">Cat</th>
+              <th className="text-center py-3 px-4 font-bold text-[10px] uppercase tracking-wider text-slate-500">Estado</th>
+              <th className="text-center py-3 px-4 font-bold text-[10px] uppercase tracking-wider text-slate-500">V</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cargos.map(({ cargo, version }) => (
+              <tr key={version.id} className="border-b border-slate-100 hover:bg-blue-50/30 transition-colors">
+                <td className="py-3 px-4 font-semibold text-slate-800">{cargo?.nombre || `Cargo #${version.cargo_id}`}</td>
+                <td className="py-3 px-4 text-slate-500">{cargo?.area_nombre || '-'}</td>
+                <td className="py-3 px-4">
+                  {version.puntos_totales ? (
+                    <div className="flex flex-col items-center gap-1">
+                      <span className={`font-bold text-sm ${version.puntos_totales >= 300 ? 'text-purple-700' : version.puntos_totales >= 200 ? 'text-blue-700' : 'text-slate-600'}`}>
+                        {version.puntos_totales}
+                      </span>
+                      <ScoreBar score={version.puntos_totales} max={400} />
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-300 italic">—</span>
+                  )}
+                </td>
+                <td className="py-3 px-4 text-center">
+                  {version.nivel_shr ? (
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${NIVEL_COLORS[version.nivel_shr] || 'bg-slate-100 text-slate-600'}`}>
+                      {version.nivel_shr}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-300 italic">—</span>
+                  )}
+                </td>
+                <td className="py-3 px-4 text-center text-sm font-medium text-slate-600">{version.categoria || '-'}</td>
+                <td className="py-3 px-4 text-center"><EstadoBadge estado={version.estado} /></td>
+                <td className="py-3 px-4 text-center text-xs text-slate-400">v{version.version}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {cargos.length === 0 && (
+          <div className="py-12 text-center text-sm text-slate-400 italic">Sin cargos en esta sesión</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ParticipantInput({ rol, label, onAdd }) {
   const [value, setValue] = useState('');
   const [saving, setSaving] = useState(false);
@@ -133,6 +316,19 @@ function ParticipantInput({ rol, label, onAdd }) {
 
 function VersionEditModal({ version, cargo, onSave, onClose }) {
   const [form, setForm] = useState({ ...version });
+  const score = useMemo(() => calcularScorePreview(form), [form]);
+
+  const LEVEL_COLORS = {
+    'Nivel I': 'bg-slate-100 text-slate-600',
+    'Nivel II': 'bg-blue-50 text-blue-700',
+    'Nivel III': 'bg-cyan-50 text-cyan-700',
+    'Nivel IV': 'bg-emerald-50 text-emerald-700',
+    'Nivel V': 'bg-amber-50 text-amber-700',
+    'Nivel VI': 'bg-orange-50 text-orange-700',
+    'Nivel VII': 'bg-rose-50 text-rose-700',
+    'Nivel VIII': 'bg-purple-50 text-purple-700',
+  };
+  const levelColor = LEVEL_COLORS[score.nivel] || 'bg-slate-100 text-slate-600';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -140,42 +336,88 @@ function VersionEditModal({ version, cargo, onSave, onClose }) {
     if (res.id) onSave(res);
   };
 
+  const GroupBar = ({ label, value, max, color }) => (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] font-semibold text-slate-500 w-20 shrink-0">{label}</span>
+      <div className="flex-1 bg-slate-100 rounded-full h-2">
+        <div className={`h-2 rounded-full ${color}`} style={{ width: `${Math.min(value / max * 100, 100)}%` }} />
+      </div>
+      <span className="text-xs font-bold text-slate-600 w-8 text-right">{value}</span>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={onClose}>
-      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto m-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 sticky top-0 bg-white">
-          <h3 className="font-bold text-lg text-slate-800">Editar Valoración: {cargo?.nombre || `Cargo #${version.cargo_id}`}</h3>
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto m-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 sticky top-0 bg-white z-10">
+          <h3 className="font-bold text-lg text-slate-800">{cargo?.nombre || `Cargo #${version.cargo_id}`}</h3>
           <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded"><X size={20} /></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+
+        {/* Score Preview Panel */}
+        <div className="px-6 pt-5 pb-2">
+          <div className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl border border-blue-100 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Vista previa del puntaje</span>
+              <span className="text-[10px] text-slate-400">en tiempo real</span>
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="col-span-1 flex flex-col items-center justify-center">
+                <span className={`text-3xl font-bold ${score.total >= 300 ? 'text-purple-700' : score.total >= 200 ? 'text-blue-700' : score.total >= 100 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                  {score.total}
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5">puntos</span>
+              </div>
+              <div className="col-span-1 flex flex-col items-center justify-center">
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${levelColor}`}>{score.nivel}</span>
+                <span className="text-[10px] text-slate-400 mt-1">Nivel SHR</span>
+              </div>
+              <div className="col-span-1 flex flex-col items-center justify-center">
+                <span className="text-sm font-bold text-slate-700">Cat. {score.cat}</span>
+                <span className="text-[10px] text-slate-400 mt-1">Categoría</span>
+              </div>
+              <div className="col-span-1 flex flex-col items-center justify-center">
+                <span className="text-sm font-bold text-slate-700">{score.crit > 0 ? `+${score.crit * 5}%` : '0%'}</span>
+                <span className="text-[10px] text-slate-400 mt-1">Criticidad</span>
+              </div>
+            </div>
+            <div className="mt-4 space-y-1.5">
+              <GroupBar label="Saber" value={score.f1} max={300} color="bg-blue-500" />
+              <GroupBar label="Contacto" value={score.f2} max={80} color="bg-emerald-500" />
+              <GroupBar label="Complejidad" value={score.f3} max={120} color="bg-amber-500" />
+              <GroupBar label="Impacto" value={score.f4} max={100} color="bg-purple-500" />
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 pt-2">
           <div className="grid grid-cols-2 gap-4">
             {FACTORES.map(f => (
               <div key={f.key}>
                 <label className="block text-xs font-semibold text-slate-500 mb-1">{f.label}</label>
-                {f.options ? (
-                  <select value={form[f.key] || ''} onChange={e => setForm(s => ({ ...s, [f.key]: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
-                    <option value="">Seleccionar...</option>
-                    {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                ) : (
-                  <input value={form[f.key] || ''} onChange={e => setForm(s => ({ ...s, [f.key]: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-                )}
+                <select value={form[f.key] || ''} onChange={e => setForm(s => ({ ...s, [f.key]: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
+                  <option value="">Seleccionar...</option>
+                  {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
               </div>
             ))}
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1">Justificación</label>
-            <textarea value={form.justificacion || ''} onChange={e => setForm(s => ({ ...s, justificacion: e.target.value }))} rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            <textarea value={form.justificacion || ''} onChange={e => setForm(s => ({ ...s, justificacion: e.target.value }))} rows={2} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
           </div>
           <div className="grid grid-cols-3 gap-4">
             {['criterio_1', 'criterio_2', 'criterio_3'].map(c => (
               <div key={c}>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">{c.replace('_', ' ')}</label>
-                <input type="number" value={form[c] || 0} onChange={e => setForm(s => ({ ...s, [c]: parseInt(e.target.value) || 0 }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <select value={form[c] || 0} onChange={e => setForm(s => ({ ...s, [c]: parseInt(e.target.value) || 0 }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
+                  <option value={0}>0 - No aplica</option>
+                  <option value={1}>1 - Aplica</option>
+                </select>
               </div>
             ))}
           </div>
-          <div className="flex gap-3 pt-4">
+          <div className="flex gap-3 pt-4 border-t border-slate-100">
             <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
             <button type="submit" className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700">Guardar Cambios</button>
           </div>
@@ -210,6 +452,7 @@ function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
   const [participantes, setParticipantes] = useState([]);
   const [showParticipantes, setShowParticipantes] = useState(false);
   const [editParticipante, setEditParticipante] = useState({ rol: '', nombre: '', email: '' });
+  const [activeSubTab, setActiveSubTab] = useState('cargos');
 
   const loadCargos = async () => {
     setLoadingCargos(true);
@@ -390,101 +633,119 @@ function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
       <AnimatePresence>
         {expanded && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-            <div className="border-t border-slate-100 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-sm font-semibold text-slate-600 flex items-center gap-2">
-                  <Briefcase size={14} /> Cargos ({cargos.length})
-                </h4>
-                <div className="flex gap-2">
-                  {hasFinalVersions && (
+            <div className="px-5 pt-4">
+              {/* Sub-tabs */}
+              <div className="flex items-center gap-1 mb-4 border-b border-slate-200">
+                {[
+                  { key: 'cargos', label: 'Cargos', icon: Briefcase, count: cargos.length },
+                  { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+                  { key: 'participantes', label: 'Taller', icon: Users, count: participantes.length, badge: participantesCompletos ? '4/4' : `${participantes.length}/4` },
+                ].map(tab => {
+                  const Icon = tab.icon;
+                  const active = activeSubTab === tab.key;
+                  return (
+                    <button key={tab.key} onClick={() => setActiveSubTab(tab.key)}
+                      className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-all ${active ? 'border-blue-600 text-blue-700 bg-blue-50/50' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>
+                      <Icon size={14} />
+                      {tab.label}
+                      {tab.count != null && <span className="text-[10px] opacity-60">({tab.count})</span>}
+                      {tab.badge && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tab.badge === '4/4' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{tab.badge}</span>}
+                    </button>
+                  );
+                })}
+                <div className="flex-1 flex justify-end gap-2">
+                  {activeSubTab !== 'dashboard' && hasFinalVersions && (
                     <button onClick={loadConsolidado} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-xl text-xs font-semibold hover:bg-blue-100">
-                      <FileSpreadsheet size={14} /> Ver Consolidado
+                      <FileSpreadsheet size={14} /> Consolidado
                     </button>
                   )}
-                  {canTransition && (
+                  {activeSubTab === 'cargos' && canTransition && (
                     <button onClick={openAddCargo} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-semibold hover:bg-emerald-100">
-                      <UserPlus size={14} /> Agregar Cargo
+                      <UserPlus size={14} /> Agregar
                     </button>
                   )}
                 </div>
               </div>
 
-              {loadingCargos ? (
-                <div className="flex items-center justify-center py-8"><div className="w-6 h-6 border-2 border-slate-200 border-t-emerald-500 rounded-full animate-spin" /></div>
-              ) : cargos.length === 0 ? (
-                <p className="text-sm text-slate-400 italic py-4">Sin cargos asignados</p>
-              ) : (
-                <div className="space-y-2">
-                  {cargos.map(({ cargo, version }) => (
-                    <div key={version.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl group">
-                      <Briefcase size={14} className="text-orange-500 shrink-0" />
-                      <span className="font-medium text-sm text-slate-700 flex-1 truncate">{cargo?.nombre || `Cargo #${version.cargo_id}`}</span>
-                      {version.puntos_totales ? (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${version.puntos_totales >= 300 ? 'bg-purple-100 text-purple-700' : version.puntos_totales >= 200 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {version.puntos_totales} pts · {version.nivel_shr || ''}
-                        </span>
-                      ) : null}
-                      <EstadoBadge estado={version.estado} />
-                      <span className="text-xs text-slate-400 shrink-0">v{version.version}</span>
-                      {canTransition && (
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => openEditVersion(version, cargo)} className="p-1.5 hover:bg-blue-100 rounded-lg text-blue-600" title="Editar factores"><Pencil size={14} /></button>
-                          {VERSION_TRANSICIONES[version.estado]?.map(est => (
-                            <button key={est} onClick={() => handleVersionTransicion(version.id, est)}
-                              disabled={loadingVersionTrans[version.id] !== undefined && loadingVersionTrans[version.id] !== null}
-                              className={`px-2 py-1 text-[10px] font-semibold rounded-lg border transition-all ${loadingVersionTrans[version.id] === est ? 'opacity-50 cursor-wait' : 'hover:bg-white'}`}>
-                              {loadingVersionTrans[version.id] === est ? <Loader2 size={10} className="animate-spin inline" /> : TransicionLabel(est)}
-                            </button>
-                          ))}
-                          {version.estado === 'BORRADOR' && (
-                            <button onClick={() => handleRemoveCargo(version.cargo_id)} className="p-1.5 hover:bg-red-50 rounded-lg text-red-500" title="Quitar"><UserMinus size={14} /></button>
+              {/* Cargos tab */}
+              {activeSubTab === 'cargos' && (
+                <>
+                  {loadingCargos ? (
+                    <div className="flex items-center justify-center py-8"><div className="w-6 h-6 border-2 border-slate-200 border-t-emerald-500 rounded-full animate-spin" /></div>
+                  ) : cargos.length === 0 ? (
+                    <p className="text-sm text-slate-400 italic py-4 text-center">Sin cargos asignados. Presiona "Agregar" para añadir cargos a la sesión.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {cargos.map(({ cargo, version }) => (
+                        <div key={version.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl group">
+                          <Briefcase size={14} className="text-orange-500 shrink-0" />
+                          <span className="font-medium text-sm text-slate-700 flex-1 truncate">{cargo?.nombre || `Cargo #${version.cargo_id}`}</span>
+                          {version.puntos_totales ? (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${version.puntos_totales >= 300 ? 'bg-purple-100 text-purple-700' : version.puntos_totales >= 200 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                              {version.puntos_totales} pts · {version.nivel_shr || ''}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-300 italic shrink-0">— pts</span>
+                          )}
+                          <EstadoBadge estado={version.estado} />
+                          <span className="text-xs text-slate-400 shrink-0">v{version.version}</span>
+                          {canTransition && (
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => openEditVersion(version, cargo)} className="p-1.5 hover:bg-blue-100 rounded-lg text-blue-600" title="Editar factores"><Pencil size={14} /></button>
+                              {VERSION_TRANSICIONES[version.estado]?.map(est => (
+                                <button key={est} onClick={() => handleVersionTransicion(version.id, est)}
+                                  disabled={loadingVersionTrans[version.id] !== undefined && loadingVersionTrans[version.id] !== null}
+                                  className={`px-2 py-1 text-[10px] font-semibold rounded-lg border transition-all ${loadingVersionTrans[version.id] === est ? 'opacity-50 cursor-wait' : 'hover:bg-white'}`}>
+                                  {loadingVersionTrans[version.id] === est ? <Loader2 size={10} className="animate-spin inline" /> : TransicionLabel(est)}
+                                </button>
+                              ))}
+                              {version.estado === 'BORRADOR' && (
+                                <button onClick={() => handleRemoveCargo(version.cargo_id)} className="p-1.5 hover:bg-red-50 rounded-lg text-red-500" title="Quitar"><UserMinus size={14} /></button>
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
-          </div>
-          {/* Workshop Participants Section */}
-          <div className="border-t border-slate-100 px-5 py-4">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-semibold text-slate-600 flex items-center gap-2">
-                <Users size={14} /> Taller - Participantes
-                {participantesCompletos ? (
-                  <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold">4/4</span>
-                ) : (
-                  <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">{participantes.length}/4</span>
-                )}
-              </h4>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {ROLES_TALLER.map(rol => {
-                const existing = participantes.find(p => p.rol === rol.key);
-                const Icon = rol.icon;
-                return (
-                  <div key={rol.key} className={`flex items-center gap-2 p-2 rounded-xl border ${existing ? rol.color : 'border-slate-200 bg-slate-50'} text-sm`}>
-                    <Icon size={16} className="shrink-0" />
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase shrink-0 w-20">{rol.label}</span>
-                    {existing ? (
-                      <div className="flex items-center gap-1 flex-1 min-w-0">
-                        <span className="text-xs font-medium text-slate-700 truncate">{existing.nombre}</span>
-                        {canTransition && (
-                          <button onClick={() => handleRemoveParticipante(existing.id)}
-                            className="ml-auto p-0.5 hover:bg-red-100 rounded text-red-400 hover:text-red-600 shrink-0">
-                            <X size={12} />
-                          </button>
+
+              {/* Dashboard tab */}
+              {activeSubTab === 'dashboard' && (
+                <SessionDashboard cargos={cargos} sesion={sesion} />
+              )}
+
+              {/* Participants tab */}
+              {activeSubTab === 'participantes' && (
+                <div className="grid grid-cols-2 gap-2">
+                  {ROLES_TALLER.map(rol => {
+                    const existing = participantes.find(p => p.rol === rol.key);
+                    const Icon = rol.icon;
+                    return (
+                      <div key={rol.key} className={`flex items-center gap-2 p-2 rounded-xl border ${existing ? rol.color : 'border-slate-200 bg-slate-50'} text-sm`}>
+                        <Icon size={16} className="shrink-0" />
+                        <span className="text-[10px] font-semibold text-slate-500 uppercase shrink-0 w-20">{rol.label}</span>
+                        {existing ? (
+                          <div className="flex items-center gap-1 flex-1 min-w-0">
+                            <span className="text-xs font-medium text-slate-700 truncate">{existing.nombre}</span>
+                            {canTransition && (
+                              <button onClick={() => handleRemoveParticipante(existing.id)}
+                                className="ml-auto p-0.5 hover:bg-red-100 rounded text-red-400 hover:text-red-600 shrink-0">
+                                <X size={12} />
+                              </button>
+                            )}
+                          </div>
+                        ) : canTransition ? (
+                          <ParticipantInput rol={rol.key} label={rol.label} onAdd={handleAddParticipante} />
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">Pendiente</span>
                         )}
                       </div>
-                    ) : canTransition ? (
-                      <ParticipantInput rol={rol.key} label={rol.label} onAdd={handleAddParticipante} />
-                    ) : (
-                      <span className="text-[10px] text-slate-400 italic">Pendiente</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              )}
           </div>
         </motion.div>
         )}

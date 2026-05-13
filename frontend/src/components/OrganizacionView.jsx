@@ -332,16 +332,39 @@ function ModalEdit({ title, data, fields, onSave, onClose }) {
 
 function SyncFromUploadButton({ onRefresh }) {
   const [open, setOpen] = useState(false);
-  const [uploadId, setUploadId] = useState('');
+  const [uploads, setUploads] = useState([]);
+  const [selectedId, setSelectedId] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState(null);
+  const [loadingUploads, setLoadingUploads] = useState(false);
+
+  const fetchUploads = async () => {
+    setLoadingUploads(true);
+    try {
+      const res = await fetch(`${API}/api/v1/uploads`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUploads(Array.isArray(data) ? data : []);
+        if (Array.isArray(data) && data.length > 0) setSelectedId(String(data[0].id));
+      }
+    } catch {}
+    setLoadingUploads(false);
+  };
+
+  const handleOpen = () => {
+    setOpen(true);
+    setResult(null);
+    fetchUploads();
+  };
 
   const handleSync = async () => {
-    if (!uploadId.trim()) return;
+    if (!selectedId) return;
     setSyncing(true);
     setResult(null);
     try {
-      const res = await fetch(`${API}/api/v1/uploads/${uploadId}/sync-organigrama`, {
+      const res = await fetch(`${API}/api/v1/uploads/${selectedId}/sync-organigrama`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
@@ -356,7 +379,7 @@ function SyncFromUploadButton({ onRefresh }) {
 
   return (
     <>
-      <button onClick={() => setOpen(true)}
+      <button onClick={handleOpen}
         className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">
         <Upload size={16} /> Sincronizar
       </button>
@@ -370,10 +393,21 @@ function SyncFromUploadButton({ onRefresh }) {
             <div className="p-6 space-y-4">
               <p className="text-sm text-slate-600">Convierte los cargos del Excel de requerimientos en cargos organizacionales.</p>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Upload ID</label>
-                <input value={uploadId} onChange={e => setUploadId(e.target.value)}
-                  placeholder="ID del upload (ej: 1)" type="number"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Selecciona una carga</label>
+                {loadingUploads ? (
+                  <div className="flex items-center gap-2 text-sm text-slate-400 py-2"><Loader2 size={14} className="animate-spin" /> Cargando...</div>
+                ) : uploads.length === 0 ? (
+                  <p className="text-sm text-slate-400 italic py-2">No hay cargas disponibles. Sube un Excel primero.</p>
+                ) : (
+                  <select value={selectedId} onChange={e => setSelectedId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
+                    {uploads.map(u => (
+                      <option key={u.id} value={u.id}>
+                        #{u.id} - {u.empresa || 'Sin empresa'} ({u.fecha ? new Date(u.fecha).toLocaleDateString() : '?'}) - {u.num_cargos || 0} cargos
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               {result && (
                 <div className={`p-3 rounded-xl text-sm ${result.error ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
@@ -382,7 +416,7 @@ function SyncFromUploadButton({ onRefresh }) {
               )}
               <div className="flex gap-3 pt-2">
                 <button onClick={() => { setOpen(false); setResult(null); }} className="flex-1 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
-                <button onClick={handleSync} disabled={syncing || !uploadId.trim()}
+                <button onClick={handleSync} disabled={syncing || !selectedId || uploads.length === 0}
                   className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">
                   {syncing ? <><Loader2 size={14} className="animate-spin inline mr-1" /> Sincronizando...</> : 'Sincronizar'}
                 </button>

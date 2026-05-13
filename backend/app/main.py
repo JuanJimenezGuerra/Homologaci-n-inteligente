@@ -1276,7 +1276,7 @@ def buscar_internet_lote(
 # ==========================================
 
 @app.post("/valoracion/{cargo_id}/evaluar-ia")
-def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), request_data: dict = None):
+def evaluar_cargo_con_ia(cargo_id: int, db: Session = Depends(get_db), request_data: dict = Body(None)):
     """Evalua un cargo con IA y guarda la valoracion."""
     from .services.ia_service import valorar_cargo_con_ia
 

@@ -54,7 +54,7 @@ function App() {
 
 const handleEmpresaCreada = (empId) => {
     setEmpresaId(empId);
-    setActiveTab('valoracion');
+    setActiveTab('organizacion');
   };
 
   const handleValoracionCompleta = (valoraciones) => {

@@ -6,29 +6,43 @@ from ..models import Valoracion, Cargo, Curva
 logger = logging.getLogger(__name__)
 
 def _estimar_puntos(v) -> float:
-    """Calculate total points from valuation factors."""
-    pts_c = {"A": 20, "B": 40, "C": 60, "D": 80, "E": 100, "F": 120, "G": 140, "H": 160}
-    mult_e = {"-": 0.8, "o": 1.0, "+": 1.2}
-    pts_h = {"I": 10, "II": 20, "III": 30, "IV": 40, "V": 50, "VI": 60, "VII": 70}
-    pts_r = {"1": 10, "2": 15, "3": 25, "4": 35}
-    pts_contacto = {"A": 5, "B": 10, "C": 15}
-    pts_freq = {"1": 2, "2": 4, "3": 6, "4": 8}
-    pts_cont = {"I": 5, "II": 10, "III": 15, "IV": 20, "V": 25}
-    pts_cc = {"1": 10, "2": 20, "3": 30, "4": 40, "5": 50}
-    mult_t = {"-": 0.85, "o": 1.0, "+": 1.15}
-    pts_g = {"A": 10, "B": 20, "C": 30, "D": 40, "E": 50, "F": 60, "G": 70, "H": 80}
-    pts_imp = {"I": 10, "II": 20, "III": 30, "IV": 40}
-    pts_aut = {"A": 10, "B": 20, "C": 30, "D": 40, "E": 50, "F": 60, "G": 70}
-    pts_mag = {str(i): i * 5 for i in range(15)}
+    """Calculate total points from valuation factors.
+    Soporta tanto codigos de letra (legacy) como valores textuales (nuevo pipeline)."""
+    pts_c = {"A": 20, "B": 40, "C": 60, "D": 80, "E": 100, "F": 120, "G": 140, "H": 160,
+             "Básico": 20, "Medio": 40, "Avanzado": 60, "Experto": 80}
+    mult_e = {"-": 0.8, "o": 1.0, "+": 1.2,
+              "Mínima": 0.6, "1-2 años": 0.8, "3-5 años": 1.0, "5-7 años": 1.2, "7+ años": 1.4}
+    pts_h = {"I": 10, "II": 20, "III": 30, "IV": 40, "V": 50, "VI": 60, "VII": 70,
+             "No requiere": 10, "Baja": 20, "Media": 30, "Alta": 40}
+    pts_r = {"1": 10, "2": 15, "3": 25, "4": 35,
+             "Individual": 10, "Supervisión": 15, "Táctico": 25, "Estratégico": 35, "Dirección": 45}
+    pts_contacto = {"A": 5, "B": 10, "C": 15,
+                    "Interno": 5, "Mixto": 10, "Externo": 15, "Cliente": 20}
+    pts_freq = {"1": 2, "2": 4, "3": 6, "4": 8,
+                "Esporádica": 2, "Mensual": 4, "Semanal": 6, "Diaria": 8, "Permanente": 10}
+    pts_cont = {"I": 5, "II": 10, "III": 15, "IV": 20, "V": 25,
+                "Informativo": 5, "Coordinación": 10, "Negociación": 15, "Asesoría": 20}
+    pts_cc = {"1": 10, "2": 20, "3": 30, "4": 40, "5": 50,
+              "Repetitiva": 10, "Procedimental": 20, "Analítica": 30, "Creativa": 40, "Estratégica": 50}
+    mult_t = {"-": 0.85, "o": 1.0, "+": 1.15,
+              "Decreciente": 0.85, "Estable": 1.0, "Creciente": 1.15}
+    pts_g = {"A": 10, "B": 20, "C": 30, "D": 40, "E": 50, "F": 60, "G": 70, "H": 80,
+             "Específicas": 10, "Generales": 20, "Políticas": 30, "Autonomía total": 40}
+    pts_imp = {"I": 10, "II": 20, "III": 30, "IV": 40,
+               "Mínimo": 10, "Medio": 20, "Alto": 30, "Crítico": 40}
+    pts_aut = {"A": 10, "B": 20, "C": 30, "D": 40, "E": 50, "F": 60, "G": 70,
+               "Nula": 10, "Supervisada": 20, "Guiada": 30, "Total": 40}
+    pts_mag = {**{str(i): i * 5 for i in range(15)},
+               "Pequeña": 5, "Mediana": 10, "Grande": 15, "Corporativa": 20}
 
-    f1 = (pts_c.get(v.conocimientos, 60) * mult_e.get(v.experiencia, 1.0) +
-          pts_h.get(v.habilidad_gerencial, 30) + pts_r.get(str(v.rol_cargo or ""), 15))
+    f1 = (pts_c.get(v.conocimientos, 40) * mult_e.get(v.experiencia, 1.0) +
+          pts_h.get(v.habilidad_gerencial, 20) + pts_r.get(str(v.rol_cargo or ""), 15))
     f2 = (pts_contacto.get(v.contacto, 10) + pts_freq.get(str(v.frecuencia or ""), 4) +
           pts_cont.get(v.contenido_relaciones, 10))
     f3 = (pts_cc.get(str(v.complejidad_conceptual or ""), 20) * mult_t.get(v.tendencia_cc, 1.0) +
-          pts_g.get(v.guias_apoyo, 30) * mult_t.get(v.tendencia_ga, 1.0))
-    f4 = (pts_imp.get(v.impacto, 20) + pts_aut.get(v.autonomia, 30) +
-          pts_mag.get(str(v.magnitud or ""), 0))
+          pts_g.get(v.guias_apoyo, 20) * mult_t.get(v.tendencia_ga, 1.0))
+    f4 = (pts_imp.get(v.impacto, 20) + pts_aut.get(v.autonomia, 20) +
+          pts_mag.get(str(v.magnitud or ""), 10))
 
     crit = (int(v.criterio_1 or 0) + int(v.criterio_2 or 0) + int(v.criterio_3 or 0))
     raw = f1 + f2 + f3 + f4

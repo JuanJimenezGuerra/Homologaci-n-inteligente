@@ -311,50 +311,102 @@ def _validar_valor_unico(valor, opciones_validas, campo):
     return None
 
 
+# Map from old letter codes to text values (for backward compat)
+_LETTER_TO_TEXT = {
+    "conocimientos": {"A": "Básico", "B": "Básico", "C": "Medio", "D": "Medio", "E": "Avanzado", "F": "Avanzado", "G": "Experto", "H": "Experto"},
+    "experiencia": {"-": "Mínima", "o": "3-5 años", "+": "7+ años"},
+    "habilidadGerencial": {"I": "No requiere", "II": "Baja", "III": "Media", "IV": "Media", "V": "Alta", "VI": "Alta", "VII": "Alta"},
+    "rolCargo": {"1": "Individual", "2": "Supervisión", "3": "Táctico", "4": "Estratégico"},
+    "contacto": {"A": "Interno", "B": "Mixto", "C": "Externo"},
+    "frecuenciaContacto": {"1": "Esporádica", "2": "Mensual", "3": "Semanal", "4": "Diaria"},
+    "contenidoRelaciones": {"I": "Informativo", "II": "Coordinación", "III": "Negociación", "IV": "Negociación", "V": "Asesoría"},
+    "complejidadConceptual": {"1": "Repetitiva", "2": "Procedimental", "3": "Analítica", "4": "Creativa", "5": "Estratégica"},
+    "tendenciaCC": {"-": "Decreciente", "o": "Estable", "+": "Creciente"},
+    "guiasApoyo": {"A": "Específicas", "B": "Específicas", "C": "Generales", "D": "Generales", "E": "Políticas", "F": "Políticas", "G": "Autonomía total", "H": "Autonomía total"},
+    "tendenciaGA": {"-": "Decreciente", "o": "Estable", "+": "Creciente"},
+    "impacto": {"I": "Mínimo", "II": "Medio", "III": "Alto", "IV": "Crítico"},
+    "autonomia": {"A": "Nula", "B": "Supervisada", "C": "Supervisada", "D": "Guiada", "E": "Guiada", "F": "Total", "G": "Total"},
+}
+_MAGNITUD_OLD = {"1": "Pequeña", "2": "Pequeña", "3": "Pequeña", "4": "Mediana", "5": "Mediana", "6": "Mediana", "7": "Mediana", "8": "Grande", "9": "Grande", "10": "Grande", "11": "Grande", "12": "Corporativa", "13": "Corporativa", "14": "Corporativa"}
+_MAGNITUD_VALIDOS = ["Pequeña", "Mediana", "Grande", "Corporativa"]
+
+def _traducir_a_texto(campo, valor):
+    """Traduce codigo de letra a texto si es necesario."""
+    if not valor or not isinstance(valor, str):
+        return valor
+    v = valor.strip()
+    # Si ya es texto valido (no es codigo de letra), devolverlo
+    if campo == "magnitud":
+        if v in _MAGNITUD_VALIDOS:
+            return v
+        if v in _MAGNITUD_OLD:
+            return _MAGNITUD_OLD[v]
+        return "Mediana"
+    if campo in _LETTER_TO_TEXT:
+        if v in _LETTER_TO_TEXT[campo]:
+            return _LETTER_TO_TEXT[campo][v]
+    return valor
+
+
 def _sanitizar_valoracion(resultado):
     """Sanitiza y valida la respuesta de IA, asegurando valores unicos."""
     if not resultado or not isinstance(resultado, dict):
         return resultado
 
     VALIDOS = {
-        "conocimientos": ["A", "B", "C", "D", "E", "F", "G", "H"],
-        "experiencia": ["-", "o", "+"],
-        "habilidadGerencial": ["I", "II", "III", "IV", "V", "VI", "VII"],
-        "rolCargo": ["1", "2", "3", "4"],
-        "contacto": ["A", "B", "C"],
-        "frecuenciaContacto": ["1", "2", "3", "4"],
-        "contenidoRelaciones": ["I", "II", "III", "IV", "V"],
-        "complejidadConceptual": ["1", "2", "3", "4", "5"],
-        "tendenciaCC": ["-", "o", "+"],
-        "guiasApoyo": ["A", "B", "C", "D", "E", "F", "G", "H"],
-        "tendenciaGA": ["-", "o", "+"],
-        "impacto": ["I", "II", "III", "IV"],
-        "autonomia": ["A", "B", "C", "D", "E", "F", "G"],
+        "conocimientos": ["Básico", "Medio", "Avanzado", "Experto"],
+        "experiencia": ["Mínima", "1-2 años", "3-5 años", "5-7 años", "7+ años"],
+        "habilidadGerencial": ["No requiere", "Baja", "Media", "Alta"],
+        "rolCargo": ["Individual", "Supervisión", "Táctico", "Estratégico", "Dirección"],
+        "contacto": ["Interno", "Mixto", "Externo", "Cliente"],
+        "frecuenciaContacto": ["Esporádica", "Mensual", "Semanal", "Diaria", "Permanente"],
+        "contenidoRelaciones": ["Informativo", "Coordinación", "Negociación", "Asesoría"],
+        "complejidadConceptual": ["Repetitiva", "Procedimental", "Analítica", "Creativa", "Estratégica"],
+        "tendenciaCC": ["Estable", "Creciente", "Decreciente"],
+        "guiasApoyo": ["Específicas", "Generales", "Políticas", "Autonomía total"],
+        "tendenciaGA": ["Estable", "Creciente", "Decreciente"],
+        "impacto": ["Mínimo", "Medio", "Alto", "Crítico"],
+        "autonomia": ["Nula", "Supervisada", "Guiada", "Total"],
     }
-    MAGNITUD_VALIDOS = [str(i) for i in range(1, 15)]
+    MAGNITUD_VALIDOS = ["Pequeña", "Mediana", "Grande", "Corporativa"]
 
     for campo in VALIDOS:
         valor = resultado.get(campo)
         if isinstance(valor, str):
-            # Detectar rangos como "A-H", "I-VII", "+/+/+" y tomar solo el primer valor
-            if "-" in valor or "/" in valor or "," in valor:
-                partes = valor.replace("/", "-").replace(",", "-").split("-")
+            v = valor.strip()
+            # Try translating old letter codes first
+            traducido = _traducir_a_texto(campo, v)
+            if traducido != v:
+                resultado[campo] = traducido
+                continue
+            # If already a valid option, keep it (handles "3-5 años" legitimately containing "-")
+            if v in VALIDOS[campo]:
+                continue
+            # Invalid range detection (only when value is not already valid)
+            if "-" in v or "/" in v or "," in v:
+                partes = v.replace("/", "-").replace(",", "-").split("-")
                 primer_valor = partes[0].strip() if partes else None
                 if primer_valor in VALIDOS[campo]:
                     resultado[campo] = primer_valor
                 else:
                     resultado[campo] = VALIDOS[campo][0]
-            elif valor not in VALIDOS[campo]:
+            else:
                 resultado[campo] = VALIDOS[campo][0]
 
     # Validar magnitud
     magnitud = resultado.get("magnitud")
     if isinstance(magnitud, str):
-        if "-" in magnitud or "/" in magnitud or "," in magnitud:
-            partes = magnitud.replace("/", "-").replace(",", "-").split("-")
-            resultado["magnitud"] = partes[0].strip() if partes[0].strip() in MAGNITUD_VALIDOS else "5"
-        elif magnitud not in MAGNITUD_VALIDOS:
-            resultado["magnitud"] = "5"
+        m = magnitud.strip()
+        traducido = _traducir_a_texto("magnitud", m)
+        if traducido != m:
+            resultado["magnitud"] = traducido
+        elif m in MAGNITUD_VALIDOS:
+            pass
+        elif "-" in m or "/" in m or "," in m:
+            partes = m.replace("/", "-").replace(",", "-").split("-")
+            resultado["magnitud"] = partes[0].strip() if partes[0].strip() in MAGNITUD_VALIDOS else "Mediana"
+        else:
+            resultado["magnitud"] = "Mediana"
 
     # Validar criterios - SOLO 0 o 1
     for c in ["criterio1", "criterio2", "criterio3"]:
@@ -389,29 +441,29 @@ def valorar_cargo_con_ia(cargo):
     prompt += "2. No uses markdown ni explicaciones.\n"
     prompt += "3. Asigna EXACTAMENTE UN (1) valor por cada factor. NO uses rangos ni multiple valores.\n"
     prompt += '4. Formato exacto (elige SOLO UNA opcion de cada una):\n'
-    prompt += '   {"conocimientos":"A","experiencia":"o","habilidadGerencial":"III","rolCargo":"2",\n'
-    prompt += '    "contacto":"B","frecuenciaContacto":"3","contenidoRelaciones":"III",\n'
-    prompt += '    "complejidadConceptual":"3","tendenciaCC":"o","guiasApoyo":"C","tendenciaGA":"o",\n'
-    prompt += '    "impacto":"II","autonomia":"D","magnitud":"5",\n'
+    prompt += '   {"conocimientos":"Medio","experiencia":"3-5 a\u00f1os","habilidadGerencial":"Media","rolCargo":"Supervisi\u00f3n",\n'
+    prompt += '    "contacto":"Mixto","frecuenciaContacto":"Semanal","contenidoRelaciones":"Coordinaci\u00f3n",\n'
+    prompt += '    "complejidadConceptual":"Anal\u00edtica","tendenciaCC":"Estable","guiasApoyo":"Generales","tendenciaGA":"Estable",\n'
+    prompt += '    "impacto":"Medio","autonomia":"Guiada","magnitud":"Mediana",\n'
     prompt += '    "criterio1":0,"criterio2":0,"criterio3":0,"justificacion":"breve analisis"}\n'
-    prompt += "5. Opciones validas para cada factor:\n"
-    prompt += "   conocimientos: A, B, C, D, E, F, G, H (SOLO UNA LETRA)\n"
-    prompt += "   experiencia: -, o, + (SOLO UN SIMBOLO)\n"
-    prompt += "   habilidadGerencial: I, II, III, IV, V, VI, VII (SOLO UN NUMERO ROMANO)\n"
-    prompt += "   rolCargo: 1, 2, 3, 4 (SOLO UN DIGITO)\n"
-    prompt += "   contacto: A, B, C\n"
-    prompt += "   frecuenciaContacto: 1, 2, 3, 4\n"
-    prompt += "   contenidoRelaciones: I, II, III, IV, V\n"
-    prompt += "   complejidadConceptual: 1, 2, 3, 4, 5\n"
-    prompt += "   tendenciaCC: -, o, +\n"
-    prompt += "   guiasApoyo: A, B, C, D, E, F, G, H\n"
-    prompt += "   tendenciaGA: -, o, +\n"
-    prompt += "   impacto: I, II, III, IV\n"
-    prompt += "   autonomia: A, B, C, D, E, F, G\n"
-    prompt += "   magnitud: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14\n"
+    prompt += "5. Opciones validas para cada factor (SOLO UNA OPCION de la lista):\n"
+    prompt += "   conocimientos: Basico, Medio, Avanzado, Experto\n"
+    prompt += "   experiencia: Minima, 1-2 anios, 3-5 anios, 5-7 anios, 7+ anios\n"
+    prompt += "   habilidadGerencial: No requiere, Baja, Media, Alta\n"
+    prompt += "   rolCargo: Individual, Supervision, Tactico, Estrategico, Direccion\n"
+    prompt += "   contacto: Interno, Mixto, Externo, Cliente\n"
+    prompt += "   frecuenciaContacto: Esporadica, Mensual, Semanal, Diaria, Permanente\n"
+    prompt += "   contenidoRelaciones: Informativo, Coordinacion, Negociacion, Asesoria\n"
+    prompt += "   complejidadConceptual: Repetitiva, Procedimental, Analitica, Creativa, Estrategica\n"
+    prompt += "   tendenciaCC: Estable, Creciente, Decreciente\n"
+    prompt += "   guiasApoyo: Especificas, Generales, Politicas, Autonomia total\n"
+    prompt += "   tendenciaGA: Estable, Creciente, Decreciente\n"
+    prompt += "   impacto: Minimo, Medio, Alto, Critico\n"
+    prompt += "   autonomia: Nula, Supervisada, Guiada, Total\n"
+    prompt += "   magnitud: Pequenia, Mediana, Grande, Corporativa\n"
     prompt += "   criterio1/2/3: SOLO 0 o 1 (NUNCA uses 2 o 3)\n"
     prompt += "6. CRITICO: criterio1, criterio2, criterio3 solo aceptan 0 o 1. NUNCA uses otros numeros.\n"
-    prompt += "7. magnitud: 1=Hasta 50M, 14=Mas de 500,000M.\n"
+    prompt += "7. magnitud: Pequenia=menor presupuesto, Corporativa=mayor presupuesto.\n"
     prompt += "8. Cada valor debe ser UNA SOLA OPCION valida de la lista. NUNCA concatenes opciones."
 
     content = call_ia([{"role": "user", "content": prompt}], max_tokens=400)

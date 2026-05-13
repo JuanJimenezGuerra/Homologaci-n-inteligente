@@ -860,7 +860,7 @@ class SesionValoracion(Base):
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     empresa = relationship("Empresa", back_populates="sesiones_valoracion")
-    versiones = relationship("ValoracionVersion", back_populates="sesion")
+    versiones = relationship("ValoracionVersion", back_populates="sesion", cascade="all, delete-orphan")
     participantes = relationship("ParticipanteSesion", back_populates="sesion", cascade="all, delete-orphan")
 
 
@@ -912,6 +912,7 @@ class ValoracionVersion(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 

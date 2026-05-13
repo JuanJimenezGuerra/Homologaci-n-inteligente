@@ -331,8 +331,7 @@ def listar_versiones(
     current_user: User = Depends(get_current_user),
 ):
     return _serialize(db.query(ValoracionVersion).filter(
-        ValoracionVersion.cargo_id == cargo_id,
-        ValoracionVersion.cargo_id.isnot(None)
+        ValoracionVersion.cargo_id == cargo_id
     ).order_by(desc(ValoracionVersion.version)).all())
 
 
@@ -516,7 +515,7 @@ def consolidar_sesion(
     """Retorna el consolidado de valoraciones definitivas de una sesión."""
     versiones = db.query(ValoracionVersion).filter(
         ValoracionVersion.sesion_id == sesion_id,
-        ValoracionVersion.estado.in_(["DEFINITIVA", "APROBADA"])
+        ValoracionVersion.estado == "DEFINITIVA"
     ).all()
 
     result = []
@@ -567,8 +566,7 @@ def agregar_cargo_a_sesion(
 
     existe = db.query(ValoracionVersion).filter(
         ValoracionVersion.sesion_id == sesion_id,
-        ValoracionVersion.cargo_id == cargo_id,
-        ValoracionVersion.cargo_id.isnot(None)
+        ValoracionVersion.cargo_id == cargo_id
     ).first()
     if existe:
         raise HTTPException(status_code=400, detail="El cargo ya está en la sesión")
@@ -602,8 +600,7 @@ def quitar_cargo_de_sesion(
     """Elimina todas las versiones no-definitivas de un cargo en una sesión."""
     versiones = db.query(ValoracionVersion).filter(
         ValoracionVersion.sesion_id == sesion_id,
-        ValoracionVersion.cargo_id == cargo_id,
-        ValoracionVersion.cargo_id.isnot(None)
+        ValoracionVersion.cargo_id == cargo_id
     ).all()
 
     if not versiones:
@@ -631,7 +628,7 @@ def listar_cargos_en_sesion(
     """Lista todos los cargos con versiones activas en una sesión."""
     versiones = db.query(ValoracionVersion).filter(
         ValoracionVersion.sesion_id == sesion_id,
-        ValoracionVersion.cargo_id.isnot(None)
+        ValoracionVersion.deleted_at.is_(None)
     ).all()
     result = []
     for v in versiones:
