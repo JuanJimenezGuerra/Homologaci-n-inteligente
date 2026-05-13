@@ -31,6 +31,10 @@ function CargaDirecta({ onSuccess }) {
   const [error, setError] = useState('');
   const [uploadId, setUploadId] = useState(null);
   const [detectedEmpresa, setDetectedEmpresa] = useState('');
+  const [empresaData, setEmpresaData] = useState(null);
+  const [empresaContext, setEmpresaContext] = useState({});
+  const [savingContext, setSavingContext] = useState(false);
+  const [contextSaved, setContextSaved] = useState(false);
   const [cargos, setCargos] = useState(null);
   const [showCargos, setShowCargos] = useState(true);
 
@@ -68,6 +72,22 @@ function CargaDirecta({ onSuccess }) {
     } catch {}
   };
 
+  const saveEmpresaContext = async () => {
+    if (!empresaData?.id) return;
+    setSavingContext(true);
+    try {
+      const res = await fetch(`${API}/api/v1/empresas/${empresaData.id}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(empresaContext),
+      });
+      if (res.ok) {
+        setContextSaved(true);
+      }
+    } catch {}
+    setSavingContext(false);
+  };
+
   const handleSubmit = async () => {
     if (!excelFile) {
       setError('Selecciona el Excel de requerimientos');
@@ -98,6 +118,21 @@ function CargaDirecta({ onSuccess }) {
       setUploadId(newUploadId);
       if (data.empresa) {
         setDetectedEmpresa(data.empresa);
+      }
+      if (data.empresa_data) {
+        setEmpresaData(data.empresa_data);
+        setEmpresaContext({
+          sector_economico: data.empresa_data.sector_economico || '',
+          tamano_empresa: data.empresa_data.tamano_empresa || '',
+          tipo_empresa: data.empresa_data.tipo_empresa || '',
+          descripcion_negocio: data.empresa_data.descripcion_negocio || '',
+          modelo_operativo: data.empresa_data.modelo_operativo || '',
+          motivacion: data.empresa_data.motivacion || '',
+          ciudad: data.empresa_data.ciudad || '',
+          direccion: data.empresa_data.direccion || '',
+          persona_contacto: data.empresa_data.persona_contacto || '',
+          email_contacto: data.empresa_data.email_contacto || '',
+        });
       }
 
       // Subir archivos extra si hay
@@ -134,6 +169,7 @@ function CargaDirecta({ onSuccess }) {
   // Show confirmation after upload
   if (uploadId && cargos !== null) {
     const areas = [...new Set(cargos.map(c => c.area).filter(Boolean))];
+    const empresaId = empresaData?.id || uploadId;
     return (
       <div className="max-w-4xl mx-auto space-y-6">
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
@@ -167,6 +203,76 @@ function CargaDirecta({ onSuccess }) {
             <span className="text-xs text-slate-500">Ir a Organización</span>
           </div>
         </div>
+
+        {/* Company Context Form */}
+        {empresaData && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800">Contexto de la Empresa</h3>
+              <p className="text-xs text-slate-400 mt-1">Completa los datos de contexto antes de continuar</p>
+            </div>
+            <div className="p-5 grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Sector Económico</label>
+                <input value={empresaContext.sector_economico} onChange={e => setEmpresaContext(s => ({ ...s, sector_economico: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Tamaño</label>
+                <select value={empresaContext.tamano_empresa} onChange={e => setEmpresaContext(s => ({ ...s, tamano_empresa: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
+                  <option value="">Seleccionar</option>
+                  <option>Pequeña</option><option>Mediana</option><option>Grande</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo</label>
+                <select value={empresaContext.tipo_empresa} onChange={e => setEmpresaContext(s => ({ ...s, tipo_empresa: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
+                  <option value="">Seleccionar</option>
+                  <option>Privada</option><option>Pública</option><option>Mixta</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Ciudad</label>
+                <input value={empresaContext.ciudad} onChange={e => setEmpresaContext(s => ({ ...s, ciudad: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Descripción del Negocio</label>
+                <textarea value={empresaContext.descripcion_negocio} onChange={e => setEmpresaContext(s => ({ ...s, descripcion_negocio: e.target.value }))} rows={2}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Modelo Operativo</label>
+                <textarea value={empresaContext.modelo_operativo} onChange={e => setEmpresaContext(s => ({ ...s, modelo_operativo: e.target.value }))} rows={2}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Motivación del Estudio</label>
+                <textarea value={empresaContext.motivacion} onChange={e => setEmpresaContext(s => ({ ...s, motivacion: e.target.value }))} rows={2}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Persona Contacto</label>
+                <input value={empresaContext.persona_contacto} onChange={e => setEmpresaContext(s => ({ ...s, persona_contacto: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Email Contacto</label>
+                <input value={empresaContext.email_contacto} onChange={e => setEmpresaContext(s => ({ ...s, email_contacto: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+            </div>
+            <div className="px-5 pb-5">
+              <button onClick={saveEmpresaContext} disabled={savingContext || contextSaved}
+                className={`px-6 py-2 rounded-xl text-sm font-semibold ${contextSaved ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-600 text-white hover:bg-blue-700'} disabled:opacity-50`}>
+                {savingContext ? 'Guardando...' : contextSaved ? '✓ Datos guardados' : 'Guardar Contexto'}
+              </button>
+            </div>
+          </motion.div>
+        )}
 
         {/* Cargo table */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -210,7 +316,7 @@ function CargaDirecta({ onSuccess }) {
 
         {/* Continue button */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
-          <button onClick={() => onSuccess(uploadId)}
+          <button onClick={() => onSuccess(empresaId)}
             className="inline-flex items-center gap-2 px-8 py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg">
             Continuar a Organización <ArrowRight size={20} />
           </button>

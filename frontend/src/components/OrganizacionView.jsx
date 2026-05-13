@@ -361,7 +361,7 @@ function SyncFromUploadButton({ onRefresh }) {
     setLoadingUploads(true);
     setError('');
     try {
-      const res = await fetch(`${API}/api/v1/uploads`, {
+      const res = await fetch(`${API}/uploads`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
       if (!res.ok) {
@@ -489,6 +489,7 @@ export default function OrganizacionView({ onNavigate }) {
   const [showCreateGrupo, setShowCreateGrupo] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [uploadCount, setUploadCount] = useState(0);
 
   const refresh = () => setRefreshKey(k => k + 1);
 
@@ -497,7 +498,9 @@ export default function OrganizacionView({ onNavigate }) {
     Promise.all([
       apiGet('/grupos-empresariales'),
       apiGet('/empresas'),
-    ]).then(([gruposRes, empresasRes]) => {
+      fetch(`${API}/uploads`, { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d.length : 0).catch(() => 0),
+    ]).then(([gruposRes, empresasRes, uCount]) => {
+      setUploadCount(uCount);
       const empresas = Array.isArray(empresasRes) ? empresasRes : [];
       setGrupos(Array.isArray(gruposRes) ? gruposRes : []);
       // Fetch macroprocesos and cargos counts from all empresas
@@ -519,17 +522,22 @@ export default function OrganizacionView({ onNavigate }) {
 
   const handleCreateGrupo = async (e) => {
     e.preventDefault();
-    await apiPost('/grupos-empresariales', grupoForm);
-    setShowCreateGrupo(false);
-    setGrupoForm({ nombre: '', descripcion: '', sector_principal: '', tamano: '', pais_principal: '' });
-    refresh();
+    if (!grupoForm.nombre.trim()) { alert('El nombre del grupo es requerido'); return; }
+    try {
+      await apiPost('/grupos-empresariales', grupoForm);
+      setShowCreateGrupo(false);
+      setGrupoForm({ nombre: '', descripcion: '', sector_principal: '', tamano: '', pais_principal: '' });
+      refresh();
+    } catch (err) {
+      alert('Error al crear grupo: ' + err.message);
+    }
   };
 
   const [seeding, setSeeding] = useState(false);
   const handleSeedDemo = async () => {
     setSeeding(true);
     try {
-      const res = await fetch(`${API}/api/v1/demo/seed`, {
+      const res = await fetch(`${API}/demo/seed`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
@@ -555,11 +563,19 @@ export default function OrganizacionView({ onNavigate }) {
           <h2 className="text-2xl font-bold mb-2">Bienvenido a SHR Valoración</h2>
           <p className="text-blue-100 mb-6">Completa esta información para comenzar con la estructura organizacional.</p>
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-1">Paso 1</p>
-              <p className="font-semibold">Sube el Excel de Requerimientos</p>
-              <p className="text-xs text-blue-200 mt-1">Ve a la pestaña "Formulario" y carga el archivo con los datos de la empresa y los cargos.</p>
-            </div>
+            {uploadCount === 0 ? (
+              <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-1">Paso 1</p>
+                <p className="font-semibold">Sube el Excel de Requerimientos</p>
+                <p className="text-xs text-blue-200 mt-1">Ve a la pestaña "Formulario" y carga el archivo con los datos de la empresa y los cargos.</p>
+              </div>
+            ) : (
+              <div className="bg-emerald-500/20 backdrop-blur rounded-xl p-4 border border-emerald-400/30">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-200 mb-1">Paso 1</p>
+                <p className="font-semibold flex items-center gap-2">✓ Excel Cargado</p>
+                <p className="text-xs text-emerald-200 mt-1">{uploadCount} archivo(s) procesado(s) correctamente.</p>
+              </div>
+            )}
             <div className="bg-white/10 backdrop-blur rounded-xl p-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-1">Paso 2</p>
               <p className="font-semibold">Crea un Grupo Empresarial</p>
