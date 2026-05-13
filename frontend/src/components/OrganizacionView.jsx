@@ -7,7 +7,7 @@ import {
   Loader2,
 } from 'lucide-react';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
   return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : {};
@@ -378,7 +378,7 @@ function SyncFromUploadButton({ onRefresh }) {
         if (Array.isArray(data) && data.length > 0) setSelectedId(String(data[0].id));
       }
     } catch (e) {
-      setError(e.name === 'AbortError' ? 'La conexión tardó demasiado. Verifica que el backend esté corriendo en localhost:8000.' : 'Error de conexión al cargar uploads');
+      setError(e.name === 'AbortError' ? 'La conexión tardó demasiado. El backend en Render tarda ~50s en iniciar. Intenta de nuevo.' : 'Error de conexión al cargar uploads');
       setUploads([]);
     }
     setLoadingUploads(false);
@@ -553,7 +553,7 @@ export default function OrganizacionView({ onNavigate }) {
       setGrupoForm({ nombre: '', descripcion: '', sector_principal: '', tamano: '', pais_principal: '' });
       refresh();
     } catch (err) {
-      alert(err.name === 'AbortError' ? 'La solicitud tardó demasiado. Verifica que el backend esté corriendo en localhost:8000.' : 'Error al crear grupo: ' + err.message);
+      alert(err.name === 'AbortError' ? 'La solicitud tardó demasiado. El backend en Render tarda ~50s en iniciar. Intenta de nuevo.' : 'Error al crear grupo: ' + err.message);
     } finally {
       setSavingGrupo(false);
     }

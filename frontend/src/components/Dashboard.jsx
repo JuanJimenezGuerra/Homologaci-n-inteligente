@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 // ─── API helpers ─────────────────────────────────────────────────────────────
 // getHeaders() se llama DENTRO de cada fetch para leer el token actualizado
 const getApiUrl = () => {
-  const url = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const url = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
   return url.endsWith('/') ? url.slice(0, -1) : url;
 };
 const getHeaders = () => ({

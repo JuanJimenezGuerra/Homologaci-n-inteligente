@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Upload as UploadIcon, FileCheck, Loader2, ArrowRight, CheckCircle, AlertCircle, Files, Briefcase, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+const API = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
 const getToken = () => localStorage.getItem('token') || '';
 
 function FormularioView({ empresaId, onEmpresaCreated }) {

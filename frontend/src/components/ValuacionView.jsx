@@ -485,7 +485,7 @@ const StatusIcon = ({ estado }) => {
 };
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
 
 const getToken = () => localStorage.getItem('token') || '';
 

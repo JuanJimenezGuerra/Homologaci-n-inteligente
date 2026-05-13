@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart3, Download, TrendingUp, AlertTriangle, CheckCircle, Loader2, Filter, Layers, DollarSign, Target } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
 const getToken = () => localStorage.getItem('token') || '';
 
 // ─── Chart Components ─────────────────────────────────────────────────────────

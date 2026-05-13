@@ -9,7 +9,7 @@ const MasterUploadView = ({ onSuccess }) => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
-  let apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  let apiUrl = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
   if (apiUrl.endsWith('/')) apiUrl = apiUrl.slice(0, -1);
 
   const handleUpload = async () => {

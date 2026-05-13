@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BarChart3, Download, TrendingUp, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
 const getToken = () => localStorage.getItem('token') || '';
 
 const EQUIDAD_COLORS = { subpago: '#ef4444', competitivo: '#10b981', sobrepago: '#f59e0b' };

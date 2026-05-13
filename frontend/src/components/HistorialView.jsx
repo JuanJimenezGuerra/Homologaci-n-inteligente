@@ -11,7 +11,7 @@ import {
   PieChart, Pie, Cell, LineChart, Line, Legend
 } from 'recharts';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
 const getToken = () => localStorage.getItem('token') || '';
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
@@ -292,7 +292,7 @@ const HistorialView = () => {
       const data = await res.json();
       setProcesos(Array.isArray(data) ? data : []);
     } catch (e) {
-      setError(e.name === 'AbortError' ? 'La solicitud tardó demasiado. Verifica que el backend esté corriendo.' : e.message);
+      setError(e.name === 'AbortError' ? 'La solicitud tardó demasiado. El backend en Render tarda ~50s en iniciar. Intenta de nuevo.' : e.message);
     } finally {
       setLoading(false);
     }
@@ -611,7 +611,7 @@ const HistorialView = () => {
                 </div>
                 <div className="ml-auto text-xs text-slate-400">
                   <Server size={14} className="inline mr-1" />
-                  {import.meta.env.VITE_API_URL || 'localhost:8000'}
+                  {import.meta.env.VITE_API_URL || 'shr-backend-prod.onrender.com'}
                 </div>
               </div>
 

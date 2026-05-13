@@ -4,7 +4,7 @@ import axios from 'axios';
 import { motion } from 'framer-motion';
 
 const getApiUrl = () => {
-  const url = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const url = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
   return url.endsWith('/') ? url.slice(0, -1) : url;
 };
 

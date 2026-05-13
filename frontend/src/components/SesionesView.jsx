@@ -8,7 +8,7 @@ import {
   BarChart3, TrendingUp, Layers, Eye,
 } from 'lucide-react';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
 const API_BASE = `${API}/api/v1`;
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
