@@ -3,6 +3,7 @@ uvicorn
 sqlalchemy
 pydantic
 pydantic-settings
+alembic
 python-multipart
 python-jose[cryptography]
 passlib[bcrypt]

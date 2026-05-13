@@ -13,6 +13,7 @@ from .services.master_data import process_master_excel
 from .services.matcher import start_batch_processing
 from .services.excel_formulario_service import procesar_excel_formulario, guardar_en_db
 from .services.analisis_service import calcular_curvas_equidad, analizar_equidad, calcular_nivelacion, reporte_consolidado
+from .routers import organizacion_router, valoracion_sesiones_router, audit_router
 import logging
 logger = logging.getLogger(__name__)
 import os
@@ -45,6 +46,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Incluir routers modulares (Fase 1)
+app.include_router(organizacion_router)
+app.include_router(valoracion_sesiones_router)
+app.include_router(audit_router)
 
 class LoginRequest(BaseModel):
     email: str
@@ -1175,59 +1181,6 @@ def update_valoracion_manual(cargo_id: int, req: dict, db: Session = Depends(get
     val.editado_manual = True
     db.commit()
     return {"message": "Valoracion actualizada"}
-
-# ==========================================
-# ENTIDADES ORGANIZACIONALES
-# ==========================================
-
-@app.get("/regionales")
-def list_regionales(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(Regional).all()
-
-@app.post("/regionales")
-def create_regional(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    regional = Regional(nombre=data["nombre"], descripcion=data.get("descripcion"))
-    db.add(regional)
-    db.commit()
-    db.refresh(regional)
-    return {"id": regional.id, "nombre": regional.nombre}
-
-@app.get("/sedes")
-def list_sedes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(Sede).all()
-
-@app.post("/sedes")
-def create_sede(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    sede = Sede(
-        regional_id=data.get("regional_id"),
-        nombre=data["nombre"],
-        direccion=data.get("direccion"),
-        ciudad=data.get("ciudad"),
-        departamento=data.get("departamento"),
-        tipo_sede=data.get("tipo_sede"),
-    )
-    db.add(sede)
-    db.commit()
-    db.refresh(sede)
-    return {"id": sede.id, "nombre": sede.nombre}
-
-@app.get("/areas")
-def list_areas(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(Area).all()
-
-@app.post("/areas")
-def create_area(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    area = Area(
-        sede_id=data.get("sede_id"),
-        nombre=data["nombre"],
-        nombre_corto=data.get("nombre_corto"),
-        tipo_area=data.get("tipo_area"),
-        area_padre_id=data.get("area_padre_id"),
-    )
-    db.add(area)
-    db.commit()
-    db.refresh(area)
-    return {"id": area.id, "nombre": area.nombre}
 
 @app.get("/empresas/{empresa_id}/muestras")
 def list_muestras_empresa(empresa_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

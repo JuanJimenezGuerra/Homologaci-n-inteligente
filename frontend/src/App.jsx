@@ -9,6 +9,8 @@ import HomologacionView from './components/HomologacionView';
 import AnalisisView from './components/AnalisisView';
 import EquidadView from './components/EquidadView';
 import HistorialView from './components/HistorialView';
+import OrganizacionView from './components/OrganizacionView';
+import SesionesView from './components/SesionesView';
 import ErrorBoundary from './components/ErrorBoundary';
 
 const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
@@ -94,6 +96,18 @@ const handleAnalisisCompleta = () => {
             empresaId={empresaId}
             onEmpresaCreated={handleEmpresaCreada}
           />
+        )}
+      </ErrorBoundary>
+
+      <ErrorBoundary>
+        {activeTab === 'organizacion' && (
+          <OrganizacionView />
+        )}
+      </ErrorBoundary>
+
+      <ErrorBoundary>
+        {activeTab === 'sesiones' && (
+          <SesionesView />
         )}
       </ErrorBoundary>
 

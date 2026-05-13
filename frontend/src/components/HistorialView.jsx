@@ -3,7 +3,7 @@ import {
   History, Search, Filter, ChevronDown, ChevronUp, 
   User, Calendar, Building, CheckCircle, AlertCircle, 
   Clock, FileText, Download, RefreshCw, Loader2, X,
-  TrendingUp, Users, Award, Target
+  TrendingUp, Users, Award, Target, Eye, EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -12,8 +12,11 @@ import {
 } from 'recharts';
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com').replace(/\/$/, '');
-
 const getToken = () => localStorage.getItem('token') || '';
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : {};
+};
 
 const STATUS_COLORS = {
   completado: { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200', dot: '#10b981' },
@@ -141,16 +144,114 @@ const ProcesoCard = ({ proceso, onSelect }) => {
   );
 };
 
+const ESTADO_STYLES = {
+  CREATE: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: CheckCircle },
+  UPDATE: { bg: 'bg-blue-100', text: 'text-blue-700', icon: RefreshCw },
+  DELETE: { bg: 'bg-red-100', text: 'text-red-700', icon: X },
+};
+
+const ENTIDAD_LABELS = {
+  empresa: 'Empresa', regional: 'Regional', sede: 'Sede',
+  macroproceso: 'Macroproceso', proceso: 'Proceso', area: 'Área',
+  cargo_organizacional: 'Cargo', sesion_valoracion: 'Sesión',
+  valoracion_version: 'Versión',
+};
+
+function AuditRow({ log }) {
+  const [showDiff, setShowDiff] = useState(false);
+  const s = ESTADO_STYLES[log.accion] || ESTADO_STYLES.UPDATE;
+  const Icon = s.icon;
+  let antes = null, despues = null;
+  try { antes = log.valores_antes ? JSON.parse(log.valores_antes) : null; } catch {}
+  try { despues = log.valores_despues ? JSON.parse(log.valores_despues) : null; } catch {}
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="flex items-center gap-3 p-4">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${s.bg} shrink-0`}>
+          <Icon size={14} className={s.text} />
+        </div>
+        <div className="flex-1 min-w-0 grid grid-cols-4 gap-2 text-sm">
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase block">Entidad</span>
+            <span className="font-medium">{ENTIDAD_LABELS[log.entidad] || log.entidad}</span>
+            <span className="text-slate-400 ml-1">#{log.entidad_id}</span>
+          </div>
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase block">Acción</span>
+            <span className={`font-semibold ${s.text}`}>{log.accion}</span>
+          </div>
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase block">Usuario</span>
+            <span className="text-slate-600 truncate block">{log.usuario_email || log.usuario_id || '-'}</span>
+          </div>
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase block">Fecha</span>
+            <span className="text-slate-600">{log.timestamp ? new Date(log.timestamp).toLocaleString('es-ES') : '-'}</span>
+          </div>
+        </div>
+        {(antes || despues) && (
+          <button onClick={() => setShowDiff(!showDiff)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400">
+            {showDiff ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        )}
+      </div>
+      {showDiff && (antes || despues) && (
+        <div className="border-t border-slate-100 p-4 bg-slate-50 grid grid-cols-2 gap-4 text-xs font-mono">
+          {antes && (
+            <div>
+              <p className="font-semibold text-slate-500 mb-1 uppercase text-[10px]">Antes</p>
+              <pre className="bg-white p-2 rounded-lg border border-slate-200 overflow-x-auto max-h-40 text-slate-600">{JSON.stringify(antes, null, 2)}</pre>
+            </div>
+          )}
+          {despues && (
+            <div>
+              <p className="font-semibold text-slate-500 mb-1 uppercase text-[10px]">Después</p>
+              <pre className="bg-white p-2 rounded-lg border border-slate-200 overflow-x-auto max-h-40 text-slate-600">{JSON.stringify(despues, null, 2)}</pre>
+            </div>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 const HistorialView = () => {
+  const [subTab, setSubTab] = useState('procesos');
   const [procesos, setProcesos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState('todos');
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+  const [auditFilter, setAuditFilter] = useState({ entidad: '', accion: '', search: '' });
 
   useEffect(() => {
-    loadProcesos();
+    if (subTab === 'procesos') loadProcesos();
   }, []);
+
+  useEffect(() => {
+    if (subTab === 'auditoria') loadAuditLogs();
+  }, [subTab]);
+
+  const loadAuditLogs = async () => {
+    setLoadingAudit(true);
+    try {
+      const params = new URLSearchParams();
+      if (auditFilter.entidad) params.set('entidad', auditFilter.entidad);
+      if (auditFilter.accion) params.set('accion', auditFilter.accion);
+      const qs = params.toString();
+      const res = await fetch(`${API_BASE}/audit-logs${qs ? '?' + qs : ''}`, { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Error cargando auditoría');
+      const data = await res.json();
+      setAuditLogs(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingAudit(false);
+    }
+  };
 
   const loadProcesos = async () => {
     setLoading(true);
@@ -206,6 +307,18 @@ const HistorialView = () => {
 
   return (
     <div className="space-y-6 pb-20">
+      {/* Sub-tab switcher */}
+      <div className="flex gap-2 bg-white rounded-xl p-1.5 border border-slate-200 w-fit">
+        <button onClick={() => setSubTab('procesos')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${subTab === 'procesos' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
+          <div className="flex items-center gap-2"><History size={14} /> Procesos</div>
+        </button>
+        <button onClick={() => setSubTab('auditoria')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${subTab === 'auditoria' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
+          <div className="flex items-center gap-2"><Eye size={14} /> Auditoría</div>
+        </button>
+      </div>
+
+      {subTab === 'procesos' && (
+      <>
       {/* Dashboard Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="glass-card rounded-xl p-4 border border-emerald-100">
@@ -381,6 +494,62 @@ const HistorialView = () => {
           />
         ))}
       </div>
+      </>
+      )}
+
+      {subTab === 'auditoria' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800">Registro de Auditoría</h2>
+              <p className="text-sm text-slate-500">Traza de cambios en toda la plataforma</p>
+            </div>
+            <button onClick={loadAuditLogs} className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-xl text-sm font-semibold hover:bg-slate-50">
+              <RefreshCw size={14} /> Actualizar
+            </button>
+          </div>
+
+          {/* Audit filters */}
+          <div className="flex gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input type="text" placeholder="Buscar por entidad o usuario..." value={auditFilter.search} onChange={e => setAuditFilter(f => ({ ...f, search: e.target.value }))} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            </div>
+            <select value={auditFilter.entidad} onChange={e => setAuditFilter(f => ({ ...f, entidad: e.target.value }))} className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
+              <option value="">Todas las entidades</option>
+              {Object.entries(ENTIDAD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <select value={auditFilter.accion} onChange={e => setAuditFilter(f => ({ ...f, accion: e.target.value }))} className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
+              <option value="">Todas las acciones</option>
+              <option value="CREATE">CREATE</option>
+              <option value="UPDATE">UPDATE</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+            <button onClick={loadAuditLogs} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
+              <Search size={14} className="inline mr-1" /> Filtrar
+            </button>
+          </div>
+
+          {loadingAudit ? (
+            <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin" /></div>
+          ) : auditLogs.length === 0 ? (
+            <div className="text-center py-16 text-slate-400">
+              <Eye size={48} className="mx-auto mb-4 opacity-30" />
+              <p className="font-semibold">Sin registros de auditoría</p>
+              <p className="text-sm mt-1">No se encontraron registros con los filtros actuales</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {auditLogs
+                .filter(l => !auditFilter.search || 
+                  (l.entidad || '').includes(auditFilter.search.toLowerCase()) ||
+                  (l.usuario_email || '').toLowerCase().includes(auditFilter.search.toLowerCase()))
+                .map(log => <AuditRow key={log.id} log={log} />)
+              }
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

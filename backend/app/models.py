@@ -1,8 +1,17 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text, Enum, JSON, Float, Date
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text, Enum, JSON, Float, Date, Time
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
 from .database import Base
 import enum
+
+
+# Mixin para soft-delete y auditoría en todas las tablas nuevas
+class AuditMixin:
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 class JobStatus(str, enum.Enum):
     PENDIENTE = "pendiente"
@@ -26,12 +35,17 @@ class Regional(Base):
     """Region geografica de la empresa (ej: Antioquia, Bogota, Costa)"""
     __tablename__ = "regionales"
     id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String, nullable=False, unique=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=True)
+    nombre = Column(String, nullable=False)
     descripcion = Column(Text, nullable=True)
+    responsable = Column(String, nullable=True)
+    estado = Column(String, default="ACTIVO")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     sedes = relationship("Sede", back_populates="regional")
-    empresas = relationship("Empresa", back_populates="regional")
+    empresas = relationship("Empresa", back_populates="regional", foreign_keys="Empresa.regional_id")
 
 
 class Sede(Base):
@@ -43,8 +57,13 @@ class Sede(Base):
     direccion = Column(String, nullable=True)
     ciudad = Column(String, nullable=True)
     departamento = Column(String, nullable=True)
+    pais = Column(String, default="Colombia")
     tipo_sede = Column(String, nullable=True)  # Planta, Oficina, Almacen, etc.
+    cantidad_empleados = Column(Integer, nullable=True)
+    estado = Column(String, default="ACTIVO")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     regional = relationship("Regional", back_populates="sedes")
     areas = relationship("Area", back_populates="sede")
@@ -55,13 +74,21 @@ class Area(Base):
     __tablename__ = "areas"
     id = Column(Integer, primary_key=True, index=True)
     sede_id = Column(Integer, ForeignKey("sedes.id"), nullable=True)
+    proceso_id = Column(Integer, ForeignKey("procesos.id"), nullable=True)
     nombre = Column(String, nullable=False)
     nombre_corto = Column(String, nullable=True)  # GH, FIN, PROD
     tipo_area = Column(String, nullable=True)  # Gerencia, Direccion, Coordinacion, etc.
     area_padre_id = Column(Integer, ForeignKey("areas.id"), nullable=True)  # Jerarquia
+    descripcion = Column(Text, nullable=True)
+    objetivo = Column(Text, nullable=True)
+    responsable = Column(String, nullable=True)
+    estado = Column(String, default="ACTIVO")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     sede = relationship("Sede", back_populates="areas")
+    proceso = relationship("Proceso", back_populates="areas")
     area_padre = relationship("Area", remote_side=[id], backref="sub_areas")
 
 
@@ -95,6 +122,7 @@ class MuestraPeriodo(Base):
 class Empresa(Base):
     __tablename__ = "empresas"
     id = Column(Integer, primary_key=True, index=True)
+    grupo_empresarial_id = Column(Integer, ForeignKey("grupos_empresariales.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     regional_id = Column(Integer, ForeignKey("regionales.id"), nullable=True)
     sede_principal_id = Column(Integer, ForeignKey("sedes.id"), nullable=True)
@@ -114,14 +142,20 @@ class Empresa(Base):
     telefono_contacto = Column(String, nullable=True)
     email_contacto = Column(String, nullable=True)
     sector_economico = Column(String, nullable=True)
+    subsector = Column(String, nullable=True)
     actividad_economica = Column(String, nullable=True)
     tipo_empresa = Column(String, nullable=True)  # Privada, Publica, Mixta
+    tamano_empresa = Column(String, nullable=True)  # Pequeña, Mediana, Grande
     principales_productos = Column(Text, nullable=True)
+    descripcion_negocio = Column(Text, nullable=True)
+    modelo_operativo = Column(Text, nullable=True)
+    cadena_valor = Column(Text, nullable=True)
     motivacion = Column(Text, nullable=True)
     num_personas_contratadas = Column(Integer, nullable=True)
     empleados_presenciales = Column(Integer, nullable=True)
     empleados_teletrabajo = Column(Integer, nullable=True)
     empleados_mixta = Column(Integer, nullable=True)
+    ingresos_aproximados = Column(Float, nullable=True)
 
     # Tipos de contratos
     tipos_contratos = Column(Text, nullable=True)
@@ -135,13 +169,20 @@ class Empresa(Base):
     excedentes_reales = Column(Float, nullable=True)
     excedentes_presupuestados = Column(Float, nullable=True)
 
+    estado = Column(String, default="ACTIVO")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
-    regional = relationship("Regional", back_populates="empresas")
+    grupo = relationship("GrupoEmpresarial", back_populates="empresas")
+    regional = relationship("Regional", back_populates="empresas", foreign_keys="Empresa.regional_id")
     sede_principal = relationship("Sede")
     practicas = relationship("PracticaCompensacion", back_populates="empresa")
     cargos_empresa = relationship("CargoEmpresa", back_populates="empresa")
     muestras = relationship("MuestraPeriodo", back_populates="empresa")
+    cargos_organizacionales = relationship("CargoOrganizacional", back_populates="empresa")
+    sesiones_valoracion = relationship("SesionValoracion", back_populates="empresa")
+    macroprocesos = relationship("Macroproceso", back_populates="empresa")
 
 
 class PracticaCompensacion(Base):
@@ -655,3 +696,225 @@ class ProcessingLog(Base):
     level = Column(String)
     message = Column(Text)
     raw_response = Column(Text, nullable=True)
+
+
+# ==========================================
+# NUEVOS MODELOS FASE 1: ESTRUCTURA ORGANIZACIONAL
+# ==========================================
+
+class GrupoEmpresarial(Base):
+    """Grupo empresarial que agrupa multiples empresas (holding)"""
+    __tablename__ = "grupos_empresariales"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String, nullable=False)
+    descripcion = Column(Text, nullable=True)
+    sector_principal = Column(String, nullable=True)
+    tamano = Column(String, nullable=True)
+    pais_principal = Column(String, default="Colombia")
+    estado = Column(String, default="ACTIVO")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    empresas = relationship("Empresa", back_populates="grupo")
+
+
+class Macroproceso(Base):
+    """Macroproceso de la empresa (ej: Operaciones, Comercial, Administrativo)"""
+    __tablename__ = "macroprocesos"
+    id = Column(Integer, primary_key=True, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False)
+    nombre = Column(String, nullable=False)
+    descripcion = Column(Text, nullable=True)
+    tipo = Column(String, nullable=True)  # Misional, Estrategico, Apoyo, Evaluacion
+    criticidad = Column(String, nullable=True)  # Alta, Media, Baja
+    estado = Column(String, default="ACTIVO")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    empresa = relationship("Empresa", back_populates="macroprocesos")
+    procesos = relationship("Proceso", back_populates="macroproceso")
+
+
+class Proceso(Base):
+    """Proceso especifico dentro de un macroproceso"""
+    __tablename__ = "procesos"
+    id = Column(Integer, primary_key=True, index=True)
+    macroproceso_id = Column(Integer, ForeignKey("macroprocesos.id"), nullable=False)
+    nombre = Column(String, nullable=False)
+    descripcion = Column(Text, nullable=True)
+    lider_proceso = Column(String, nullable=True)
+    criticidad = Column(String, nullable=True)
+    estado = Column(String, default="ACTIVO")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    macroproceso = relationship("Macroproceso", back_populates="procesos")
+    areas = relationship("Area", back_populates="proceso")
+
+
+class CargoOrganizacional(Base):
+    """Cargo organizacional con contexto completo para valoración.
+    Esta es la entidad central del sistema, NO confundir con Cargo (pipeline de upload).
+    Cada cargo pertenece a un area, tiene jerarquia, descripción y perfil."""
+    __tablename__ = "cargos_organizacionales"
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Identificación
+    codigo = Column(String, nullable=True, index=True)
+    nombre = Column(String, nullable=False)
+    nombre_estandarizado = Column(String, nullable=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False)
+    area_id = Column(Integer, ForeignKey("areas.id"), nullable=True)
+    jefe_cargo_id = Column(Integer, ForeignKey("cargos_organizacionales.id"), nullable=True)
+
+    # Jerarquía
+    nivel_organizacional = Column(String, nullable=True)
+    tiene_personal_a_cargo = Column(Boolean, default=False)
+    cantidad_subordinados = Column(Integer, default=0)
+
+    # Contexto
+    sector = Column(String, nullable=True)
+    modelo_operativo = Column(String, nullable=True)
+    ubicacion = Column(String, nullable=True)
+    modalidad = Column(String, nullable=True)  # Presencial, Remoto, Hibrido
+
+    # Descripción del cargo
+    mision = Column(Text, nullable=True)
+    objetivo = Column(Text, nullable=True)
+    proposito = Column(Text, nullable=True)
+    responsabilidades_generales = Column(Text, nullable=True)
+    responsabilidades_especificas = Column(Text, nullable=True)
+    funciones_clave = Column(Text, nullable=True)
+    indicadores = Column(Text, nullable=True)
+
+    # Perfil requerido
+    formacion_requerida = Column(Text, nullable=True)
+    conocimientos_generales = Column(Text, nullable=True)
+    conocimientos_especificos = Column(Text, nullable=True)
+    experiencia = Column(Text, nullable=True)
+    certificaciones = Column(Text, nullable=True)
+    competencias = Column(Text, nullable=True)
+
+    # Estado de valoración
+    estado_valoracion = Column(String, default="PENDIENTE")
+    valoracion_actual_id = Column(Integer, ForeignKey("valoraciones_version.id"), nullable=True)
+    tiene_valoracion_activa = Column(Boolean, default=False)
+
+    # Auditoría y estados
+    estado = Column(String, default="ACTIVO")  # ACTIVO, INACTIVO, ELIMINADO, EN_VALORACION, PENDIENTE, HISTORICO
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Relaciones
+    empresa = relationship("Empresa", back_populates="cargos_organizacionales")
+    area = relationship("Area")
+    jefe_cargo = relationship("CargoOrganizacional", remote_side=[id], backref="subordinados")
+    versiones_valoracion = relationship("ValoracionVersion", back_populates="cargo_organizacional", foreign_keys="ValoracionVersion.cargo_id")
+
+
+class SesionValoracion(Base):
+    """Sesión de valoración: agrupa un conjunto de valoraciones de cargos
+    dentro de una empresa para un período/metodología específica."""
+    __tablename__ = "sesiones_valoracion"
+    id = Column(Integer, primary_key=True, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False)
+    nombre = Column(String, nullable=False)
+    descripcion = Column(Text, nullable=True)
+
+    # Estados: PENDIENTE, EN_PROCESO, CANCELADA, FINALIZADA, APROBADA
+    estado = Column(String, default="PENDIENTE")
+    fecha_inicio = Column(DateTime(timezone=True), nullable=True)
+    fecha_fin = Column(DateTime(timezone=True), nullable=True)
+    creada_por = Column(Integer, ForeignKey("users.id"), nullable=True)
+    metodologia = Column(String, default="SHR/HAY")
+    observaciones = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+    empresa = relationship("Empresa", back_populates="sesiones_valoracion")
+    versiones = relationship("ValoracionVersion", back_populates="sesion")
+
+
+class ValoracionVersion(Base):
+    """Versión de valoración de un cargo organizacional.
+    NUNCA se sobrescribe una valoración; siempre se crea una nueva versión.
+    Solo puede existir UNA valoración DEFINITIVA activa por cargo."""
+    __tablename__ = "valoraciones_version"
+    id = Column(Integer, primary_key=True, index=True)
+    cargo_id = Column(Integer, ForeignKey("cargos_organizacionales.id"), nullable=False)
+    sesion_id = Column(Integer, ForeignKey("sesiones_valoracion.id"), nullable=True)
+    version = Column(Integer, default=1)
+
+    # Estados: BORRADOR, EN_REVISION, APROBADA, RECHAZADA, DEFINITIVA, HISTORICA
+    estado = Column(String, default="BORRADOR")
+    motivo_cambio = Column(Text, nullable=True)
+
+    # Factores de valoración SHR/HAY
+    conocimientos = Column(String, nullable=True)
+    experiencia = Column(String, nullable=True)
+    habilidad_gerencial = Column(String, nullable=True)
+    rol_cargo = Column(String, nullable=True)
+
+    contacto = Column(String, nullable=True)
+    frecuencia = Column(String, nullable=True)
+    contenido_relaciones = Column(String, nullable=True)
+
+    complejidad_conceptual = Column(String, nullable=True)
+    tendencia_cc = Column(String, nullable=True)
+    guias_apoyo = Column(String, nullable=True)
+    tendencia_ga = Column(String, nullable=True)
+
+    impacto = Column(String, nullable=True)
+    autonomia = Column(String, nullable=True)
+    magnitud = Column(String, nullable=True)
+
+    # Criterios de puntuación
+    criterio_1 = Column(Integer, default=0)
+    criterio_2 = Column(Integer, default=0)
+    criterio_3 = Column(Integer, default=0)
+
+    # Metadatos
+    justificacion = Column(Text, nullable=True)
+    editado_manual = Column(Boolean, default=False)
+    puntos_totales = Column(Integer, nullable=True)
+    nivel_shr = Column(String, nullable=True)
+    categoria = Column(Integer, nullable=True)
+    criticidad = Column(String, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    cargo_organizacional = relationship("CargoOrganizacional", back_populates="versiones_valoracion", foreign_keys="ValoracionVersion.cargo_id")
+    sesion = relationship("SesionValoracion", back_populates="versiones")
+
+
+class AuditLog(Base):
+    """Registro de auditoría para trazabilidad de cambios."""
+    __tablename__ = "audit_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    entidad = Column(String, nullable=False)  # Nombre de la tabla
+    entidad_id = Column(Integer, nullable=False)  # ID del registro
+    accion = Column(String, nullable=False)  # CREATE, UPDATE, DELETE, SOFT_DELETE, RESTORE
+    antes = Column(JSON, nullable=True)
+    despues = Column(JSON, nullable=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    ip = Column(String, nullable=True)
+
+    usuario = relationship("User")
