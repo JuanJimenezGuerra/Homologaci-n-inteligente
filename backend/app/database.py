@@ -249,9 +249,9 @@ def run_migrations():
             ("posicion_equidad_pct", "DOUBLE PRECISION"),
         ],
         "empresas": [
-            ("sede_principal_id", "INTEGER REFERENCES sedes(id)"),
-            ("regional_id", "INTEGER REFERENCES regionales(id)"),
-            ("grupo_empresarial_id", "INTEGER REFERENCES grupos_empresariales(id)"),
+            ("sede_principal_id", "INTEGER"),
+            ("regional_id", "INTEGER"),
+            ("grupo_empresarial_id", "INTEGER"),
             ("nit", "VARCHAR"),
             ("fecha_diligenciamiento", "DATE"),
             ("consultor", "VARCHAR"),
@@ -293,7 +293,7 @@ def run_migrations():
             ("deleted_at", "TIMESTAMP"),
         ],
         "regionales": [
-            ("empresa_id", "INTEGER REFERENCES empresas(id)"),
+            ("empresa_id", "INTEGER"),
             ("responsable", "VARCHAR"),
             ("estado", "VARCHAR"),
             ("updated_at", "TIMESTAMP"),
@@ -307,7 +307,7 @@ def run_migrations():
             ("deleted_at", "TIMESTAMP"),
         ],
         "areas": [
-            ("proceso_id", "INTEGER REFERENCES procesos(id)"),
+            ("proceso_id", "INTEGER"),
             ("descripcion", "TEXT"),
             ("objetivo", "TEXT"),
             ("responsable", "VARCHAR"),

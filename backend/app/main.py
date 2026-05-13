@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Query, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from .database import get_db, engine, Base, run_migrations
+from .database import get_db, engine, Base, run_migrations, DATABASE_URL
 from .models import (
     User, Upload, Cargo, Homologacion, JobStatus, ProcessingLog,
     Empresa, CargoEmpresa, ValoracionCargo, MasterDescription, Valoracion,
@@ -33,6 +33,28 @@ try:
     run_migrations()
     print("Iniciando creacion/verificacion de tablas...")
     Base.metadata.create_all(bind=engine)
+
+    # Add FK constraints after all tables exist
+    from sqlalchemy import inspect, text
+    if DATABASE_URL.startswith("postgresql"):
+        inspector = inspect(engine)
+        empresa_cols = {c["name"] for c in inspector.get_columns("empresas")}
+        fk_constraints = {
+            "fk_empresas_grupo": ("empresas", "grupo_empresarial_id", "grupos_empresariales(id)"),
+            "fk_empresas_regional": ("empresas", "regional_id", "regionales(id)"),
+            "fk_empresas_sede": ("empresas", "sede_principal_id", "sedes(id)"),
+            "fk_regionales_empresa": ("regionales", "empresa_id", "empresas(id)"),
+            "fk_areas_proceso": ("areas", "proceso_id", "procesos(id)"),
+        }
+        for fk_name, (table, col, ref) in fk_constraints.items():
+            if col in empresa_cols or table != "empresas":
+                try:
+                    with engine.begin() as conn:
+                        conn.execute(text(f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='{fk_name}') THEN ALTER TABLE {table} ADD CONSTRAINT {fk_name} FOREIGN KEY ({col}) REFERENCES {ref}; END IF; END $$;"))
+                    print(f"FK: OK - {fk_name}")
+                except Exception as e:
+                    print(f"FK: WARNING - {fk_name}: {e}")
+
     print("Tablas creadas/verificadas exitosamente.")
 except Exception as e:
     print(f"ERROR CRITICO al conectar a la base de datos: {e}")
