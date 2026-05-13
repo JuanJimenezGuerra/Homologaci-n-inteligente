@@ -354,6 +354,11 @@ function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
                     <div key={version.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl group">
                       <Briefcase size={14} className="text-orange-500 shrink-0" />
                       <span className="font-medium text-sm text-slate-700 flex-1 truncate">{cargo?.nombre || `Cargo #${version.cargo_id}`}</span>
+                      {version.puntos_totales ? (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${version.puntos_totales >= 300 ? 'bg-purple-100 text-purple-700' : version.puntos_totales >= 200 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                          {version.puntos_totales} pts · {version.nivel_shr || ''}
+                        </span>
+                      ) : null}
                       <EstadoBadge estado={version.estado} />
                       <span className="text-xs text-slate-400 shrink-0">v{version.version}</span>
                       {canTransition && (
@@ -432,9 +437,11 @@ function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
                         <tr className="border-b border-slate-200">
                           <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">Cargo</th>
                           <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">Área</th>
-                          <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">Versión</th>
+                          <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px] text-center">Puntaje</th>
+                          <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px] text-center">Nivel</th>
                           <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">Estado</th>
-                          {FACTORES.slice(0, 5).map(f => (
+                          <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">Versión</th>
+                          {FACTORES.slice(0, 3).map(f => (
                             <th key={f.key} className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">{f.label}</th>
                           ))}
                         </tr>
@@ -444,9 +451,17 @@ function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
                           <tr key={version.id} className="border-b border-slate-100 hover:bg-slate-50">
                             <td className="py-2 px-3 font-medium">{cargo?.nombre || `#${version.cargo_id}`}</td>
                             <td className="py-2 px-3 text-slate-500">{cargo?.area_nombre || '-'}</td>
-                            <td className="py-2 px-3 text-slate-500">v{version.version}</td>
+                            <td className="py-2 px-3 text-center">
+                              <span className={`font-bold text-sm ${(version.puntos_totales || 0) >= 300 ? 'text-purple-700' : (version.puntos_totales || 0) >= 200 ? 'text-blue-700' : 'text-slate-600'}`}>
+                                {version.puntos_totales || '-'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-center">
+                              <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{version.nivel_shr || '-'}</span>
+                            </td>
                             <td className="py-2 px-3"><EstadoBadge estado={version.estado} /></td>
-                            {FACTORES.slice(0, 5).map(f => (
+                            <td className="py-2 px-3 text-slate-500">v{version.version}</td>
+                            {FACTORES.slice(0, 3).map(f => (
                               <td key={f.key} className="py-2 px-3 text-slate-600">{version[f.key] || '-'}</td>
                             ))}
                           </tr>

@@ -5,10 +5,12 @@ from typing import Optional
 from datetime import datetime
 from ..database import get_db
 from ..models import (
-    SesionValoracion, ValoracionVersion, CargoOrganizacional,
-    Empresa, User, AuditLog
+    SesionValoracion, ValoracionVersion, CargoOrganizacional, User, AuditLog,
+    GrupoEmpresarial, Empresa, Regional, Sede, Macroproceso, Proceso, Area,
 )
+from ..database import get_db
 from ..auth import get_current_user
+from ..services.scoring_service import calcular_puntaje
 from .organizacion import _serialize
 
 router = APIRouter(prefix="/api/v1", tags=["Valoración - Sesiones"])
@@ -354,6 +356,12 @@ def transicionar_version(
             cargo.tiene_valoracion_activa = True
             cargo.estado_valoracion = "VALORADO"
 
+    # Recalcular puntaje al transicionar
+    score = calcular_puntaje(v)
+    v.puntos_totales = score["puntaje_total"]
+    v.nivel_shr = score["nivel_shr"]
+    v.categoria = score["categoria"]
+
     db.commit()
     db.refresh(v)
     despues = _serialize(v)
@@ -390,6 +398,13 @@ def actualizar_version(
             setattr(v, key, data[key])
     v.editado_manual = True
     v.updated_by = _get_user_id(current_user)
+
+    # Recalcular puntaje
+    score = calcular_puntaje(v)
+    v.puntos_totales = score["puntaje_total"]
+    v.nivel_shr = score["nivel_shr"]
+    v.categoria = score["categoria"]
+
     db.commit()
     db.refresh(v)
     despues = _serialize(v)
