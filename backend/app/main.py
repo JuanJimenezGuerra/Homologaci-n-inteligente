@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Query, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text, inspect
 from sqlalchemy.orm import Session
 from .database import get_db, engine, Base, run_migrations, DATABASE_URL
 from .models import (
@@ -1730,3 +1731,99 @@ def get_db_info(db: Session = Depends(get_db), current_user: User = Depends(get_
             "row_count": count,
         })
     return tables
+
+
+@app.get("/db-data/{table}")
+def get_db_data(table: str, offset: int = 0, limit: int = 50,
+                db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Retorna datos de una tabla específica con paginación."""
+    inspector = inspect(engine)
+    all_tables = inspector.get_table_names()
+    if table not in all_tables:
+        raise HTTPException(404, f"Table '{table}' not found")
+    cols = [c["name"] for c in inspector.get_columns(table)]
+    pk_cols = [c["name"] for c in inspector.get_columns(table) if c.get("primary_key")]
+    total = db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar() or 0
+    rows = db.execute(text(f'SELECT * FROM "{table}" ORDER BY 1 OFFSET {offset} LIMIT {limit}')).fetchall()
+    return {
+        "table": table,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "columns": cols,
+        "primary_key": pk_cols[0] if pk_cols else cols[0],
+        "rows": [dict(zip(cols, row)) for row in rows],
+    }
+
+
+@app.put("/db-data/{table}/{row_id}")
+def update_db_row(table: str, row_id: int, data: dict,
+                  db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Actualiza una fila de una tabla por su ID."""
+    inspector = inspect(engine)
+    all_tables = inspector.get_table_names()
+    if table not in all_tables:
+        raise HTTPException(404, f"Table '{table}' not found")
+    cols = [c["name"] for c in inspector.get_columns(table)]
+    pk_cols = [c["name"] for c in inspector.get_columns(table) if c.get("primary_key")]
+    pk = pk_cols[0] if pk_cols else cols[0]
+    set_clause = ", ".join(f'"{k}" = :{k}' for k in data if k in cols)
+    if not set_clause:
+        raise HTTPException(400, "No valid columns to update")
+    params = {k: v for k, v in data.items() if k in cols}
+    params[pk] = row_id
+    sql = f'UPDATE "{table}" SET {set_clause} WHERE "{pk}" = :{pk}'
+    try:
+        db.execute(text(sql), params)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(400, str(e))
+    return {"message": "updated", "row_id": row_id}
+
+
+@app.post("/db-data/{table}")
+def create_db_row(table: str, data: dict,
+                  db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Inserta una nueva fila en una tabla."""
+    inspector = inspect(engine)
+    all_tables = inspector.get_table_names()
+    if table not in all_tables:
+        raise HTTPException(404, f"Table '{table}' not found")
+    cols = [c["name"] for c in inspector.get_columns(table)]
+    pk_cols = [c["name"] for c in inspector.get_columns(table) if c.get("primary_key")]
+    pk = pk_cols[0] if pk_cols else cols[0]
+    insert_cols = {k: v for k, v in data.items() if k in cols and k != pk}
+    if not insert_cols:
+        raise HTTPException(400, "No valid columns to insert")
+    col_list = ", ".join(f'"{k}"' for k in insert_cols)
+    val_list = ", ".join(f':{k}' for k in insert_cols)
+    sql = f'INSERT INTO "{table}" ({col_list}) VALUES ({val_list}) RETURNING *'
+    try:
+        row = db.execute(text(sql), insert_cols).fetchone()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(400, str(e))
+    return dict(zip(cols, row)) if row else {"message": "created"}
+
+
+@app.delete("/db-data/{table}/{row_id}")
+def delete_db_row(table: str, row_id: int,
+                  db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Elimina una fila de una tabla por su ID."""
+    inspector = inspect(engine)
+    all_tables = inspector.get_table_names()
+    if table not in all_tables:
+        raise HTTPException(404, f"Table '{table}' not found")
+    cols = [c["name"] for c in inspector.get_columns(table)]
+    pk_cols = [c["name"] for c in inspector.get_columns(table) if c.get("primary_key")]
+    pk = pk_cols[0] if pk_cols else cols[0]
+    sql = f'DELETE FROM "{table}" WHERE "{pk}" = :pk'
+    try:
+        db.execute(text(sql), {"pk": row_id})
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(400, str(e))
+    return {"message": "deleted", "row_id": row_id}

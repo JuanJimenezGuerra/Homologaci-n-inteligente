@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   History, Search, Filter, ChevronDown, ChevronUp, 
   User, Calendar, Building, CheckCircle, AlertCircle, 
   Clock, FileText, Download, RefreshCw, Loader2, X,
-  TrendingUp, Users, Award, Target, Eye, EyeOff, Database, Server, Table as TableIcon
+  TrendingUp, Users, Award, Target, Eye, EyeOff, Database, Server, Table as TableIcon,
+  Plus, Edit3, Trash2, Save, ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -229,6 +230,12 @@ const HistorialView = () => {
   const [dbTables, setDbTables] = useState([]);
   const [loadingDb, setLoadingDb] = useState(false);
   const [expandedTable, setExpandedTable] = useState(null);
+  const [tableData, setTableData] = useState({});
+  const [loadingTableData, setLoadingTableData] = useState({});
+  const [editingCell, setEditingCell] = useState(null);
+  const [editValue, setEditValue] = useState('');
+  const [showAddForm, setShowAddForm] = useState(null);
+  const [newRowData, setNewRowData] = useState({});
 
   useEffect(() => {
     if (subTab === 'procesos') loadProcesos();
@@ -278,6 +285,77 @@ const HistorialView = () => {
       setDbTables([]);
     } finally {
       setLoadingDb(false);
+    }
+  };
+
+  const loadTableData = async (tableName) => {
+    setLoadingTableData(prev => ({ ...prev, [tableName]: true }));
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/db-data/${tableName}`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      if (!res.ok) throw new Error('Error cargando datos');
+      const data = await res.json();
+      setTableData(prev => ({ ...prev, [tableName]: data }));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingTableData(prev => ({ ...prev, [tableName]: false }));
+    }
+  };
+
+  const handleSaveEdit = async (tableName, rowId, column, value) => {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/db-data/${tableName}/${rowId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ [column]: value }),
+      });
+      if (!res.ok) throw new Error('Error updating');
+      setEditingCell(null);
+      loadTableData(tableName);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteRow = async (tableName, rowId) => {
+    if (!confirm(`Eliminar registro #${rowId} de ${tableName}?`)) return;
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/db-data/${tableName}/${rowId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      if (!res.ok) throw new Error('Error deleting');
+      loadTableData(tableName);
+      loadDbInfo();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleAddRow = async (tableName) => {
+    const payload = { ...newRowData };
+    Object.keys(payload).forEach(k => {
+      if (payload[k] === '') delete payload[k];
+    });
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/db-data/${tableName}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        alert('Error: ' + err);
+        return;
+      }
+      setShowAddForm(null);
+      setNewRowData({});
+      loadTableData(tableName);
+      loadDbInfo();
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -662,39 +740,184 @@ const HistorialView = () => {
                         </div>
                       )}
 
-                      {/* Columns */}
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead>
-                            <tr className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px]">
-                              <th className="px-4 py-2">Columna</th>
-                              <th className="px-4 py-2">Tipo</th>
-                              <th className="px-4 py-2 text-center">Nulo</th>
-                              <th className="px-4 py-2 text-center">PK</th>
-                              <th className="px-4 py-2 text-center">Auto</th>
-                              <th className="px-4 py-2">Default</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {table.columns?.map((col, i) => (
-                              <tr key={col.name} className={`border-t border-slate-50 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}>
-                                <td className="px-4 py-2 font-mono font-medium text-slate-800">{col.name}</td>
-                                <td className="px-4 py-2 font-mono text-slate-500">{col.type}</td>
-                                <td className="px-4 py-2 text-center">
-                                  {col.nullable ? <span className="text-emerald-500 font-bold">SÍ</span> : <span className="text-red-400 font-bold">NO</span>}
-                                </td>
-                                <td className="px-4 py-2 text-center">
-                                  {col.primary_key ? <CheckCircle size={14} className="text-amber-500 inline" /> : '—'}
-                                </td>
-                                <td className="px-4 py-2 text-center">
-                                  {col.autoincrement ? <CheckCircle size={14} className="text-blue-500 inline" /> : '—'}
-                                </td>
-                                <td className="px-4 py-2 font-mono text-slate-400">{col.default || '—'}</td>
+                      {/* Columns Schema */}
+                      <div className="p-3 border-b border-slate-100">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Columnas</span>
+                          <div className="flex gap-2">
+                            {!tableData[table.name] && (
+                              <button onClick={() => loadTableData(table.name)}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-100">
+                                <Eye size={12} /> Ver datos
+                              </button>
+                            )}
+                            {tableData[table.name] && (
+                              <button onClick={() => setShowAddForm(showAddForm === table.name ? null : table.name)}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-semibold hover:bg-emerald-100">
+                                <Plus size={12} /> Añadir
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px]">
+                                <th className="px-4 py-2">Columna</th>
+                                <th className="px-4 py-2">Tipo</th>
+                                <th className="px-4 py-2 text-center">Nulo</th>
+                                <th className="px-4 py-2 text-center">PK</th>
+                                <th className="px-4 py-2 text-center">Auto</th>
+                                <th className="px-4 py-2">Default</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody>
+                              {table.columns?.map((col, i) => (
+                                <tr key={col.name} className={`border-t border-slate-50 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}>
+                                  <td className="px-4 py-2 font-mono font-medium text-slate-800">{col.name}</td>
+                                  <td className="px-4 py-2 font-mono text-slate-500">{col.type}</td>
+                                  <td className="px-4 py-2 text-center">
+                                    {col.nullable ? <span className="text-emerald-500 font-bold">SÍ</span> : <span className="text-red-400 font-bold">NO</span>}
+                                  </td>
+                                  <td className="px-4 py-2 text-center">
+                                    {col.primary_key ? <CheckCircle size={14} className="text-amber-500 inline" /> : '—'}
+                                  </td>
+                                  <td className="px-4 py-2 text-center">
+                                    {col.autoincrement ? <CheckCircle size={14} className="text-blue-500 inline" /> : '—'}
+                                  </td>
+                                  <td className="px-4 py-2 font-mono text-slate-400">{col.default || '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
+
+                      {/* Data Rows */}
+                      {tableData[table.name] && (
+                        <div className="border-b border-slate-100">
+                          <div className="px-3 py-2 flex items-center justify-between bg-slate-50/50">
+                            <span className="text-xs font-bold text-slate-600">
+                              <Database size={12} className="inline mr-1" />
+                              {tableData[table.name].total} registros 
+                              (mostrando {tableData[table.name].rows.length})
+                            </span>
+                            <button onClick={() => loadTableData(table.name)}
+                              className="text-xs text-blue-600 hover:text-blue-800 font-semibold">
+                              <RefreshCw size={12} className="inline mr-1" /> Recargar
+                            </button>
+                          </div>
+
+                          {loadingTableData[table.name] ? (
+                            <div className="flex items-center justify-center py-6">
+                              <Loader2 size={16} className="animate-spin text-blue-500" />
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                              <table className="w-full text-left text-[11px]">
+                                <thead className="sticky top-0 bg-slate-100">
+                                  <tr className="text-slate-500 font-bold uppercase text-[10px]">
+                                    {tableData[table.name].columns.map(col => (
+                                      <th key={col} className="px-2 py-1.5 whitespace-nowrap">{col}</th>
+                                    ))}
+                                    <th className="px-2 py-1.5 text-center">Acciones</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {tableData[table.name].rows.map((row, ri) => (
+                                    <tr key={ri} className={`border-t border-slate-50 ${ri % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} hover:bg-blue-50/30`}>
+                                      {tableData[table.name].columns.map(col => {
+                                        const pk = tableData[table.name].primary_key;
+                                        const isPk = col === pk;
+                                        const cellKey = `${ri}-${col}`;
+                                        const isEditing = editingCell === cellKey;
+                                        const val = row[col];
+                                        const displayVal = val === null ? '—' : String(val);
+                                        return (
+                                          <td key={col} className="px-2 py-1 max-w-[200px] truncate">
+                                            {isEditing ? (
+                                              <div className="flex items-center gap-1">
+                                                <input
+                                                  type="text"
+                                                  defaultValue={val ?? ''}
+                                                  onChange={e => setEditValue(e.target.value)}
+                                                  className="w-full px-1.5 py-0.5 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                                  autoFocus
+                                                  onKeyDown={e => {
+                                                    if (e.key === 'Enter') handleSaveEdit(table.name, row[pk], col, editValue);
+                                                    if (e.key === 'Escape') setEditingCell(null);
+                                                  }}
+                                                />
+                                                <button onClick={() => handleSaveEdit(table.name, row[pk], col, editValue)}
+                                                  className="p-0.5 text-emerald-600 hover:text-emerald-800">
+                                                  <Save size={12} />
+                                                </button>
+                                                <button onClick={() => setEditingCell(null)}
+                                                  className="p-0.5 text-slate-400 hover:text-slate-600">
+                                                  <X size={12} />
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <span
+                                                className={`${isPk ? 'font-bold text-slate-800' : 'text-slate-600'} ${!isPk ? 'cursor-pointer hover:text-blue-600' : ''}`}
+                                                onClick={() => {
+                                                  if (!isPk) {
+                                                    setEditingCell(cellKey);
+                                                    setEditValue(val ?? '');
+                                                  }
+                                                }}
+                                                title={displayVal.length > 30 ? displayVal : ''}
+                                              >
+                                                {displayVal.length > 40 ? displayVal.slice(0, 40) + '...' : displayVal}
+                                              </span>
+                                            )}
+                                          </td>
+                                        );
+                                      })}
+                                      <td className="px-2 py-1 text-center">
+                                        <button onClick={() => handleDeleteRow(table.name, row[tableData[table.name].primary_key])}
+                                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded">
+                                          <Trash2 size={12} />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Add Row Form */}
+                      {showAddForm === table.name && (
+                        <div className="p-4 bg-emerald-50/50 border-t border-emerald-200">
+                          <p className="text-xs font-bold text-emerald-700 mb-3 uppercase tracking-wider">Nuevo registro</p>
+                          <div className="grid grid-cols-3 gap-2 mb-3">
+                            {table.columns.filter(c => !c.primary_key || !c.autoincrement).map(col => (
+                              <div key={col.name}>
+                                <label className="text-[10px] font-semibold text-slate-500 uppercase">{col.name}</label>
+                                <input
+                                  type="text"
+                                  placeholder={col.nullable ? '(opcional)' : ''}
+                                  onChange={e => setNewRowData(prev => ({ ...prev, [col.name]: e.target.value }))}
+                                  className="w-full px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => handleAddRow(table.name)}
+                              className="px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700">
+                              <Plus size={12} className="inline mr-1" /> Crear
+                            </button>
+                            <button onClick={() => { setShowAddForm(null); setNewRowData({}); }}
+                              className="px-4 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-50">
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
