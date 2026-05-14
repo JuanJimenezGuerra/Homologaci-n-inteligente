@@ -508,7 +508,7 @@ def sync_requerimientos_a_organigrama(
 
     created = 0
     skipped = 0
-    user_id = _uid(current_user) if hasattr(current_user, 'id') else None
+    user_id = current_user.id if current_user else None
 
     # Ensure default hierarchy exists
     macro = db.query(Macroproceso).filter(
