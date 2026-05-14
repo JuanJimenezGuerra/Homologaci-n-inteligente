@@ -398,7 +398,7 @@ function SyncFromUploadButton({ onRefresh }) {
     setError('');
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
+      const timeout = setTimeout(() => controller.abort(), 120000);
       const res = await fetch(`${API}/uploads/${selectedId}/sync-organigrama`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
@@ -501,7 +501,7 @@ export default function OrganizacionView({ onNavigate }) {
     let cancelled = false;
     setLoading(true);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60000);
+    const timeout = setTimeout(() => controller.abort(), 120000);
     Promise.all([
       apiGet('/grupos-empresariales'),
       apiGet('/empresas'),
@@ -537,7 +537,7 @@ export default function OrganizacionView({ onNavigate }) {
     setSavingGrupo(true);
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
+      const timeout = setTimeout(() => controller.abort(), 120000);
       const res = await fetch(`${API_BASE}/grupos-empresariales`, {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -553,7 +553,7 @@ export default function OrganizacionView({ onNavigate }) {
       setGrupoForm({ nombre: '', descripcion: '', sector_principal: '', tamano: '', pais_principal: '' });
       refresh();
     } catch (err) {
-      alert(err.name === 'AbortError' ? 'La solicitud tardó demasiado (~60s). El backend en Render se reinicia tras inactividad. Intenta de nuevo.' : 'Error al crear grupo: ' + err.message);
+      alert(err.name === 'AbortError' ? 'La solicitud tardó demasiado (~120s). El backend en Render se reinicia tras inactividad. Intenta de nuevo.' : 'Error al crear grupo: ' + err.message);
     } finally {
       setSavingGrupo(false);
     }
@@ -571,7 +571,7 @@ export default function OrganizacionView({ onNavigate }) {
             <div className={`backdrop-blur rounded-xl p-4 ${uploadCount > 0 ? 'bg-emerald-500/20 border border-emerald-400/30' : 'bg-white/10'}`}>
               <p className="text-[10px] font-bold uppercase tracking-wider mb-1">Paso 1</p>
               <p className="font-semibold flex items-center gap-2">{uploadCount > 0 ? '✓ Excel Cargado' : 'Sube el Excel de Requerimientos'}</p>
-              <p className="text-xs mt-1">{uploadCount > 0 ? `${uploadCount} archivo(s) procesado(s) correctamente.` : 'Carga el archivo con los datos de la empresa y los cargos.'}</p>
+              <p className="text-xs mt-1">{uploadCount > 0 ? `Carga completada (${uploadCount} registros en el sistema).` : 'Carga el archivo con los datos de la empresa y los cargos.'}</p>
               {onNavigate && uploadCount === 0 && (
                 <button onClick={() => onNavigate('formulario')} className="mt-3 text-xs font-semibold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors">
                   Ir a Formulario

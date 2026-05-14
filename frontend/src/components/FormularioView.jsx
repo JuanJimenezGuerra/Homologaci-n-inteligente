@@ -27,6 +27,7 @@ function FormularioView({ empresaId, onEmpresaCreated }) {
 function CargaDirecta({ onSuccess }) {
   const [excelFile, setExcelFile] = useState(null);
   const [extraFiles, setExtraFiles] = useState([]);
+  const [organigramaFile, setOrganigramaFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [uploadId, setUploadId] = useState(null);
@@ -40,6 +41,7 @@ function CargaDirecta({ onSuccess }) {
 
   const excelRef = useRef(null);
   const extraRef = useRef(null);
+  const organigramaRef = useRef(null);
 
   const handleExcelSelect = (e) => {
     const file = e.target.files[0];
@@ -58,6 +60,15 @@ function CargaDirecta({ onSuccess }) {
 
   const removeExtra = (i) => {
     setExtraFiles(extraFiles.filter((_, idx) => idx !== i));
+  };
+
+  const handleOrganigramaSelect = (e) => {
+    const file = e.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      setOrganigramaFile(file);
+    } else {
+      setError('Selecciona una imagen válida');
+    }
   };
 
   const fetchCargos = async (uid) => {
@@ -148,6 +159,21 @@ function CargaDirecta({ onSuccess }) {
           if (!extraRes.ok) console.error('Error uploading extra files:', await extraRes.text());
         } catch (e) {
           console.error('Error uploading extra files:', e);
+        }
+      }
+
+      // Subir organigrama si hay
+      if (organigramaFile) {
+        const orgForm = new FormData();
+        orgForm.append('file', organigramaFile);
+        try {
+          await fetch(`${API}/uploads/${newUploadId}/organigrama`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${getToken()}` },
+            body: orgForm,
+          });
+        } catch (e) {
+          console.error('Error uploading organigrama:', e);
         }
       }
 
@@ -369,6 +395,15 @@ function CargaDirecta({ onSuccess }) {
             <button onClick={() => removeExtra(i)} className="text-red-500 hover:text-red-700">X</button>
           </div>
         ))}
+
+        <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center cursor-pointer hover:border-emerald-400 transition-colors mb-4"
+          onClick={() => organigramaRef.current?.click()}>
+          <input ref={organigramaRef} type="file" accept="image/*" className="hidden" onChange={handleOrganigramaSelect} />
+          <div className="text-slate-400 text-sm">
+            <UploadIcon className="w-5 h-5 mx-auto mb-1" />
+            {organigramaFile ? `Organigrama: ${organigramaFile.name}` : 'Organigrama (imagen, opcional)'}
+          </div>
+        </div>
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-center gap-2">

@@ -607,6 +607,7 @@ class Upload(Base):
     empresa = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String, default="pendiente", nullable=False)
+    organigrama_path = Column(String, nullable=True)
 
     muestra = relationship("MuestraPeriodo", back_populates="uploads")
     cargos = relationship("Cargo", back_populates="upload")

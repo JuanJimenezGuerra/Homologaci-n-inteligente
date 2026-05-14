@@ -51,6 +51,7 @@ def run_migrations():
     migrations = {
         "uploads": [
             ("muestra_id", "INTEGER REFERENCES muestras_periodo(id)"),
+            ("organigrama_path", "VARCHAR"),
         ],
         "cargos_empresa": [
             ("muestra_id", "INTEGER REFERENCES muestras_periodo(id)"),

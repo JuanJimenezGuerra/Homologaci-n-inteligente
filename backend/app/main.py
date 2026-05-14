@@ -326,6 +326,45 @@ def get_extra_descriptions(upload_id: int, db: Session = Depends(get_db), curren
     
     return {"cargos": result, "count": len(result)}
 
+from fastapi.responses import FileResponse
+
+ORGANIGRAMA_DIR = os.path.join(os.path.dirname(__file__), "..", "uploads", "organigramas")
+os.makedirs(ORGANIGRAMA_DIR, exist_ok=True)
+
+@app.post("/uploads/{upload_id}/organigrama")
+def upload_organigrama(
+    upload_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    upload = db.query(Upload).filter(Upload.id == upload_id).first()
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload no encontrado")
+
+    ext = os.path.splitext(file.filename)[1] or ".png"
+    filename = f"organigrama_{upload_id}{ext}"
+    dest = os.path.join(ORGANIGRAMA_DIR, filename)
+
+    with open(dest, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    upload.organigrama_path = filename
+    db.commit()
+    return {"filename": filename, "url": f"/uploads/{upload_id}/organigrama"}
+
+@app.get("/uploads/{upload_id}/organigrama")
+def get_organigrama(upload_id: int, db: Session = Depends(get_db)):
+    upload = db.query(Upload).filter(Upload.id == upload_id).first()
+    if not upload or not upload.organigrama_path:
+        raise HTTPException(status_code=404, detail="Organigrama no encontrado")
+
+    filepath = os.path.join(ORGANIGRAMA_DIR, upload.organigrama_path)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en servidor")
+
+    return FileResponse(filepath)
+
 
 @app.get("/uploads")
 def list_uploads(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

@@ -740,139 +740,10 @@ function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
                           <ParticipantInput rol={rol.key} label={rol.label} onAdd={handleAddParticipante} />
                         ) : (
                           <span className="text-[10px] text-slate-400 italic">Pendiente</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-          </div>
-        </motion.div>
         )}
       </AnimatePresence>
 
-      {showAddCargo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setShowAddCargo(false)}>
-          <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-md m-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <h3 className="font-bold text-lg text-slate-800">Agregar Cargo a Sesión</h3>
-              <button onClick={() => setShowAddCargo(false)} className="p-1 hover:bg-slate-100 rounded"><X size={20} /></button>
-            </div>
-            <div className="p-6 max-h-72 overflow-y-auto space-y-2">
-              {cargosDisponibles.filter(c => !cargos.find(({ cargo: cx }) => cx?.id === c.id)).map(c => (
-                <button key={c.id} onClick={() => handleAddCargo(c.id)} disabled={addingCargo === c.id}
-                  className={`w-full text-left p-3 rounded-xl border transition-all ${addingCargo === c.id ? 'opacity-50 cursor-wait bg-emerald-50' : 'border-slate-200 hover:bg-emerald-50 hover:border-emerald-300'}`}>
-                  <span className="font-medium text-sm">{addingCargo === c.id ? <><Loader2 size={12} className="animate-spin inline mr-1" /> Agregando...</> : c.nombre}</span>
-                  <span className="text-xs text-slate-400 ml-2">{c.nivel_organizacional || c.codigo || ''}</span>
-                </button>
-              ))}
-              {cargosDisponibles.length === 0 && <p className="text-sm text-slate-400 italic">No hay cargos disponibles</p>}
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {editVersion && (
-        <VersionEditModal version={editVersion} cargo={editCargo}
-          onSave={(updated) => { setEditVersion(null); loadCargos(); }}
-          onClose={() => setEditVersion(null)}
-        />
-      )}
-
-      {showConsolidado && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setShowConsolidado(false)}>
-          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto m-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-6 border-b border-slate-200 sticky top-0 bg-white">
-              <h3 className="font-bold text-lg text-slate-800">Consolidado: {sesion.nombre}</h3>
-              <button onClick={() => setShowConsolidado(false)} className="p-1 hover:bg-slate-100 rounded"><X size={20} /></button>
-            </div>
-            <div className="p-6">
-              {loadingConsolidado ? (
-                <div className="flex items-center justify-center py-12"><div className="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin" /></div>
-              ) : consolidado?.valoraciones?.length > 0 ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-slate-500">{consolidado.total} valoración(es) definitiva(s)</p>
-                    <button onClick={exportConsolidadoExcel} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-semibold hover:bg-emerald-100">
-                      <Download size={14} /> Exportar Excel
-                    </button>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-200">
-                          <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">Cargo</th>
-                          <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">Área</th>
-                          <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px] text-center">Puntaje</th>
-                          <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px] text-center">Nivel</th>
-                          <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">Estado</th>
-                          <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">Versión</th>
-                          {FACTORES.slice(0, 3).map(f => (
-                            <th key={f.key} className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">{f.label}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {consolidado.valoraciones.map(({ version, cargo }) => (
-                          <tr key={version.id} className="border-b border-slate-100 hover:bg-slate-50">
-                            <td className="py-2 px-3 font-medium">{cargo?.nombre || `#${version.cargo_id}`}</td>
-                            <td className="py-2 px-3 text-slate-500">{cargo?.area_nombre || '-'}</td>
-                            <td className="py-2 px-3 text-center">
-                              <span className={`font-bold text-sm ${(version.puntos_totales || 0) >= 300 ? 'text-purple-700' : (version.puntos_totales || 0) >= 200 ? 'text-blue-700' : 'text-slate-600'}`}>
-                                {version.puntos_totales || '-'}
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-center">
-                              <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{version.nivel_shr || '-'}</span>
-                            </td>
-                            <td className="py-2 px-3"><EstadoBadge estado={version.estado} /></td>
-                            <td className="py-2 px-3 text-slate-500">v{version.version}</td>
-                            {FACTORES.slice(0, 3).map(f => (
-                              <td key={f.key} className="py-2 px-3 text-slate-600">{version[f.key] || '-'}</td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <details className="mt-4">
-                    <summary className="text-sm font-semibold text-slate-600 cursor-pointer hover:text-slate-800">Ver todos los factores</summary>
-                    <div className="overflow-x-auto mt-2">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-200">
-                            <th className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">Cargo</th>
-                            {FACTORES.map(f => (
-                              <th key={f.key} className="text-left py-2 px-3 font-semibold text-slate-500 uppercase text-[10px]">{f.label}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {consolidado.valoraciones.map(({ version, cargo }) => (
-                            <tr key={version.id} className="border-b border-slate-100 hover:bg-slate-50">
-                              <td className="py-2 px-3 font-medium">{cargo?.nombre || `#${version.cargo_id}`}</td>
-                              {FACTORES.map(f => (
-                                <td key={f.key} className="py-2 px-3 text-slate-600">{version[f.key] || '-'}</td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </details>
-                </div>
-              ) : (
-                <div className="text-center py-12 text-slate-400">
-                  <FileSpreadsheet size={48} className="mx-auto mb-4 opacity-30" />
-                  <p className="font-semibold">Sin valoraciones definitivas</p>
-                  <p className="text-sm mt-1">No hay versiones en estado DEFINITIVA o APROBADA en esta sesión</p>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        </div>
-      )}
-    </motion.div>
+    </div>
   );
 }
 
@@ -884,6 +755,9 @@ export default function SesionesView({ initialEmpresaId }) {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ nombre: '', descripcion: '', metodologia: 'SHR/HAY' });
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+  const [showOrganigrama, setShowOrganigrama] = useState(false);
+  const [orgImgUrl, setOrgImgUrl] = useState('');
+  const [zoomLevel, setZoomLevel] = useState(1);
 
   const showToast = (message, type = 'success') => {
     setToast({ visible: true, message, type });
@@ -944,6 +818,14 @@ export default function SesionesView({ initialEmpresaId }) {
     }
   };
 
+  const handleViewOrganigrama = async () => {
+    const uploadId = window.prompt('ID del upload para ver el organigrama (ej: 1):');
+    if (!uploadId || !uploadId.trim()) return;
+    setOrgImgUrl(`${API}/uploads/${uploadId}/organigrama?t=${Date.now()}`);
+    setZoomLevel(1);
+    setShowOrganigrama(true);
+  };
+
   return (
     <div className="space-y-6">
       <Toast visible={toast.visible} message={toast.message} type={toast.type} onClose={() => setToast(t => ({ ...t, visible: false }))} />
@@ -957,6 +839,10 @@ export default function SesionesView({ initialEmpresaId }) {
             <option value="">Seleccionar empresa...</option>
             {empresas.map(e => <option key={e.id} value={e.id}>{e.nombre_empresa || e.nombre}</option>)}
           </select>
+          <button onClick={handleViewOrganigrama}
+            className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            <Eye size={14} /> Ver Organigrama
+          </button>
           <button onClick={handleSyncFromUpload}
             className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50">
             <Upload size={14} /> Sinc. Req.
@@ -1024,6 +910,42 @@ export default function SesionesView({ initialEmpresaId }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Organigrama Modal */}
+      <AnimatePresence>
+        {showOrganigrama && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowOrganigrama(false)}>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }}
+              className="bg-white rounded-2xl shadow-2xl w-[90vw] h-[90vh] m-4 flex flex-col"
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-4 border-b border-slate-200 shrink-0">
+                <h3 className="font-bold text-lg text-slate-800">Organigrama</h3>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setZoomLevel(z => Math.max(0.25, z - 0.25))} className="px-2 py-1 border border-slate-300 rounded text-sm hover:bg-slate-50">-</button>
+                  <span className="text-sm font-mono w-12 text-center">{Math.round(zoomLevel * 100)}%</span>
+                  <button onClick={() => setZoomLevel(z => Math.min(4, z + 0.25))} className="px-2 py-1 border border-slate-300 rounded text-sm hover:bg-slate-50">+</button>
+                  <button onClick={() => setZoomLevel(1)} className="px-2 py-1 border border-slate-300 rounded text-sm hover:bg-slate-50">1:1</button>
+                  <button onClick={() => setZoomLevel(2)} className="px-2 py-1 border border-slate-300 rounded text-sm hover:bg-slate-50">Ajustar</button>
+                  <button onClick={() => setShowOrganigrama(false)} className="p-1 hover:bg-slate-100 rounded ml-2"><X size={20} /></button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto p-4 flex items-start justify-center bg-slate-100/50">
+                {orgImgUrl ? (
+                  <div className="inline-block" style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center', transition: 'transform 0.2s ease' }}>
+                    <img src={orgImgUrl} alt="Organigrama" className="max-w-none shadow-lg rounded-lg" onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerHTML = '<p class=\\"text-red-500 p-8\\">No se pudo cargar la imagen. Verifica el ID del upload.</p>'; }} />
+                  </div>
+                ) : (
+                  <p className="text-slate-400">Cargando...</p>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <Toast visible={toast.visible} message={toast.message} type={toast.type} onClose={() => setToast(t => ({ ...t, visible: false }))} />
     </div>
   );
 }
