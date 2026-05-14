@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Globe, MapPin, Layers, GitBranch, ClipboardList,
   ChevronRight, ChevronDown, Plus, Pencil, Trash2, Save, X,
   Search, FolderTree, Briefcase, Users, RotateCcw, AlertCircle, Upload,
-  Loader2,
+  Loader2, Eye,
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
@@ -531,11 +531,19 @@ export default function OrganizacionView({ onNavigate }) {
     warmUpRender().then(() => Promise.all([
       apiGet('/grupos-empresariales'),
       apiGet('/empresas'),
-      fetch(`${API}/uploads`, { headers: getAuthHeaders(), signal: controller.signal }).then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d.length : 0).catch(() => 0),
-    ])).then(([gruposRes, empresasRes, uCount]) => {
+      fetch(`${API}/uploads`, { headers: getAuthHeaders(), signal: controller.signal })
+        .then(r => r.ok ? r.json() : [])
+        .then(d => {
+          if (!Array.isArray(d)) return { count: 0, orgUrl: '' };
+          const withOrg = d.find(item => item.upload?.organigrama_path);
+          return { count: d.length, orgUrl: withOrg ? `${API}/uploads/${withOrg.id}/organigrama?t=${Date.now()}` : '' };
+        })
+        .catch(() => ({ count: 0, orgUrl: '' })),
+    ])).then(([gruposRes, empresasRes, { count: uCount, orgUrl }]) => {
       if (cancelled) return;
       clearTimeout(timeout);
       setUploadCount(uCount);
+      if (orgUrl) setOrgImgUrl(orgUrl);
       const empresas = Array.isArray(empresasRes) ? empresasRes : [];
       setGrupos(Array.isArray(gruposRes) ? gruposRes : []);
       Promise.all(empresas.map(e =>
@@ -554,6 +562,9 @@ export default function OrganizacionView({ onNavigate }) {
     return () => { cancelled = true; clearTimeout(timeout); controller.abort(); };
   }, [refreshKey]);
 
+  const [orgImgUrl, setOrgImgUrl] = useState('');
+  const [showOrganigrama, setShowOrganigrama] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const [grupoForm, setGrupoForm] = useState({ nombre: '', descripcion: '', sector_principal: '', tamano: '', pais_principal: '' });
   const [savingGrupo, setSavingGrupo] = useState(false);
 
@@ -647,6 +658,12 @@ export default function OrganizacionView({ onNavigate }) {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar..." className="pl-9 pr-4 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 w-48" />
           </div>
+          {orgImgUrl && (
+            <button onClick={() => setShowOrganigrama(true)}
+              className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50">
+              <Eye size={14} /> Ver Organigrama
+            </button>
+          )}
           <button onClick={() => setShowCreateGrupo(true)} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">
             <Plus size={16} /> Nuevo Grupo
           </button>
@@ -691,6 +708,39 @@ export default function OrganizacionView({ onNavigate }) {
           ))}
         </div>
       )}
+
+      {/* Organigrama Modal */}
+      <AnimatePresence>
+        {showOrganigrama && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowOrganigrama(false)}>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }}
+              className="bg-white rounded-2xl shadow-2xl w-[90vw] h-[90vh] m-4 flex flex-col"
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-4 border-b border-slate-200 shrink-0">
+                <h3 className="font-bold text-lg text-slate-800">Organigrama</h3>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setZoomLevel(z => Math.max(0.25, z - 0.25))} className="px-2 py-1 border border-slate-300 rounded text-sm hover:bg-slate-50">-</button>
+                  <span className="text-sm font-mono w-12 text-center">{Math.round(zoomLevel * 100)}%</span>
+                  <button onClick={() => setZoomLevel(z => Math.min(4, z + 0.25))} className="px-2 py-1 border border-slate-300 rounded text-sm hover:bg-slate-50">+</button>
+                  <button onClick={() => setZoomLevel(1)} className="px-2 py-1 border border-slate-300 rounded text-sm hover:bg-slate-50">1:1</button>
+                  <button onClick={() => setShowOrganigrama(false)} className="p-1 hover:bg-slate-100 rounded ml-2"><X size={20} /></button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto p-4 flex items-start justify-center bg-slate-100/50">
+                {orgImgUrl ? (
+                  <div className="inline-block" style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center', transition: 'transform 0.2s ease' }}>
+                    <img src={orgImgUrl} alt="Organigrama" className="max-w-none shadow-lg rounded-lg" />
+                  </div>
+                ) : (
+                  <p className="text-slate-400">Cargando...</p>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Create Grupo Modal */}
       {showCreateGrupo && (
@@ -738,7 +788,6 @@ export default function OrganizacionView({ onNavigate }) {
           </motion.div>
         </div>
       )}
-
 
     </div>
   );
