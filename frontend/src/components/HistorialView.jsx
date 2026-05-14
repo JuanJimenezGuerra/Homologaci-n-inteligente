@@ -240,7 +240,7 @@ const HistorialView = () => {
     if (subTab === 'dbinfo') loadDbInfo();
   }, [subTab]);
 
-  const fetchWithTimeout = (url, options = {}, timeout = 10000) => {
+  const fetchWithTimeout = (url, options = {}, timeout = 60000) => {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
     return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));

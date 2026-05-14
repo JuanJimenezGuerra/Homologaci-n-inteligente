@@ -362,7 +362,7 @@ function SyncFromUploadButton({ onRefresh }) {
     setError('');
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
+      const timeout = setTimeout(() => controller.abort(), 60000);
       const res = await fetch(`${API}/uploads`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         signal: controller.signal,
@@ -398,7 +398,7 @@ function SyncFromUploadButton({ onRefresh }) {
     setError('');
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
+      const timeout = setTimeout(() => controller.abort(), 60000);
       const res = await fetch(`${API}/uploads/${selectedId}/sync-organigrama`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
@@ -501,7 +501,7 @@ export default function OrganizacionView({ onNavigate }) {
     let cancelled = false;
     setLoading(true);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 60000);
     Promise.all([
       apiGet('/grupos-empresariales'),
       apiGet('/empresas'),
