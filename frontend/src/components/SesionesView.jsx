@@ -740,10 +740,18 @@ function SesionCard({ sesion, empresaId, onRefresh, onToast }) {
                           <ParticipantInput rol={rol.key} label={rol.label} onAdd={handleAddParticipante} />
                         ) : (
                           <span className="text-[10px] text-slate-400 italic">Pendiente</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
-
-    </div>
+    </motion.div>
   );
 }
 
