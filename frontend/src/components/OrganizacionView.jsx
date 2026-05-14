@@ -537,7 +537,7 @@ export default function OrganizacionView({ onNavigate }) {
     setSavingGrupo(true);
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
+      const timeout = setTimeout(() => controller.abort(), 60000);
       const res = await fetch(`${API_BASE}/grupos-empresariales`, {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -553,7 +553,7 @@ export default function OrganizacionView({ onNavigate }) {
       setGrupoForm({ nombre: '', descripcion: '', sector_principal: '', tamano: '', pais_principal: '' });
       refresh();
     } catch (err) {
-      alert(err.name === 'AbortError' ? 'La solicitud tardó demasiado. El backend en Render tarda ~50s en iniciar. Intenta de nuevo.' : 'Error al crear grupo: ' + err.message);
+      alert(err.name === 'AbortError' ? 'La solicitud tardó demasiado (~60s). El backend en Render se reinicia tras inactividad. Intenta de nuevo.' : 'Error al crear grupo: ' + err.message);
     } finally {
       setSavingGrupo(false);
     }
