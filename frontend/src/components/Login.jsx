@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
+import logoShr from '../assets/logo_shr.png';
 
 const getApiUrl = () => {
   const url = import.meta.env.VITE_API_URL || 'https://shr-backend-prod.onrender.com';
@@ -64,9 +65,9 @@ const Login = ({ onLoginSuccess }) => {
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="w-24 h-24 bg-emerald-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-emerald-900/30 mx-auto mb-6"
+            className="w-28 h-28 bg-white rounded-3xl flex items-center justify-center shadow-2xl shadow-emerald-900/30 mx-auto mb-6 p-4 border border-emerald-100"
           >
-            <span className="text-white text-4xl font-black">S</span>
+            <img src={logoShr} alt="SHR Logo" className="w-full h-full object-contain" />
           </motion.div>
           <h1 className="text-3xl font-bold text-forest tracking-tight">Homologación Inteligente</h1>
           <p className="text-emerald-700/70 mt-2 font-medium">Gestión de Talento Humano · SHR</p>
