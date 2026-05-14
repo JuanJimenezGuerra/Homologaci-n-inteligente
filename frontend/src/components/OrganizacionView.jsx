@@ -13,6 +13,38 @@ const getAuthHeaders = () => {
   return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : {};
 };
 
+const warmUpRender = async () => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 75000);
+  try {
+    await fetch(`${API}/ping`, { signal: controller.signal });
+  } catch {
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const fetchWithRetry = async (url, options, retries = 2, delay = 5000) => {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 180000);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      return res;
+    } catch (e) {
+      clearTimeout(timeout);
+      if (attempt < retries && (e.name === 'AbortError' || e.name === 'TypeError')) {
+        await new Promise(r => setTimeout(r, delay));
+        await warmUpRender();
+        continue;
+      }
+      throw e;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+};
+
 // ─── Node types configuration ───
 const NODE_TYPES = {
   grupo:      { icon: Building2,   label: 'Grupo Empresarial',  color: 'text-purple-600',  bg: 'bg-purple-50', border: 'border-purple-200', endpoint: 'grupos-empresariales', parentKey: null },
@@ -361,13 +393,10 @@ function SyncFromUploadButton({ onRefresh }) {
     setLoadingUploads(true);
     setError('');
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
-      const res = await fetch(`${API}/uploads`, {
+      await warmUpRender();
+      const res = await fetchWithRetry(`${API}/uploads`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        signal: controller.signal,
       });
-      clearTimeout(timeout);
       if (!res.ok) {
         const err = await res.text();
         setError(`Error al cargar: ${err.slice(0, 100)}`);
@@ -378,7 +407,7 @@ function SyncFromUploadButton({ onRefresh }) {
         if (Array.isArray(data) && data.length > 0) setSelectedId(String(data[0].id));
       }
     } catch (e) {
-      setError(e.name === 'AbortError' ? 'La conexión tardó demasiado. El backend en Render tarda ~50s en iniciar. Intenta de nuevo.' : 'Error de conexión al cargar uploads');
+      setError(e.name === 'AbortError' ? 'La conexión tardó demasiado (~2min). El backend en Render se reinicia tras inactividad. Intenta de nuevo.' : 'Error de conexión al cargar uploads');
       setUploads([]);
     }
     setLoadingUploads(false);
@@ -397,14 +426,11 @@ function SyncFromUploadButton({ onRefresh }) {
     setResult(null);
     setError('');
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 120000);
-      const res = await fetch(`${API}/uploads/${selectedId}/sync-organigrama`, {
+      await warmUpRender();
+      const res = await fetchWithRetry(`${API}/uploads/${selectedId}/sync-organigrama`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        signal: controller.signal,
       });
-      clearTimeout(timeout);
       const data = await res.json();
       if (res.ok) {
         setResult({ ok: true, created: data.created, skipped: data.skipped, total: data.total });
@@ -414,7 +440,7 @@ function SyncFromUploadButton({ onRefresh }) {
       }
     } catch (e) {
       if (e.name === 'AbortError') {
-        setResult({ ok: false, error: 'La solicitud tardó demasiado. Intenta de nuevo.' });
+        setResult({ ok: false, error: 'La solicitud tardó demasiado (~3min). El backend en Render se reinicia tras inactividad. Intenta de nuevo.' });
       } else {
         setResult({ ok: false, error: e.message });
       }
@@ -501,12 +527,12 @@ export default function OrganizacionView({ onNavigate }) {
     let cancelled = false;
     setLoading(true);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
-    Promise.all([
+    const timeout = setTimeout(() => controller.abort(), 180000);
+    warmUpRender().then(() => Promise.all([
       apiGet('/grupos-empresariales'),
       apiGet('/empresas'),
       fetch(`${API}/uploads`, { headers: getAuthHeaders(), signal: controller.signal }).then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d.length : 0).catch(() => 0),
-    ]).then(([gruposRes, empresasRes, uCount]) => {
+    ])).then(([gruposRes, empresasRes, uCount]) => {
       if (cancelled) return;
       clearTimeout(timeout);
       setUploadCount(uCount);
@@ -536,15 +562,12 @@ export default function OrganizacionView({ onNavigate }) {
     if (!grupoForm.nombre.trim()) { alert('El nombre del grupo es requerido'); return; }
     setSavingGrupo(true);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 120000);
-      const res = await fetch(`${API_BASE}/grupos-empresariales`, {
+      await warmUpRender();
+      const res = await fetchWithRetry(`${API_BASE}/grupos-empresariales`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(grupoForm),
-        signal: controller.signal,
       });
-      clearTimeout(timeout);
       if (!res.ok) {
         const err = await res.text().then(t => t.slice(0, 200));
         throw new Error(err);
@@ -553,7 +576,7 @@ export default function OrganizacionView({ onNavigate }) {
       setGrupoForm({ nombre: '', descripcion: '', sector_principal: '', tamano: '', pais_principal: '' });
       refresh();
     } catch (err) {
-      alert(err.name === 'AbortError' ? 'La solicitud tardó demasiado (~120s). El backend en Render se reinicia tras inactividad. Intenta de nuevo.' : 'Error al crear grupo: ' + err.message);
+      alert(err.name === 'AbortError' ? 'La solicitud tardó demasiado (~3min). El backend en Render se reinicia tras inactividad. Intenta de nuevo.' : 'Error al crear grupo: ' + err.message);
     } finally {
       setSavingGrupo(false);
     }
