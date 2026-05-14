@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import {
   Building2, Globe, MapPin, Layers, GitBranch, ClipboardList,
   ChevronRight, ChevronDown, Plus, Pencil, Trash2, Save, X,
-  Search, FolderTree, Briefcase, Users, RotateCcw, AlertCircle, Upload, Sparkles,
+  Search, FolderTree, Briefcase, Users, RotateCcw, AlertCircle, Upload,
   Loader2,
 } from 'lucide-react';
 
@@ -559,27 +559,6 @@ export default function OrganizacionView({ onNavigate }) {
     }
   };
 
-  const [seeding, setSeeding] = useState(false);
-  const handleSeedDemo = async () => {
-    setSeeding(true);
-    try {
-      const res = await fetch(`${API}/demo/seed`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        alert(`✅ Datos demo creados:\nEmpresa: ${data.empresa}\nCargos: ${data.cargos}\nSesión ID: ${data.sesion_id}\n\nVe a "Sesiones de Valoración" para ver el taller.`);
-        refresh();
-      } else {
-        alert('Error: ' + (data.detail || 'Error desconocido'));
-      }
-    } catch (e) {
-      alert('Error al crear datos demo: ' + e.message);
-    }
-    setSeeding(false);
-  };
-
   return (
     <div className="space-y-6">
       {/* Welcome banner when no data */}
@@ -587,35 +566,41 @@ export default function OrganizacionView({ onNavigate }) {
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
           className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-8 text-white shadow-xl">
           <h2 className="text-2xl font-bold mb-2">Bienvenido a SHR Valoración</h2>
-          <p className="text-blue-100 mb-6">Completa esta información para comenzar con la estructura organizacional.</p>
+          <p className="text-blue-100 mb-6">Completa los pasos para comenzar con la estructura organizacional.</p>
           <div className="grid grid-cols-2 gap-4">
-            {uploadCount === 0 ? (
-              <div className="bg-white/10 backdrop-blur rounded-xl p-4">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-1">Paso 1</p>
-                <p className="font-semibold">Sube el Excel de Requerimientos</p>
-                <p className="text-xs text-blue-200 mt-1">Ve a la pestaña "Formulario" y carga el archivo con los datos de la empresa y los cargos.</p>
-              </div>
-            ) : (
-              <div className="bg-emerald-500/20 backdrop-blur rounded-xl p-4 border border-emerald-400/30">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-200 mb-1">Paso 1</p>
-                <p className="font-semibold flex items-center gap-2">✓ Excel Cargado</p>
-                <p className="text-xs text-emerald-200 mt-1">{uploadCount} archivo(s) procesado(s) correctamente.</p>
-              </div>
-            )}
-            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-1">Paso 2</p>
-              <p className="font-semibold">Crea un Grupo Empresarial</p>
-              <p className="text-xs text-blue-200 mt-1">Usa el botón "Nuevo Grupo" para crear la estructura jerárquica de la organización.</p>
+            <div className={`backdrop-blur rounded-xl p-4 ${uploadCount > 0 ? 'bg-emerald-500/20 border border-emerald-400/30' : 'bg-white/10'}`}>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-1">Paso 1</p>
+              <p className="font-semibold flex items-center gap-2">{uploadCount > 0 ? '✓ Excel Cargado' : 'Sube el Excel de Requerimientos'}</p>
+              <p className="text-xs mt-1">{uploadCount > 0 ? `${uploadCount} archivo(s) procesado(s) correctamente.` : 'Carga el archivo con los datos de la empresa y los cargos.'}</p>
+              {onNavigate && uploadCount === 0 && (
+                <button onClick={() => onNavigate('formulario')} className="mt-3 text-xs font-semibold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors">
+                  Ir a Formulario
+                </button>
+              )}
+            </div>
+            <div className={`backdrop-blur rounded-xl p-4 ${grupos.length > 0 ? 'bg-emerald-500/20 border border-emerald-400/30' : 'bg-white/10'}`}>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-1">Paso 2</p>
+              <p className="font-semibold flex items-center gap-2">{grupos.length > 0 ? `✓ ${grupos.length} Grupo(s) Creado(s)` : 'Crea un Grupo Empresarial'}</p>
+              <p className="text-xs mt-1">Crea la estructura jerárquica de la organización.</p>
+              <button onClick={() => setShowCreateGrupo(true)} className="mt-3 text-xs font-semibold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors">
+                {grupos.length > 0 ? 'Crear otro Grupo' : 'Abrir Nuevo Grupo'}
+              </button>
             </div>
             <div className="bg-white/10 backdrop-blur rounded-xl p-4">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-1">Paso 3</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-1">Paso 3</p>
               <p className="font-semibold">Sincroniza los Cargos</p>
-              <p className="text-xs text-blue-200 mt-1">Usa el botón "Sincronizar" para convertir los cargos del Excel en cargos organizacionales.</p>
+              <p className="text-xs mt-1">Convierte los cargos del Excel en cargos organizacionales.</p>
+              <div className="mt-3"><SyncFromUploadButton onRefresh={refresh} /></div>
             </div>
             <div className="bg-white/10 backdrop-blur rounded-xl p-4">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-1">Paso 4</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-1">Paso 4</p>
               <p className="font-semibold">Crea Sesiones de Valoración</p>
-              <p className="text-xs text-blue-200 mt-1">Ve a "Sesiones de Valoración" para crear talleres con 4 participantes y valorar cargos.</p>
+              <p className="text-xs mt-1">Crea talleres con participantes y valora los cargos.</p>
+              {onNavigate && (
+                <button onClick={() => onNavigate('sesiones')} className="mt-3 text-xs font-semibold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors">
+                  Ir a Sesiones
+                </button>
+              )}
             </div>
           </div>
         </motion.div>
@@ -628,10 +613,6 @@ export default function OrganizacionView({ onNavigate }) {
           <p className="text-sm text-slate-500 mt-1">Gestión de estructura: grupos empresariales, empresas, sedes, procesos y cargos</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={handleSeedDemo} disabled={seeding}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 disabled:opacity-50">
-            {seeding ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Demo
-          </button>
           <SyncFromUploadButton onRefresh={refresh} />
           {onNavigate && (
             <button onClick={() => onNavigate('sesiones')}
