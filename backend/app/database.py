@@ -316,6 +316,9 @@ def run_migrations():
             ("updated_at", "TIMESTAMP"),
             ("deleted_at", "TIMESTAMP"),
         ],
+        "valoraciones_version": [
+            ("deleted_at", "TIMESTAMP"),
+        ],
     }
 
     try:
